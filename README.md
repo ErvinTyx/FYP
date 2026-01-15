@@ -12,7 +12,7 @@ Before you begin, ensure you have the following installed:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/likang/figma-make-local-runner
+git clone https://github.com/ErvinTyx/FYP.git 
 cd figma-make-local-runner
 ```
 
