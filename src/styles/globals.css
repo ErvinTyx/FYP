@@ -1,0 +1,239 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  
+  /* Brand Colors - Updated from Figma Script */
+  --highlight-orange: #F15929;
+  --highlight-orange-light: #FF6B3D;
+  --highlight-orange-dark: #D94E23;
+  
+  --header-dark: #231F20;
+  --text-white: #FFFFFF;
+  
+  /* Legacy Design System Colors - Keeping for compatibility */
+  --primary-blue: #F15929; /* Updated to highlight orange */
+  --primary-blue-light: #FF6B3D;
+  --primary-blue-dark: #D94E23;
+  
+  --success-green: #059669;
+  --error-red: #DC2626;
+  --warning-amber: #F59E0B;
+  --neutral-gray: #6B7280;
+  
+  --text-primary: #231F20; /* Updated to header dark */
+  --text-secondary: #374151;
+  --text-disabled: #9CA3AF;
+  --background-light: #F3F4F6;
+  --background-white: #FFFFFF;
+  
+  /* Status Colors */
+  --status-approved: #059669;
+  --status-pending: #F59E0B;
+  --status-rejected: #DC2626;
+  --status-draft: #3B82F6;
+  
+  /* Shadcn Compatible Colors - Updated with brand colors */
+  --background: #ffffff;
+  --foreground: #231F20;
+  --card: #ffffff;
+  --card-foreground: #231F20;
+  --popover: #ffffff;
+  --popover-foreground: #231F20;
+  --primary: #F15929;
+  --primary-foreground: #ffffff;
+  --secondary: #F3F4F6;
+  --secondary-foreground: #374151;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+  --accent: #F3F4F6;
+  --accent-foreground: #231F20;
+  --destructive: #DC2626;
+  --destructive-foreground: #ffffff;
+  --border: #E5E7EB;
+  --input: #D1D5DB;
+  --input-background: #ffffff;
+  --switch-background: #D1D5DB;
+  --ring: #F15929;
+  
+  /* Spacing System */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+  --spacing-4xl: 96px;
+  
+  /* Typography Scale */
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-normal: 400;
+  
+  --radius: 0.5rem;
+  
+  /* Sidebar - Updated with brand colors */
+  --sidebar: #F8FAFC;
+  --sidebar-foreground: #374151;
+  --sidebar-primary: #F15929;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #F3F4F6;
+  --sidebar-accent-foreground: #231F20;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #F15929;
+  
+  /* Chart colors - Updated with brand colors */
+  --chart-1: #F15929;
+  --chart-2: #059669;
+  --chart-3: #F59E0B;
+  --chart-4: #DC2626;
+  --chart-5: #6B7280;
+}
+
+.dark {
+  --background: #111827;
+  --foreground: #F3F4F6;
+  --card: #1F2937;
+  --card-foreground: #F3F4F6;
+  --popover: #1F2937;
+  --popover-foreground: #F3F4F6;
+  --primary: #FF6B3D;
+  --primary-foreground: #ffffff;
+  --secondary: #374151;
+  --secondary-foreground: #F3F4F6;
+  --muted: #374151;
+  --muted-foreground: #9CA3AF;
+  --accent: #374151;
+  --accent-foreground: #F3F4F6;
+  --destructive: #DC2626;
+  --destructive-foreground: #ffffff;
+  --border: #374151;
+  --input: #374151;
+  --ring: #FF6B3D;
+  --sidebar: #1F2937;
+  --sidebar-foreground: #F3F4F6;
+  --sidebar-primary: #FF6B3D;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #374151;
+  --sidebar-accent-foreground: #F3F4F6;
+  --sidebar-border: #374151;
+  --sidebar-ring: #FF6B3D;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/**
+ * Base typography following design system specifications
+ */
+@layer base {
+  :where(:not(:has([class*=" text-"]), :not(:has([class^="text-"])))) {
+    h1 {
+      font-size: 32px;
+      font-weight: 600;
+      line-height: 1.5;
+      color: var(--text-primary);
+    }
+
+    h2 {
+      font-size: 24px;
+      font-weight: 600;
+      line-height: 1.5;
+      color: var(--text-primary);
+    }
+
+    h3 {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.5;
+      color: var(--text-primary);
+    }
+
+    h4 {
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.5;
+      color: var(--text-primary);
+    }
+
+    p {
+      font-size: 16px;
+      font-weight: 400;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+
+    label {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.5;
+      color: var(--text-primary);
+    }
+
+    button {
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.5;
+    }
+
+    input, textarea, select {
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}

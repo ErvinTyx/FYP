@@ -1,0 +1,67 @@
+# See https://help.github.com/en/github/using-git/ignoring-commit-email-addresses-in-a-repository
+# for more information about what to ignore.
+
+# dependencies
+/node_modules
+# testing
+/coverage
+# production artifacts
+/build
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
+.env.staging.local
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+yarn.lock
+pids
+*.pid
+*.seed
+*.log
+*.crash
+*.core
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+com.apple.TimeMachine.plist
+com.apple.TimeMachine.autoBackup.plist
+DocumentRevisions-V100
+com.apple.LaunchServices.csstore
+com.apple.LaunchServices.csstore?sha1=
+*.lock
+*.psd
+*.psd.backup
+*.wbprel
+*.wbp
+*.webarchive
+*Local Storage/
+*.git/
+*.svn/
+*.cvs/
+*.bzr/
+*.bz2/
+*.hg/
+*.mdb
+*.olm
+*.plc
+*.rcProjectVersion
+*.pbx
+*.xlb
+*.xcuserdatad
+*.xcsettings
+*.xlaunchable
+*.wbo
+profile
+Profiles/
+profile.xml
