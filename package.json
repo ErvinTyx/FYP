@@ -4,13 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
+    "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:migrate": "npx prisma migrate dev",
-    "db:push": "npx prisma db push"
+    "db:push": "npx prisma db push",
+    "db:test-auth": "npx tsx scripts/test-auth.ts",
+    "db:test-connection": "npx tsx scripts/test-db-connection.ts",
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

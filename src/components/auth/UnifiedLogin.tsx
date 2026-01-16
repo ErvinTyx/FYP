@@ -53,8 +53,11 @@ export function UnifiedLogin({
         callbackUrl,
       });
 
+      console.log("[Login] SignIn result:", result);
+
       if (result?.error) {
-        setErrorMessage("Invalid email or password. Please try again.");
+        console.error("[Login] SignIn error:", result.error);
+        setErrorMessage(`Login failed: ${result.error}. Please check your credentials and try again.`);
         setIsLoading(false);
         return;
       }
@@ -67,9 +70,15 @@ export function UnifiedLogin({
         }
         // Redirect to callback URL
         window.location.href = callbackUrl;
+      } else {
+        // If result exists but neither ok nor error, something unexpected happened
+        console.warn("[Login] Unexpected result:", result);
+        setErrorMessage("An unexpected error occurred. Please try again.");
+        setIsLoading(false);
       }
-    } catch {
-      setErrorMessage("An error occurred. Please try again.");
+    } catch (error) {
+      console.error("[Login] Exception during signIn:", error);
+      setErrorMessage(`An error occurred: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`);
       setIsLoading(false);
     }
   };

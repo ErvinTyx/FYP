@@ -1,0 +1,12 @@
+{
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/billing/route": "app/api/billing/route.js",
+  "/api/content/route": "app/api/content/route.js",
+  "/api/inventory/route": "app/api/inventory/route.js",
+  "/api/reports/route": "app/api/reports/route.js",
+  "/api/sales-orders/route": "app/api/sales-orders/route.js",
+  "/api/user-management/route": "app/api/user-management/route.js",
+  "/page": "app/page.js"
+}
