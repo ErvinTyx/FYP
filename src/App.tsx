@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react";
 import {
   Users,
   DollarSign,
@@ -142,6 +143,7 @@ type AuthScreen =
 type SystemMode = "ERP" | "CRM";
 
 export default function App() {
+  const { data: session, status } = useSession();
   const [authScreen, setAuthScreen] = useState<AuthScreen>("portal-selector");
   const [userRole, setUserRole] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<Page>("billing-dashboard");
@@ -149,6 +151,29 @@ export default function App() {
   const [systemMode, setSystemMode] = useState<SystemMode>("ERP");
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+
+  // Sync session with local state
+  useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      const roles = session.user.roles || [];
+      // Get primary role (first role or default)
+      const primaryRole = roles[0] || "admin";
+      setUserRole(primaryRole);
+      
+      // Customer goes to CRM portal
+      if (primaryRole === "customer") {
+        setSystemMode("CRM");
+        setCurrentPage("customer-portal");
+      } else {
+        // All other roles go to ERP portal
+        setSystemMode("ERP");
+        setCurrentPage("billing-dashboard");
+      }
+      
+      // Go directly to dashboard
+      setAuthScreen("dashboard");
+    }
+  }, [status, session]);
 
   // Unified login handler - determines portal based on role
   const handleUnifiedLogin = (role: string) => {
@@ -164,7 +189,8 @@ export default function App() {
       setCurrentPage("billing-dashboard");
     }
     
-    setAuthScreen("welcome");
+    // Go directly to dashboard
+    setAuthScreen("dashboard");
   };
 
   const handlePortalSelect = (portal: "customer" | "staff") => {
@@ -179,14 +205,14 @@ export default function App() {
     setUserRole(role);
     setSystemMode("ERP");
     setCurrentPage("billing-dashboard");
-    setAuthScreen("welcome");
+    setAuthScreen("dashboard");
   };
 
   const handleCustomerLogin = () => {
     setUserRole("customer");
     setSystemMode("CRM");
     setCurrentPage("customer-portal");
-    setAuthScreen("welcome");
+    setAuthScreen("dashboard");
   };
 
   const handleRegistrationTypeSelect = (
@@ -205,15 +231,12 @@ export default function App() {
     setAuthScreen("portal-selector");
   };
 
-  const handleWelcomeContinue = () => {
-    setAuthScreen("dashboard");
-  };
-
   const handleLogoutClick = () => {
     setShowLogoutDialog(true);
   };
 
-  const handleLogoutConfirm = () => {
+  const handleLogoutConfirm = async () => {
+    await signOut({ redirect: false });
     setUserRole("");
     setSystemMode("ERP");
     setCurrentPage("billing-dashboard");
@@ -221,8 +244,20 @@ export default function App() {
     setShowLogoutDialog(false);
   };
 
-  // Show authentication screens
-  if (authScreen === "portal-selector") {
+  // Show loading state while checking session
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F15929] via-[#F15929] to-[#D14820]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
+          <p className="text-white text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show authentication screens if not authenticated
+  if (status === "unauthenticated" && authScreen === "portal-selector") {
     return <UnifiedLogin onLogin={handleUnifiedLogin} onNavigateToRegister={() => setAuthScreen("register-select")} onNavigateToForgotPassword={() => setAuthScreen("forgot-password-email")} />;
   }
 
@@ -282,14 +317,6 @@ export default function App() {
     );
   }
 
-  if (authScreen === "welcome") {
-    return (
-      <WelcomeScreen
-        role={userRole}
-        onContinue={handleWelcomeContinue}
-      />
-    );
-  }
 
   if (authScreen === "forgot-password-email") {
     return (
@@ -398,8 +425,8 @@ export default function App() {
       },
     ];
 
-    // Add user management and content management for admin
-    if (userRole === "admin") {
+    // Add user management and content management for admin and super_user
+    if (userRole === "admin" || userRole === "super_user") {
       return [
         {
           section: "User Management",
@@ -485,6 +512,8 @@ export default function App() {
 
   const getRoleName = () => {
     switch (userRole) {
+      case "super_user":
+        return "Super Admin";
       case "admin":
         return "Admin";
       case "sales":

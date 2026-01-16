@@ -5,7 +5,7 @@ import { ProjectSelector } from "./ProjectSelector";
 import { FinancialSummaryCards } from "./FinancialSummaryCards";
 import { TransactionLedger } from "./TransactionLedger";
 import { Project, SOAData, Transaction, Customer } from "../../types/statementOfAccount";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 // Mock customers
 const mockCustomers: Customer[] = [

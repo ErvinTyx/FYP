@@ -52,6 +52,7 @@ declare global {
   } & {
     [K in LayoutSlotMap[LayoutRoute]]: React.ReactNode
   }
+<<<<<<< HEAD
 }
 nction Layout(props: LayoutProps<'/dashboard'>) {
    *   return <div>{props.children}</div>
@@ -64,6 +65,8 @@ nction Layout(props: LayoutProps<'/dashboard'>) {
   } & {
     [K in LayoutSlotMap[LayoutRoute]]: React.ReactNode
   }
+=======
+>>>>>>> 33ef2fc (Login for super user)
 
   /**
    * Context for Next.js App Router route handlers

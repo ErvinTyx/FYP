@@ -3,7 +3,7 @@ import { DepositList } from "./DepositList";
 import { DepositDetails } from "./DepositDetails";
 import { DepositReceiptPrint } from "./DepositReceiptPrint";
 import { Deposit, DepositDocument, DepositReceipt, RentalItem } from "../../types/deposit";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,

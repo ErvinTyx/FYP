@@ -3,7 +3,7 @@ import { X, Printer, Download } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { OpenRepairSlip } from '../../types/inspection';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface RepairSlipPrintProps {
   repairSlip: OpenRepairSlip;

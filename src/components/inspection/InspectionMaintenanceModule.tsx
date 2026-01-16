@@ -15,7 +15,7 @@ import { DamageInvoiceList } from './DamageInvoiceList';
 import { InventoryAdjustmentLog } from './InventoryAdjustmentLog';
 import { MaintenanceDashboard } from './MaintenanceDashboard';
 import { ConditionReport, OpenRepairSlip, DamageInvoice, InventoryAdjustment } from '../../types/inspection';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 type ViewMode = 'list' | 'create-report' | 'view-repair' | 'create-repair' | 'print-repair' | 'maintenance';
 

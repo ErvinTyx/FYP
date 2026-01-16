@@ -5,7 +5,7 @@ import { CreditNotesList } from "./CreditNotesList";
 import { CreditNoteForm } from "./CreditNoteForm";
 import { CreditNoteDetails } from "./CreditNoteDetails";
 import { CreditNote } from "../../types/creditNote";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 type View = "list" | "create" | "edit" | "details";
 

@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///home/ervin/Documents/Power%20Metal%20%26%20Steel/app/page.tsx"],"sourcesContent":["\"use client\";\n\nimport App from \"../src/App\";\n\nexport default function HomePage() {\n  return <App />;\n}\n"],"names":[],"mappings":";;;;;AAEA;AAFA;;;AAIe,SAAS;IACtB,qBAAO,6LAAC,yHAAG;;;;;AACb;KAFwB"}}]
+}

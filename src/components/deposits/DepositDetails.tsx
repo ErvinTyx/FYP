@@ -8,7 +8,7 @@ import { ApprovalModal } from "./ApprovalModal";
 import { RejectionModal } from "./RejectionModal";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
 import { Deposit, DepositDocument } from "../../types/deposit";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface DepositDetailsProps {
   deposit: Deposit;

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { MonthlyRentalInvoiceList } from './MonthlyRentalInvoiceList';
 import { MonthlyRentalInvoiceDetails } from './MonthlyRentalInvoiceDetails';
 import { MonthlyRentalInvoice, RentalContract, BillingCycleLog, MonthlyRentalItem } from '../../types/monthly-rental';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 type View = 'list' | 'details';
 

@@ -1,26 +1,35 @@
+"use client";
+
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { LogIn, Eye, EyeOff, Building2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface UnifiedLoginProps {
-  onLogin: (role: string) => void;
+  onLogin?: (role: string) => void;
   onNavigateToRegister: () => void;
   onNavigateToForgotPassword?: () => void;
+  callbackUrl?: string;
 }
 
-export function UnifiedLogin({ onLogin, onNavigateToRegister, onNavigateToForgotPassword }: UnifiedLoginProps) {
+export function UnifiedLogin({ 
+  onLogin, 
+  onNavigateToRegister, 
+  onNavigateToForgotPassword,
+  callbackUrl = "/" 
+}: UnifiedLoginProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(""); // Clear any previous error
+    setErrorMessage("");
     
     if (!email || !password) {
       toast.error("Please enter both email and password");
@@ -36,43 +45,33 @@ export function UnifiedLogin({ onLogin, onNavigateToRegister, onNavigateToForgot
 
     setIsLoading(true);
 
-    // Simulate login delay
-    setTimeout(() => {
-      // Role-based redirection logic based on email
-      let role = "admin"; // Default role for any other email
-      
-      if (email === "customer@demo.com" && password === "1234") {
-        role = "customer";
-        toast.success("Welcome to Customer Portal!");
-      } else if (email === "admin@company.com" && password === "1234") {
-        role = "admin";
-        toast.success("Welcome Admin!");
-      } else if (email === "sales@company.com" && password === "1234") {
-        role = "sales";
-        toast.success("Welcome Sales Team!");
-      } else if (email === "finance@company.com" && password === "1234") {
-        role = "finance";
-        toast.success("Welcome Finance Team!");
-      } else if (email === "operations@company.com" && password === "1234") {
-        role = "operations";
-        toast.success("Welcome Operations Team!");
-      } else if (email === "production@company.com" && password === "1234") {
-        role = "production";
-        toast.success("Welcome Production Team!");
-      } else if (password === "1234") {
-        // Any other email with correct password defaults to admin
-        role = "admin";
-        toast.success("Welcome!");
-      } else {
-        // Wrong password
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+        callbackUrl,
+      });
+
+      if (result?.error) {
         setErrorMessage("Invalid email or password. Please try again.");
         setIsLoading(false);
         return;
       }
 
-      onLogin(role);
+      if (result?.ok) {
+        toast.success("Welcome!");
+        // If onLogin callback is provided, call it (for legacy compatibility)
+        if (onLogin) {
+          onLogin("authenticated");
+        }
+        // Redirect to callback URL
+        window.location.href = callbackUrl;
+      }
+    } catch {
+      setErrorMessage("An error occurred. Please try again.");
       setIsLoading(false);
-    }, 800);
+    }
   };
 
   return (
@@ -115,7 +114,7 @@ export function UnifiedLogin({ onLogin, onNavigateToRegister, onNavigateToForgot
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
-                  setErrorMessage(""); // Clear error when user types
+                  setErrorMessage("");
                 }}
                 className="h-12 border-[#D1D5DB] focus:border-[#F15929] focus:ring-[#F15929]"
                 disabled={isLoading}
@@ -133,7 +132,7 @@ export function UnifiedLogin({ onLogin, onNavigateToRegister, onNavigateToForgot
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
-                    setErrorMessage(""); // Clear error when user types
+                    setErrorMessage("");
                   }}
                   className="h-12 border-[#D1D5DB] focus:border-[#F15929] focus:ring-[#F15929] pr-12"
                   disabled={isLoading}
@@ -184,15 +183,12 @@ export function UnifiedLogin({ onLogin, onNavigateToRegister, onNavigateToForgot
             </Button>
           </form>
 
-          {/* Demo Credentials Info */}
+          {/* Super Admin Credentials Info */}
           <div className="mt-8 p-4 bg-[#F3F4F6] rounded-lg">
-            <p className="text-xs text-[#6B7280] mb-2">Demo Credentials:</p>
+            <p className="text-xs text-[#6B7280] mb-2">Super Admin Credentials:</p>
             <div className="text-xs text-[#374151] space-y-1">
-              <p>• customer@demo.com (Customer Portal)</p>
-              <p>• admin@company.com (Admin)</p>
-              <p>• sales@company.com (Sales Team)</p>
-              <p>• finance@company.com (Finance Team)</p>
-              <p className="mt-2 text-[#6B7280]">Password: 1234</p>
+              <p>• superadmin@powermetalsteel.com</p>
+              <p className="mt-2 text-[#6B7280]">Password: SuperAdmin@2024!</p>
             </div>
           </div>
 
