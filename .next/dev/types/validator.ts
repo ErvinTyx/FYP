@@ -68,6 +68,27 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+<<<<<<< HEAD
+=======
+// Validate ../../../app/api/auth/[...nextauth]/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/auth/[...nextauth]">> = Specific
+  const handler = {} as typeof import("../../../app/api/auth/[...nextauth]/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../../app/api/billing/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/billing">> = Specific
+  const handler = {} as typeof import("../../../app/api/billing/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+>>>>>>> 33ef2fc (Login for super user)
 // Validate ../../../app/api/content/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/content">> = Specific

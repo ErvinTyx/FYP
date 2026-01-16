@@ -2,7 +2,7 @@ import { useState } from "react";
 import { X, XCircle } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface RejectModalProps {
   isOpen: boolean;

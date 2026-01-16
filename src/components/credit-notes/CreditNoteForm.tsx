@@ -13,7 +13,7 @@ import {
 } from "../ui/select";
 import { ImageUpload } from "./ImageUpload";
 import { CreditNote, CreditNoteItem } from "../../types/creditNote";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface CreditNoteFormProps {
   onBack: () => void;

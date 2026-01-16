@@ -32,7 +32,7 @@ import {
 } from '../ui/dropdown-menu';
 import { DeliveryWorkflow } from './DeliveryWorkflow';
 import { DeliveryDetails } from './DeliveryDetails';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export interface DeliveryItem {
   id: string;

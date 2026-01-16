@@ -60,7 +60,7 @@ import {
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
 import { Separator } from "./ui/separator";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 type ClosureStatus = "active" | "pending" | "approved";
 

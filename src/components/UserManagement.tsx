@@ -25,7 +25,7 @@ import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
 import { Label } from "./ui/label";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,

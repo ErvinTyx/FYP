@@ -29,7 +29,7 @@ import { UploadPopModal } from "./UploadPopModal";
 import { ApproveModal } from "./ApproveModal";
 import { RejectModal } from "./RejectModal";
 import { AdditionalCharge } from "../../types/additionalCharge";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface AdditionalChargesListProps {
   onViewDetails: (charge: AdditionalCharge) => void;

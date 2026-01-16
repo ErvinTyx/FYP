@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { ReturnWorkflow, Return, ReturnItem } from "./return/ReturnWorkflow";
 import { ReturnDetails } from "./return/ReturnDetails";
