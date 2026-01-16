@@ -22,7 +22,17 @@ declare module "next-auth" {
   }
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+// Validate required environment variables before initializing NextAuth
+if (!process.env.AUTH_SECRET) {
+  console.warn(
+    "[NextAuth] WARNING: AUTH_SECRET is not set. Authentication will not work properly."
+  );
+}
+
+// Initialize NextAuth with error handling
+let nextAuthConfig;
+try {
+  nextAuthConfig = NextAuth({
   providers: [
     Credentials({
       name: "credentials",
@@ -31,37 +41,69 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+          try {
         if (!credentials?.email || !credentials?.password) {
+              console.log("[NextAuth] Missing credentials");
           return null;
         }
 
         const email = credentials.email as string;
         const password = credentials.password as string;
 
-        // Find user with roles
-        const user = await prisma.user.findUnique({
-          where: { email },
-          include: {
-            roles: {
-              include: {
-                role: true,
-              },
-            },
-          },
-        });
+            console.log(`[NextAuth] Attempting login for: ${email}`);
 
-        if (!user) {
-          return null;
-        }
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth.ts:authorize:beforeQuery',message:'Before DB query for user',data:{email},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-H3'})}).catch(()=>{});
+            // #endregion
+
+            // Find user with roles
+            let user;
+            try {
+              user = await prisma.user.findUnique({
+                where: { email },
+                include: {
+                  roles: {
+                    include: {
+                      role: true,
+                    },
+                  },
+                },
+              });
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth.ts:authorize:afterQuery',message:'DB query completed',data:{userFound:!!user,userId:user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-H3-H4'})}).catch(()=>{});
+              // #endregion
+            } catch (dbError) {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth.ts:authorize:dbError',message:'DB query failed',data:{error:dbError instanceof Error ? dbError.message : String(dbError)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-H3-H4-H5'})}).catch(()=>{});
+              // #endregion
+              console.error("[NextAuth] Database query error:", dbError);
+              throw dbError;
+            }
+
+            if (!user) {
+              console.log(`[NextAuth] User not found: ${email}`);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth.ts:authorize:userNotFound',message:'User not found in DB',data:{email},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+              // #endregion
+              return null;
+            }
+
+            console.log(`[NextAuth] User found: ${user.email}, checking password...`);
 
         // Verify password
         const isValidPassword = await bcrypt.compare(password, user.password);
+            
         if (!isValidPassword) {
+              console.log(`[NextAuth] Invalid password for user: ${email}`);
           return null;
         }
 
+            console.log(`[NextAuth] Password valid for user: ${email}`);
+
         // Extract role names
         const roles = user.roles.map((ur) => ur.role.name as Role);
+
+            console.log(`[NextAuth] Login successful for: ${email}, roles: ${roles.join(", ")}`);
 
         return {
           id: user.id,
@@ -69,6 +111,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: user.name,
           roles,
         };
+          } catch (error) {
+            console.error("[NextAuth] Authorize error:", error);
+            if (error instanceof Error) {
+              console.error("[NextAuth] Error stack:", error.stack);
+            }
+            return null;
+          }
       },
     }),
   ],
@@ -97,4 +146,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     maxAge: 24 * 60 * 60, // 24 hours
   },
   secret: process.env.AUTH_SECRET,
-});
+    // NextAuth v5: trustHost allows automatic URL detection in development
+    // For production, set AUTH_URL environment variable
+    trustHost: true,
+  });
+} catch (error) {
+  console.error("[NextAuth] Failed to initialize:", error);
+  throw new Error(
+    `NextAuth initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`
+  );
+}
+
+export const { handlers, signIn, signOut, auth } = nextAuthConfig;
