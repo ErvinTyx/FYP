@@ -25,7 +25,7 @@ pids
 *.log
 *.crash
 *.core
-
+.env
 # OS files
 .DS_Store
 .DS_Store?
