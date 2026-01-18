@@ -1,4 +1,4 @@
-// File: D:\FYP_Development\FYP\app\layout.tsx
+// File: C:\Users\phang\OneDrive\Documents\GitHub\FYP\app\layout.tsx
 import * as entry from '../../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

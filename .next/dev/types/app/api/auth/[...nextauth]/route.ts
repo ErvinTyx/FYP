@@ -1,4 +1,4 @@
-// File: D:\FYP_Development\FYP\app\api\auth\[...nextauth]\route.ts
+// File: C:\Users\phang\OneDrive\Documents\GitHub\FYP\app\api\auth\[...nextauth]\route.ts
 import * as entry from '../../../../../../../app/api/auth/[...nextauth]/route.js'
 import type { NextRequest } from 'next/server.js'
 
