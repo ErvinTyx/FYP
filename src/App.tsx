@@ -236,12 +236,7 @@ export default function App() {
   };
 
   const handleLogoutConfirm = async () => {
-    await signOut({ redirect: false });
-    setUserRole("");
-    setSystemMode("ERP");
-    setCurrentPage("billing-dashboard");
-    setAuthScreen("portal-selector");
-    setShowLogoutDialog(false);
+    await signOut({ callbackUrl: "/", redirect: true });
   };
 
   // Show loading state while checking session

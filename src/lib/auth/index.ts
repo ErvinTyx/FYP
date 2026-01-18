@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { auth, signIn, signOut } from "../auth";
 import type { Role } from "../roles";
 
 export type Session = {
@@ -45,4 +45,4 @@ export async function requireRole(requiredRoles: Role[]): Promise<Session> {
 }
 
 // Re-export auth functions for convenience
-export { auth, signIn, signOut } from "@/lib/auth";
+export { auth, signIn, signOut };

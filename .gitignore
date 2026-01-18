@@ -26,6 +26,19 @@ pids
 *.log
 *.crash
 *.core
+
+.next/*
+.next/dev/*
+.next/static/*
+.next/static/chunks/*
+.next/static/chunks/app/*
+.next/static/chunks/app/layout.js
+.next/static/chunks/app/layout.js.map
+.next/static/chunks/app/layout.js.map.br
+.next/static/chunks/app/layout.js.map.gz
+.next/static/chunks/app/layout.js.map.br.gz
+.next/static/chunks/app/layout.js.map.br.gz.br
+.next/static/chunks/app/layout.js.map.br.gz.br.gz
 .env
 # OS files
 .DS_Store
