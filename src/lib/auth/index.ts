@@ -4,7 +4,8 @@ import type { Role } from "../roles";
 export type Session = {
   userId: string;
   email: string;
-  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   roles: Role[];
 };
 
@@ -18,7 +19,8 @@ export async function getSession(): Promise<Session | null> {
   return {
     userId: session.user.id,
     email: session.user.email,
-    name: session.user.name,
+    firstName: session.user.firstName,
+    lastName: session.user.lastName,
     roles: session.user.roles,
   };
 }

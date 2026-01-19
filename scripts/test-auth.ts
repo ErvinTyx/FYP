@@ -46,7 +46,7 @@ async function testAuth() {
     console.log("   ✅ User found:");
     console.log(`      - ID: ${user.id}`);
     console.log(`      - Email: ${user.email}`);
-    console.log(`      - Name: ${user.name}`);
+    console.log(`      - Name: ${user.firstName} ${user.lastName}`);
     console.log(`      - Password hash: ${user.password.substring(0, 20)}...`);
     console.log(`      - Roles: ${user.roles.map((ur) => ur.role.name).join(", ") || "None"}\n`);
 
@@ -69,7 +69,8 @@ async function testAuth() {
       select: {
         id: true,
         email: true,
-        name: true,
+        firstName: true,
+        lastName: true,
         roles: {
           include: {
             role: true,
@@ -85,7 +86,8 @@ async function testAuth() {
       console.log(`   Found ${allUsers.length} user(s):`);
       allUsers.forEach((u) => {
         const roles = u.roles.map((ur) => ur.role.name).join(", ") || "No roles";
-        console.log(`      - ${u.email} (${u.name || "No name"}) [${roles}]`);
+        const fullName = [u.firstName, u.lastName].filter(Boolean).join(" ") || "No name";
+        console.log(`      - ${u.email} (${fullName}) [${roles}]`);
       });
       console.log();
     }
