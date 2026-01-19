@@ -46,6 +46,22 @@ export function UnifiedLogin({
     setIsLoading(true);
 
     try {
+      // First, check credentials and get specific error message
+      const checkResponse = await fetch('/api/auth/check-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const checkResult = await checkResponse.json();
+
+      if (!checkResult.success) {
+        setErrorMessage(checkResult.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // Credentials are valid, proceed with NextAuth signIn
       const result = await signIn("credentials", {
         email,
         password,
@@ -57,7 +73,8 @@ export function UnifiedLogin({
 
       if (result?.error) {
         console.error("[Login] SignIn error:", result.error);
-        setErrorMessage(`Login failed: ${result.error}. Please check your credentials and try again.`);
+        // This shouldn't happen if check-credentials passed, but handle it just in case
+        setErrorMessage("An error occurred during sign in. Please try again.");
         setIsLoading(false);
         return;
       }
@@ -78,7 +95,7 @@ export function UnifiedLogin({
       }
     } catch (error) {
       console.error("[Login] Exception during signIn:", error);
-      setErrorMessage(`An error occurred: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`);
+      setErrorMessage("An error occurred. Please try again later.");
       setIsLoading(false);
     }
   };
