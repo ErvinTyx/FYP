@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession, signOut } from "next-auth/react";
 import {
   Users,
@@ -69,6 +69,7 @@ import { ForgotPasswordEmailEntry } from "./components/auth/ForgotPasswordEmailE
 import { ForgotPasswordCodeEntry } from "./components/auth/ForgotPasswordCodeEntry";
 import { ForgotPasswordNewPassword } from "./components/auth/ForgotPasswordNewPassword";
 import { ForgotPasswordSuccess } from "./components/auth/ForgotPasswordSuccess";
+import { SessionExpiredPage } from "./components/auth/SessionExpiredPage";
 
 // Page Components
 import { UserManagement } from "./components/UserManagement";
@@ -151,10 +152,39 @@ export default function App() {
   const [systemMode, setSystemMode] = useState<SystemMode>("ERP");
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [sessionExpired, setSessionExpired] = useState(false);
+  
+  // Track previous auth status to detect session expiry
+  const prevStatusRef = useRef<string | null>(null);
+  const wasAuthenticatedRef = useRef(false);
+
+  // Detect session expiry (transition from authenticated to unauthenticated)
+  useEffect(() => {
+    // If currently authenticated, remember this
+    if (status === "authenticated") {
+      wasAuthenticatedRef.current = true;
+    }
+    
+    // Detect session expiry: was authenticated before, now unauthenticated
+    if (
+      status === "unauthenticated" && 
+      wasAuthenticatedRef.current && 
+      prevStatusRef.current === "authenticated"
+    ) {
+      setSessionExpired(true);
+      wasAuthenticatedRef.current = false;
+    }
+    
+    // Update previous status
+    prevStatusRef.current = status;
+  }, [status]);
 
   // Sync session with local state
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
+      // Reset session expired flag on successful login
+      setSessionExpired(false);
+      
       const roles = session.user.roles || [];
       // Get primary role (first role or default)
       const primaryRole = roles[0] || "admin";
@@ -239,6 +269,11 @@ export default function App() {
     await signOut({ callbackUrl: "/", redirect: true });
   };
 
+  const handleSessionExpiredReturn = () => {
+    setSessionExpired(false);
+    setAuthScreen("portal-selector");
+  };
+
   // Show loading state while checking session
   if (status === "loading") {
     return (
@@ -249,6 +284,11 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  // Show session expired page if session has expired
+  if (sessionExpired && status === "unauthenticated") {
+    return <SessionExpiredPage onReturnToLogin={handleSessionExpiredReturn} />;
   }
 
   // Show authentication screens if not authenticated

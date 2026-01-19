@@ -143,7 +143,7 @@ try {
   },
   session: {
     strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 24 hours
+    maxAge: 15 * 60, // 15 minutes
   },
   secret: process.env.AUTH_SECRET,
     // NextAuth v5: trustHost allows automatic URL detection in development
