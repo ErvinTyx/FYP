@@ -7,7 +7,7 @@
 /coverage
 # production artifacts
 /build
-
+.next/*
 # misc
 .env
 .DS_Store
