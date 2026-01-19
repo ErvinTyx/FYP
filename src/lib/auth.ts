@@ -90,7 +90,23 @@ try {
               return null;
             }
 
-            console.log(`[NextAuth] User found: ${user.email}, checking password...`);
+            // Check if user account is active
+            if (user.status === 'pending') {
+              console.log(`[NextAuth] User account pending - needs to set password: ${email}`);
+              return null;
+            }
+
+            if (user.status === 'inactive') {
+              console.log(`[NextAuth] User account is inactive: ${email}`);
+              return null;
+            }
+
+            if (user.status === 'rejected') {
+              console.log(`[NextAuth] User account was rejected: ${email}`);
+              return null;
+            }
+
+            console.log(`[NextAuth] User found: ${user.email}, status: ${user.status}, checking password...`);
 
         // Verify password
         const isValidPassword = await bcrypt.compare(password, user.password);

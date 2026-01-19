@@ -301,6 +301,7 @@ export default function App() {
       <LoginPage
         onLogin={handleStaffLogin}
         onNavigateToRegister={() => setAuthScreen("register-select")}
+        onNavigateToForgotPassword={() => setAuthScreen("forgot-password-email")}
         onBack={() => setAuthScreen("portal-selector")}
       />
     );
