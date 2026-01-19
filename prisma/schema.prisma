@@ -7,16 +7,17 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  phone     String?    @unique
-  firstName String?
-  lastName  String?
-  password  String
-  status    String     @default("pending") // pending, active, rejected
-  roles     UserRole[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  phone               String?              @unique
+  firstName           String?
+  lastName            String?
+  password            String
+  status              String               @default("pending") // pending, active, inactive, rejected
+  roles               UserRole[]
+  passwordSetupTokens PasswordSetupToken[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 model VerificationCode {
@@ -26,6 +27,16 @@ model VerificationCode {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+model PasswordSetupToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Role {

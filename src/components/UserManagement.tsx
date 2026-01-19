@@ -64,8 +64,9 @@ import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
 
 type UserType = 'Internal Staff' | 'Individual Customer' | 'Business Customer';
-type UserStatus = 'Active' | 'Inactive' | 'Pending Approval';
+type UserStatus = 'Active' | 'Inactive' | 'Pending Approval' | 'Pending Verification';
 type StaffRole = 'Admin' | 'Sales' | 'Finance' | 'Support' | 'Operations' | 'Production';
+type DbStatus = 'pending' | 'active' | 'inactive';
 
 interface User {
   id: string;
@@ -202,8 +203,9 @@ export function UserManagement() {
     email: "",
     phone: "",
     role: "",
-    status: "Active" as UserStatus
+    status: "pending" as DbStatus
   });
+  const [isAddingUser, setIsAddingUser] = useState(false);
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -303,12 +305,12 @@ export function UserManagement() {
       email: "",
       phone: "",
       role: "",
-      status: "Active"
+      status: "pending"
     });
     setIsAddDialogOpen(true);
   };
 
-  const handleAddNewUser = () => {
+  const handleAddNewUser = async () => {
     if (!addForm.firstName.trim() || !addForm.lastName.trim() || !addForm.email.trim() || !addForm.role) {
       toast.error("Please fill in all required fields");
       return;
@@ -320,28 +322,65 @@ export function UserManagement() {
       return;
     }
 
-    if (users.some(user => user.email.toLowerCase() === addForm.email.toLowerCase())) {
-      toast.error("A user with this email already exists");
-      return;
-    }
-
-    const newId = (Math.max(...users.map(u => parseInt(u.id))) + 1).toString();
+    setIsAddingUser(true);
     
-    const newUser: User = {
-      id: newId,
-      firstName: addForm.firstName,
-      lastName: addForm.lastName,
-      email: addForm.email,
-      phone: addForm.phone,
-      userType: 'Internal Staff',
-      role: addForm.role as StaffRole,
-      status: addForm.status,
-      lastLogin: new Date().toISOString().split('T')[0]
-    };
+    try {
+      const response = await fetch('/api/user-management', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: addForm.firstName,
+          lastName: addForm.lastName,
+          email: addForm.email,
+          phone: addForm.phone || undefined,
+          role: addForm.role.toLowerCase(),
+          status: addForm.status,
+        }),
+      });
 
-    setUsers([...users, newUser]);
-    toast.success("User added successfully");
-    setIsAddDialogOpen(false);
+      const data = await response.json();
+
+      if (!data.success) {
+        toast.error(data.message || "Failed to create user");
+        return;
+      }
+
+      // Map API status to UI status
+      const statusMap: Record<string, UserStatus> = {
+        'pending': 'Pending Verification',
+        'active': 'Active',
+        'inactive': 'Inactive',
+      };
+
+      // Add the new user to local state
+      const newUser: User = {
+        id: data.user.id,
+        firstName: data.user.firstName,
+        lastName: data.user.lastName,
+        email: data.user.email,
+        phone: data.user.phone || '',
+        userType: 'Internal Staff',
+        role: addForm.role as StaffRole,
+        status: statusMap[data.user.status] || 'Pending Verification',
+        lastLogin: 'Never'
+      };
+
+      setUsers([newUser, ...users]);
+      
+      // Show success message based on email status
+      if (data.emailSent) {
+        toast.success("User created! Password setup email has been sent.");
+      } else {
+        toast.warning("User created but email failed to send. Please contact support.");
+      }
+      
+      setIsAddDialogOpen(false);
+    } catch (error) {
+      console.error('Add user error:', error);
+      toast.error("An error occurred while creating the user");
+    } finally {
+      setIsAddingUser(false);
+    }
   };
 
   const handleApproveUser = () => {
@@ -944,16 +983,19 @@ export function UserManagement() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="add-status">Status *</Label>
-              <Select value={addForm.status} onValueChange={(value: UserStatus) => setAddForm({ ...addForm, status: value })}>
+              <Label htmlFor="add-status">Account Status *</Label>
+              <Select value={addForm.status} onValueChange={(value: DbStatus) => setAddForm({ ...addForm, status: value })}>
                 <SelectTrigger id="add-status" className="h-10">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
+                  <SelectItem value="pending">Pending Verification (default)</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-[12px] text-[#6B7280]">
+                New users will receive email to setup their password.
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -961,14 +1003,16 @@ export function UserManagement() {
               variant="outline" 
               onClick={() => setIsAddDialogOpen(false)}
               className="h-10 px-6"
+              disabled={isAddingUser}
             >
               Cancel
             </Button>
             <Button 
               onClick={handleAddNewUser}
-              className="bg-[#F15929] hover:bg-[#D14820] h-10 px-6"
+              className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
+              disabled={isAddingUser}
             >
-              Add User
+              {isAddingUser ? "Creating..." : "Add User"}
             </Button>
           </DialogFooter>
         </DialogContent>
