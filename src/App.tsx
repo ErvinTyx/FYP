@@ -179,6 +179,65 @@ export default function App() {
     prevStatusRef.current = status;
   }, [status]);
 
+  // Check session expiration based on expiresAt timestamp from server
+  useEffect(() => {
+    // Debug: log session data
+    console.log("[Session Debug] status:", status);
+    console.log("[Session Debug] session:", session);
+    console.log("[Session Debug] expiresAt:", (session as any)?.expiresAt);
+    
+    if (status !== "authenticated") {
+      return;
+    }
+
+    // Get expiresAt from session (cast to any since TypeScript might not recognize it)
+    const expiresAt = (session as any)?.expiresAt as number | undefined;
+    
+    if (!expiresAt) {
+      console.log("[Session Debug] No expiresAt found in session, skipping expiration check");
+      return;
+    }
+
+    console.log("[Session Debug] Session will expire at:", new Date(expiresAt).toISOString());
+    console.log("[Session Debug] Time until expiry:", Math.round((expiresAt - Date.now()) / 1000), "seconds");
+
+    const checkExpiration = () => {
+      const now = Date.now();
+      const timeLeft = expiresAt - now;
+      
+      console.log("[Session Check] Time left:", Math.round(timeLeft / 1000), "seconds");
+      
+      if (now >= expiresAt) {
+        console.log("[Session] Session expired at", new Date(expiresAt).toISOString());
+        // Session has expired - sign out and show expired page
+        wasAuthenticatedRef.current = true;
+        signOut({ redirect: false }).then(() => {
+          setSessionExpired(true);
+        });
+      }
+    };
+
+    // Check immediately
+    checkExpiration();
+
+    // Then check every 5 seconds for faster detection
+    const interval = setInterval(checkExpiration, 5 * 1000);
+
+    // Also set a timeout for exact expiration time
+    const timeUntilExpiry = expiresAt - Date.now();
+    let timeout: NodeJS.Timeout | null = null;
+    
+    if (timeUntilExpiry > 0) {
+      console.log("[Session Debug] Setting timeout for", timeUntilExpiry, "ms");
+      timeout = setTimeout(checkExpiration, timeUntilExpiry + 100); // +100ms buffer
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [status, session]);
+
   // Sync session with local state
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
@@ -289,6 +348,19 @@ export default function App() {
   // Show session expired page if session has expired
   if (sessionExpired && status === "unauthenticated") {
     return <SessionExpiredPage onReturnToLogin={handleSessionExpiredReturn} />;
+  }
+
+  // Show loading while transitioning from login to dashboard
+  // This prevents the glitch where dashboard shows briefly before state is fully updated
+  if (status === "authenticated" && authScreen !== "dashboard") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F15929] via-[#F15929] to-[#D14820]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
+          <p className="text-white text-lg">Preparing dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   // Show authentication screens if not authenticated

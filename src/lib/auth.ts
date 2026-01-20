@@ -21,6 +21,8 @@ declare module "next-auth" {
       lastName?: string | null;
       roles: Role[];
     } & DefaultSession["user"];
+    loginAt: number; // Timestamp when user logged in
+    expiresAt: number; // Timestamp when session expires
   }
 }
 
@@ -142,12 +144,19 @@ try {
   ],
   callbacks: {
     async jwt({ token, user }) {
+      // Session timeout: 15 minutes in milliseconds
+      const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
+      
       if (user) {
         token.id = user.id;
         token.firstName = user.firstName;
         token.lastName = user.lastName;
         token.roles = user.roles;
+        // Store the login timestamp - only set on initial login
+        token.loginAt = Date.now();
+        token.expiresAt = Date.now() + SESSION_MAX_AGE_MS;
       }
+      
       return token;
     },
     async session({ session, token }) {
@@ -156,6 +165,9 @@ try {
         session.user.firstName = token.firstName as string | null;
         session.user.lastName = token.lastName as string | null;
         session.user.roles = token.roles as Role[];
+        // Pass timestamps to session so client can check expiration
+        session.loginAt = token.loginAt as number;
+        session.expiresAt = token.expiresAt as number;
       }
       return session;
     },
