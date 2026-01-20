@@ -8,7 +8,8 @@ declare module "next-auth" {
   interface User {
     id: string;
     email: string;
-    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
     roles: Role[];
   }
 
@@ -16,7 +17,8 @@ declare module "next-auth" {
     user: {
       id: string;
       email: string;
-      name?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
       roles: Role[];
     } & DefaultSession["user"];
   }
@@ -88,7 +90,23 @@ try {
               return null;
             }
 
-            console.log(`[NextAuth] User found: ${user.email}, checking password...`);
+            // Check if user account is active
+            if (user.status === 'pending') {
+              console.log(`[NextAuth] User account pending - needs to set password: ${email}`);
+              return null;
+            }
+
+            if (user.status === 'inactive') {
+              console.log(`[NextAuth] User account is inactive: ${email}`);
+              return null;
+            }
+
+            if (user.status === 'rejected') {
+              console.log(`[NextAuth] User account was rejected: ${email}`);
+              return null;
+            }
+
+            console.log(`[NextAuth] User found: ${user.email}, status: ${user.status}, checking password...`);
 
         // Verify password
         const isValidPassword = await bcrypt.compare(password, user.password);
@@ -101,14 +119,15 @@ try {
             console.log(`[NextAuth] Password valid for user: ${email}`);
 
         // Extract role names
-        const roles = user.roles.map((ur) => ur.role.name as Role);
+        const roles = user.roles.map((ur: { role: { name: string } }) => ur.role.name as Role);
 
             console.log(`[NextAuth] Login successful for: ${email}, roles: ${roles.join(", ")}`);
 
         return {
           id: user.id,
           email: user.email,
-          name: user.name,
+          firstName: user.firstName,
+          lastName: user.lastName,
           roles,
         };
           } catch (error) {
@@ -125,6 +144,8 @@ try {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.firstName = user.firstName;
+        token.lastName = user.lastName;
         token.roles = user.roles;
       }
       return token;
@@ -132,6 +153,8 @@ try {
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
+        session.user.firstName = token.firstName as string | null;
+        session.user.lastName = token.lastName as string | null;
         session.user.roles = token.roles as Role[];
       }
       return session;
@@ -143,7 +166,7 @@ try {
   },
   session: {
     strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 24 hours
+    maxAge: 15 * 60, // 15 minutes
   },
   secret: process.env.AUTH_SECRET,
     // NextAuth v5: trustHost allows automatic URL detection in development

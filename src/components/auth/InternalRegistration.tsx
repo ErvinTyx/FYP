@@ -1,19 +1,26 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Eye, EyeOff, Shield, CheckCircle2, Mail } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Shield, CheckCircle2, Mail, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Progress } from "../ui/progress";
 import { Checkbox } from "../ui/checkbox";
 import { Card, CardContent } from "../ui/card";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 
 interface InternalRegistrationProps {
   onBack: () => void;
   onComplete: () => void;
 }
 
-const VALID_VERIFICATION_CODE = "123456";
+interface FormErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  password?: string;
+  confirmPassword?: string;
+  general?: string;
+}
 
 export function InternalRegistration({ onBack, onComplete }: InternalRegistrationProps) {
   const [step, setStep] = useState(1);
@@ -22,8 +29,12 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationError, setVerificationError] = useState("");
   const [isLoadingSendCode, setIsLoadingSendCode] = useState(false);
+  const [isLoadingVerify, setIsLoadingVerify] = useState(false);
+  const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
+  const [isCheckingUnique, setIsCheckingUnique] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [canResend, setCanResend] = useState(true);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
   
   // Form state
   const [formData, setFormData] = useState({
@@ -52,11 +63,15 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
     }
   }, [countdown, canResend]);
 
-  const updateFormData = (field: string, value: any) => {
+  const updateFormData = (field: string, value: unknown) => {
     setFormData({ ...formData, [field]: value });
+    // Clear field-specific error when user types
+    if (formErrors[field as keyof FormErrors]) {
+      setFormErrors({ ...formErrors, [field]: undefined });
+    }
     
     // Calculate password strength
-    if (field === "password") {
+    if (field === "password" && typeof value === "string") {
       let strength = 0;
       if (value.length >= 12) strength += 25;
       if (/[a-z]/.test(value) && /[A-Z]/.test(value)) strength += 25;
@@ -66,29 +81,181 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
     }
   };
 
-  const handleSendVerificationCode = () => {
-    setIsLoadingSendCode(true);
-    // Simulate API call to send verification code
-    setTimeout(() => {
-      setIsLoadingSendCode(false);
-      setCountdown(60);
-      setCanResend(false);
-      setVerificationError("");
-    }, 1000);
+  const validateStep1 = (): boolean => {
+    const errors: FormErrors = {};
+    
+    if (!formData.firstName.trim()) {
+      errors.firstName = "First name is required";
+    }
+    if (!formData.lastName.trim()) {
+      errors.lastName = "Last name is required";
+    }
+    if (!formData.email.trim()) {
+      errors.email = "Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = "Please enter a valid email address";
+    }
+    if (!formData.phone.trim()) {
+      errors.phone = "Phone number is required";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
-  const handleVerifyCode = () => {
-    if (verificationCode === VALID_VERIFICATION_CODE) {
-      setVerificationError("");
+  const checkUniqueAndProceed = async () => {
+    if (!validateStep1()) return;
+
+    setIsCheckingUnique(true);
+    setFormErrors({});
+
+    try {
+      const response = await fetch("/api/register/check-unique", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email,
+          phone: formData.phone,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success && data.errors) {
+        setFormErrors(data.errors);
+        setIsCheckingUnique(false);
+        return;
+      }
+
+      // If validation passed, send verification code
+      await handleSendVerificationCode();
+      setStep(2);
+    } catch {
+      setFormErrors({ general: "An error occurred. Please try again." });
+    } finally {
+      setIsCheckingUnique(false);
+    }
+  };
+
+  const handleSendVerificationCode = async () => {
+    setIsLoadingSendCode(true);
+    setVerificationError("");
+
+    try {
+      const response = await fetch("/api/register/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email,
+          firstName: formData.firstName,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setVerificationError(data.message || "Failed to send verification code");
+        return;
+      }
+
+      setCountdown(60);
+      setCanResend(false);
+    } catch {
+      setVerificationError("Failed to send verification code. Please try again.");
+    } finally {
+      setIsLoadingSendCode(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    setIsLoadingVerify(true);
+    setVerificationError("");
+
+    try {
+      const response = await fetch("/api/register/verify-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email,
+          code: verificationCode,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setVerificationError(data.message || "Invalid verification code");
+        return;
+      }
+
       setStep(3);
-    } else {
-      setVerificationError("Invalid verification code. Please try again.");
+    } catch {
+      setVerificationError("Failed to verify code. Please try again.");
+    } finally {
+      setIsLoadingVerify(false);
     }
   };
 
   const handleResendCode = () => {
-    if (canResend) {
+    if (canResend && !isLoadingSendCode) {
       handleSendVerificationCode();
+    }
+  };
+
+  const validatePassword = (): boolean => {
+    const errors: FormErrors = {};
+
+    if (formData.password.length < 12) {
+      errors.password = "Password must be at least 12 characters";
+    } else if (!/[a-z]/.test(formData.password)) {
+      errors.password = "Password must contain lowercase letters";
+    } else if (!/[A-Z]/.test(formData.password)) {
+      errors.password = "Password must contain uppercase letters";
+    } else if (!/[0-9]/.test(formData.password)) {
+      errors.password = "Password must contain numbers";
+    } else if (!/[^a-zA-Z0-9]/.test(formData.password)) {
+      errors.password = "Password must contain special characters";
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = "Passwords do not match";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleCompleteRegistration = async () => {
+    if (!validatePassword()) return;
+
+    setIsLoadingSubmit(true);
+    setFormErrors({});
+
+    try {
+      const response = await fetch("/api/register/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setFormErrors({ general: data.message || "Registration failed" });
+        return;
+      }
+
+      onComplete();
+    } catch {
+      setFormErrors({ general: "An error occurred. Please try again." });
+    } finally {
+      setIsLoadingSubmit(false);
     }
   };
 
@@ -125,6 +292,14 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
           <p className="text-[12px] text-[#6B7280] mt-2">Step {step} of 3</p>
         </div>
 
+        {/* General Error */}
+        {formErrors.general && (
+          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-start gap-2 mb-6">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span className="text-sm">{formErrors.general}</span>
+          </div>
+        )}
+
         {/* Step 1: Personal Information */}
         {step === 1 && (
           <div className="space-y-6">
@@ -142,8 +317,11 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                   id="firstName"
                   value={formData.firstName}
                   onChange={(e) => updateFormData("firstName", e.target.value)}
-                  className="h-10 border-[#D1D5DB]"
+                  className={`h-10 border-[#D1D5DB] ${formErrors.firstName ? 'border-red-500' : ''}`}
                 />
+                {formErrors.firstName && (
+                  <p className="text-xs text-red-500">{formErrors.firstName}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="lastName">
@@ -153,8 +331,11 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                   id="lastName"
                   value={formData.lastName}
                   onChange={(e) => updateFormData("lastName", e.target.value)}
-                  className="h-10 border-[#D1D5DB]"
+                  className={`h-10 border-[#D1D5DB] ${formErrors.lastName ? 'border-red-500' : ''}`}
                 />
+                {formErrors.lastName && (
+                  <p className="text-xs text-red-500">{formErrors.lastName}</p>
+                )}
               </div>
             </div>
 
@@ -167,8 +348,11 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                 type="email"
                 value={formData.email}
                 onChange={(e) => updateFormData("email", e.target.value)}
-                className="h-10 border-[#D1D5DB]"
+                className={`h-10 border-[#D1D5DB] ${formErrors.email ? 'border-red-500' : ''}`}
               />
+              {formErrors.email && (
+                <p className="text-xs text-red-500">{formErrors.email}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -181,20 +365,27 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                 placeholder="+60 12-345-6789"
                 value={formData.phone}
                 onChange={(e) => updateFormData("phone", e.target.value)}
-                className="h-10 border-[#D1D5DB]"
+                className={`h-10 border-[#D1D5DB] ${formErrors.phone ? 'border-red-500' : ''}`}
               />
+              {formErrors.phone && (
+                <p className="text-xs text-red-500">{formErrors.phone}</p>
+              )}
             </div>
 
             <div className="flex justify-end">
               <Button
-                onClick={() => {
-                  handleSendVerificationCode();
-                  setStep(2);
-                }}
+                onClick={checkUniqueAndProceed}
                 className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
-                disabled={!formData.email}
+                disabled={isCheckingUnique || isLoadingSendCode}
               >
-                Next
+                {isCheckingUnique || isLoadingSendCode ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isCheckingUnique ? "Validating..." : "Sending Code..."}
+                  </>
+                ) : (
+                  "Next"
+                )}
               </Button>
             </div>
           </div>
@@ -208,14 +399,6 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
               <div className="border-b border-[#E5E7EB] mb-4"></div>
             </div>
 
-            {/* Demo Code Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800 mb-2">
-                <strong>Demo Verification Code:</strong>
-              </p>
-              <p className="text-2xl text-blue-900 tracking-wider">123456</p>
-            </div>
-
             <div className="space-y-2">
               <p className="text-sm text-[#6B7280]">
                 We've sent a verification code to <strong>{formData.email}</strong>
@@ -225,17 +408,7 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
             {/* Error Message */}
             {verificationError && (
               <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-start gap-2">
-                <svg
-                  className="w-5 h-5 flex-shrink-0 mt-0.5"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                    clipRule="evenodd"
-                  />
-                </svg>
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <span className="text-sm">{verificationError}</span>
               </div>
             )}
@@ -273,7 +446,10 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                 className="text-[#1E40AF] hover:text-[#1E3A8A] h-auto p-0"
               >
                 {isLoadingSendCode ? (
-                  "Sending..."
+                  <>
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    Sending...
+                  </>
                 ) : canResend ? (
                   "Resend Code"
                 ) : (
@@ -293,9 +469,16 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
               <Button
                 onClick={handleVerifyCode}
                 className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
-                disabled={verificationCode.length !== 6}
+                disabled={verificationCode.length !== 6 || isLoadingVerify}
               >
-                Verify & Continue
+                {isLoadingVerify ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  "Verify & Continue"
+                )}
               </Button>
             </div>
           </div>
@@ -329,7 +512,7 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={(e) => updateFormData("password", e.target.value)}
-                  className="h-10 pr-10 border-[#D1D5DB]"
+                  className={`h-10 pr-10 border-[#D1D5DB] ${formErrors.password ? 'border-red-500' : ''}`}
                 />
                 <button
                   type="button"
@@ -339,7 +522,10 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {formData.password && (
+              {formErrors.password && (
+                <p className="text-xs text-red-500">{formErrors.password}</p>
+              )}
+              {formData.password && !formErrors.password && (
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-2 bg-[#E5E7EB] rounded-full overflow-hidden">
@@ -364,7 +550,7 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                   type={showConfirmPassword ? "text" : "password"}
                   value={formData.confirmPassword}
                   onChange={(e) => updateFormData("confirmPassword", e.target.value)}
-                  className="h-10 pr-10 border-[#D1D5DB]"
+                  className={`h-10 pr-10 border-[#D1D5DB] ${formErrors.confirmPassword ? 'border-red-500' : ''}`}
                 />
                 <button
                   type="button"
@@ -374,7 +560,10 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                   {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {formData.confirmPassword && formData.password === formData.confirmPassword && (
+              {formErrors.confirmPassword && (
+                <p className="text-xs text-red-500">{formErrors.confirmPassword}</p>
+              )}
+              {formData.confirmPassword && formData.password === formData.confirmPassword && !formErrors.confirmPassword && (
                 <p className="text-[12px] text-[#059669] flex items-center gap-1">
                   <CheckCircle2 className="h-3 w-3" />
                   Passwords match
@@ -434,15 +623,30 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                 variant="outline"
                 onClick={() => setStep(2)}
                 className="h-10 px-6"
+                disabled={isLoadingSubmit}
               >
                 Back
               </Button>
               <Button
-                onClick={onComplete}
+                onClick={handleCompleteRegistration}
                 className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
-                disabled={!formData.agreeTerms || !formData.agreePolicy || !formData.agreeAccess}
+                disabled={
+                  !formData.agreeTerms || 
+                  !formData.agreePolicy || 
+                  !formData.agreeAccess ||
+                  !formData.password ||
+                  !formData.confirmPassword ||
+                  isLoadingSubmit
+                }
               >
-                Submit for Approval
+                {isLoadingSubmit ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit for Approval"
+                )}
               </Button>
             </div>
           </div>

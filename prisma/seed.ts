@@ -54,11 +54,15 @@ async function main() {
     where: { email: "superadmin@powermetalsteel.com" },
     update: {
       password: hashedPassword,
+      firstName: "Super",
+      lastName: "Admin",
     },
     create: {
       email: "superadmin@powermetalsteel.com",
-      name: "Super Admin",
+      firstName: "Super",
+      lastName: "Admin",
       password: hashedPassword,
+      status: "active",
     },
   });
 
