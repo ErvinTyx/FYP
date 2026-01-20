@@ -205,6 +205,29 @@ export default function App() {
     }
   }, [status, session]);
 
+  // Sync session with local state
+  useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      const roles = session.user.roles || [];
+      // Get primary role (first role or default)
+      const primaryRole = roles[0] || "admin";
+      setUserRole(primaryRole);
+      
+      // Customer goes to CRM portal
+      if (primaryRole === "customer") {
+        setSystemMode("CRM");
+        setCurrentPage("customer-portal");
+      } else {
+        // All other roles go to ERP portal
+        setSystemMode("ERP");
+        setCurrentPage("billing-dashboard");
+      }
+      
+      // Go directly to dashboard
+      setAuthScreen("dashboard");
+    }
+  }, [status, session]);
+
   // Unified login handler - determines portal based on role
   const handleUnifiedLogin = (role: string) => {
     setUserRole(role);
