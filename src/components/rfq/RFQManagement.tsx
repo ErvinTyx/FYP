@@ -436,10 +436,6 @@ export function RFQManagement() {
         rfq={selectedRFQ}
         onEdit={() => setViewMode('form')}
         onBack={handleCancel}
-        onStatusChange={(newStatus) => {
-          handleStatusChange(selectedRFQ.id, newStatus);
-          setSelectedRFQ({ ...selectedRFQ, status: newStatus });
-        }}
       />
     );
   }

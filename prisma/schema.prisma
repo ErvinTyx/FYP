@@ -77,3 +77,42 @@ model ReportDefinition {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model RFQ {
+  id                String     @id @default(cuid())
+  rfqNumber         String     @unique @index
+  customerName      String     @index
+  customerEmail     String     @index
+  customerPhone     String
+  projectName       String     @index
+  projectLocation   String
+  requestedDate     DateTime
+  requiredDate      DateTime
+  status            String     @default("draft") @index
+  totalAmount       Decimal    @default(0) @db.Decimal(15, 2)
+  notes             String?    @db.LongText
+  createdBy         String     @index
+  items             RFQItem[]
+  createdAt         DateTime   @default(now()) @index
+  updatedAt         DateTime   @updatedAt
+
+  @@index([rfqNumber])
+  @@index([status, createdAt])
+}
+
+model RFQItem {
+  id                    String     @id @default(cuid())
+  rfqId                 String     @index
+  rfq                   RFQ        @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  scaffoldingItemId     String
+  scaffoldingItemName   String
+  quantity              Int
+  unit                  String
+  unitPrice             Decimal    @db.Decimal(15, 2)
+  totalPrice            Decimal    @db.Decimal(15, 2)
+  notes                 String?    @db.Text
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([rfqId])
+}

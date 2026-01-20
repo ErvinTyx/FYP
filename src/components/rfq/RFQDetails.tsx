@@ -1,4 +1,4 @@
-import { ArrowLeft, Edit, FileText, User, Calendar, MapPin, Phone, Mail, Download, CheckCircle, XCircle, FileCheck } from 'lucide-react';
+import { ArrowLeft, Edit, FileText, User, Calendar, MapPin, Phone, Mail, Download } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -11,28 +11,22 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
 import { toast } from 'sonner';
 
 interface RFQDetailsProps {
   rfq: RFQ;
   onEdit: () => void;
   onBack: () => void;
-  onStatusChange?: (newStatus: RFQ['status']) => void;
 }
 
-export function RFQDetails({ rfq, onEdit, onBack, onStatusChange }: RFQDetailsProps) {
+export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
   const getStatusColor = (status: RFQ['status']) => {
     const colors = {
       draft: 'bg-gray-100 text-gray-800',
       submitted: 'bg-blue-100 text-blue-800',
       quoted: 'bg-purple-100 text-purple-800',
+      'quoted-for-item': 'bg-purple-100 text-purple-800',
+      'quoted-for-delivery': 'bg-purple-100 text-purple-800',
       approved: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800',
       expired: 'bg-orange-100 text-orange-800'
@@ -322,41 +316,6 @@ export function RFQDetails({ rfq, onEdit, onBack, onStatusChange }: RFQDetailsPr
             <Download className="size-4 mr-2" />
             Download
           </Button>
-          {onStatusChange && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  Change Status
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {rfq.status !== 'quoted' && (
-                  <DropdownMenuItem onClick={() => onStatusChange('quoted')}>
-                    <FileCheck className="size-4 mr-2 text-purple-600" />
-                    Mark as Quoted
-                  </DropdownMenuItem>
-                )}
-                {rfq.status !== 'approved' && (
-                  <DropdownMenuItem onClick={() => onStatusChange('approved')}>
-                    <CheckCircle className="size-4 mr-2 text-green-600" />
-                    Mark as Approved
-                  </DropdownMenuItem>
-                )}
-                {rfq.status !== 'rejected' && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={() => onStatusChange('rejected')}
-                      className="text-red-600 focus:text-red-600"
-                    >
-                      <XCircle className="size-4 mr-2" />
-                      Reject RFQ
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
           <Button onClick={onEdit} className="bg-[#F15929] hover:bg-[#d94d1f]">
             <Edit className="size-4 mr-2" />
             Edit RFQ
