@@ -179,36 +179,34 @@ export default function App() {
     prevStatusRef.current = status;
   }, [status]);
 
+  // Store expiresAt in a ref to avoid re-running effect on every session update
+  const sessionExpiresAtRef = useRef<number | null>(null);
+  
+  // Update the ref when session changes, but only if we get a new expiresAt
+  useEffect(() => {
+    const expiresAt = (session as any)?.expiresAt as number | undefined;
+    if (expiresAt && sessionExpiresAtRef.current !== expiresAt) {
+      sessionExpiresAtRef.current = expiresAt;
+    }
+  }, [session]);
+
   // Check session expiration based on expiresAt timestamp from server
   useEffect(() => {
-    // Debug: log session data
-    console.log("[Session Debug] status:", status);
-    console.log("[Session Debug] session:", session);
-    console.log("[Session Debug] expiresAt:", (session as any)?.expiresAt);
-    
     if (status !== "authenticated") {
       return;
     }
 
-    // Get expiresAt from session (cast to any since TypeScript might not recognize it)
-    const expiresAt = (session as any)?.expiresAt as number | undefined;
+    // Get expiresAt from ref or session
+    const expiresAt = sessionExpiresAtRef.current || (session as any)?.expiresAt as number | undefined;
     
     if (!expiresAt) {
-      console.log("[Session Debug] No expiresAt found in session, skipping expiration check");
       return;
     }
 
-    console.log("[Session Debug] Session will expire at:", new Date(expiresAt).toISOString());
-    console.log("[Session Debug] Time until expiry:", Math.round((expiresAt - Date.now()) / 1000), "seconds");
-
     const checkExpiration = () => {
       const now = Date.now();
-      const timeLeft = expiresAt - now;
-      
-      console.log("[Session Check] Time left:", Math.round(timeLeft / 1000), "seconds");
       
       if (now >= expiresAt) {
-        console.log("[Session] Session expired at", new Date(expiresAt).toISOString());
         // Session has expired - sign out and show expired page
         wasAuthenticatedRef.current = true;
         signOut({ redirect: false }).then(() => {
@@ -217,26 +215,25 @@ export default function App() {
       }
     };
 
-    // Check immediately
-    checkExpiration();
-
-    // Then check every 5 seconds for faster detection
-    const interval = setInterval(checkExpiration, 5 * 1000);
+    // Check every 10 seconds
+    const interval = setInterval(checkExpiration, 10 * 1000);
 
     // Also set a timeout for exact expiration time
     const timeUntilExpiry = expiresAt - Date.now();
     let timeout: NodeJS.Timeout | null = null;
     
     if (timeUntilExpiry > 0) {
-      console.log("[Session Debug] Setting timeout for", timeUntilExpiry, "ms");
-      timeout = setTimeout(checkExpiration, timeUntilExpiry + 100); // +100ms buffer
+      timeout = setTimeout(checkExpiration, timeUntilExpiry + 100);
+    } else {
+      // Already expired
+      checkExpiration();
     }
 
     return () => {
       clearInterval(interval);
       if (timeout) clearTimeout(timeout);
     };
-  }, [status, session]);
+  }, [status]);
 
   // Sync session with local state
   useEffect(() => {
