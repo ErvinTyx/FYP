@@ -79,15 +79,12 @@ interface User {
   role?: StaffRole;  // Only for Internal Staff
   lastLogin: string;
   
-  // Individual Customer specific fields
-  tin?: string;  // Tax Identification Number
-  idCardNumber?: string;
+  // Customer specific fields
+  tin?: string;  // Tax Identification Number (individual: IG..., business: C/CS/D/etc...)
+  idType?: string;  // 'NRIC', 'PASSPORT', 'ARMY' for individual, 'BRN' for business
+  idNumber?: string;  // ID number: NRIC/Passport/Army for individual, BRN for business
   idCardFrontImage?: string;
   idCardBackImage?: string;
-  
-  // Business Customer specific fields
-  brn?: string;  // Business Registration Number
-  companyTin?: string;
 }
 
 const mockUsers: User[] = [
@@ -122,7 +119,8 @@ const mockUsers: User[] = [
     userType: 'Individual Customer',
     status: 'Pending Approval',
     tin: 'IG123456789012',
-    idCardNumber: '920415-10-5234',
+    idType: 'NRIC',
+    idNumber: '920415-10-5234',
     idCardFrontImage: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400',
     idCardBackImage: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?w=400',
     lastLogin: 'Never' 
@@ -135,8 +133,9 @@ const mockUsers: User[] = [
     phone: '+60 19-876-5432',
     userType: 'Business Customer',
     status: 'Pending Approval',
-    brn: '202201123456',
-    companyTin: 'C987654321012',
+    idType: 'BRN',
+    idNumber: '202201123456',
+    tin: 'C987654321012',
     lastLogin: 'Never' 
   },
   { 
@@ -148,7 +147,8 @@ const mockUsers: User[] = [
     userType: 'Individual Customer',
     status: 'Active',
     tin: 'IG998877665544',
-    idCardNumber: '880320-08-1234',
+    idType: 'NRIC',
+    idNumber: '880320-08-1234',
     lastLogin: '2024-11-01' 
   },
   { 
@@ -159,8 +159,9 @@ const mockUsers: User[] = [
     phone: '+60 17-222-3333',
     userType: 'Business Customer',
     status: 'Active',
-    brn: '201905234567',
-    companyTin: 'PT123456789012',
+    idType: 'BRN',
+    idNumber: '201905234567',
+    tin: 'PT123456789012',
     lastLogin: '2024-11-02' 
   },
   { 
@@ -571,7 +572,7 @@ export function UserManagement() {
                         
                         <div>
                           <Label className="text-[#6B7280]">Identification Card Number</Label>
-                          <p className="text-[#111827] mt-1">{selectedUser.idCardNumber}</p>
+                          <p className="text-[#111827] mt-1">{selectedUser.idNumber}</p>
                         </div>
                       </CardContent>
                     </Card>
@@ -614,15 +615,15 @@ export function UserManagement() {
                       <CardContent className="pt-6 space-y-4">
                         <div>
                           <Label className="text-[#6B7280]">Business Registration Number (BRN)</Label>
-                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.brn}</p>
+                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.idNumber}</p>
                           <p className="text-[12px] text-[#6B7280] mt-1">
-                            Year: {selectedUser.brn?.substring(0, 4)} | Type: {selectedUser.brn?.substring(4, 6)} | ID: {selectedUser.brn?.substring(6)}
+                            Year: {selectedUser.idNumber?.substring(0, 4)} | Type: {selectedUser.idNumber?.substring(4, 6)} | ID: {selectedUser.idNumber?.substring(6)}
                           </p>
                         </div>
                         
                         <div>
                           <Label className="text-[#6B7280]">Company Tax Identification Number (TIN)</Label>
-                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.companyTin}</p>
+                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.tin}</p>
                         </div>
                       </CardContent>
                     </Card>

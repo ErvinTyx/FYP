@@ -278,3 +278,103 @@ If you didn't request a password reset, you can safely ignore this email.
     return false;
   }
 }
+
+/**
+ * Send a registration rejection email with reason and link to re-register
+ */
+export async function sendRegistrationRejectionEmail(
+  email: string,
+  rejectionReason: string,
+  firstName?: string,
+  lastName?: string,
+  customerType?: 'individual' | 'business'
+): Promise<boolean> {
+  const fromAddress = process.env.SMTP_FROM || 'noreply@powermetalsteel.com';
+  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  const registerUrl = `${baseUrl}`;
+  
+  const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
+  const accountType = customerType === 'business' ? 'Business' : 'Individual';
+  
+  const mailOptions = {
+    from: `"Power Metal & Steel" <${fromAddress}>`,
+    to: email,
+    subject: 'Registration Update - Power Metal & Steel',
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Registration Update</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f4f4f5;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 24px;">Power Metal & Steel</h1>
+            </div>
+            <div style="background: white; padding: 40px 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="color: #111827; margin: 0 0 20px 0; font-size: 20px;">
+                Hello, ${fullName}
+              </h2>
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 20px 0;">
+                Thank you for your interest in registering with Power Metal & Steel. Unfortunately, we were unable to approve your ${accountType} Customer registration at this time.
+              </p>
+              
+              <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 20px; margin: 0 0 25px 0;">
+                <p style="color: #991B1B; margin: 0 0 10px 0; font-weight: 600; font-size: 14px;">
+                  Reason for rejection:
+                </p>
+                <p style="color: #7F1D1D; margin: 0; font-size: 14px; line-height: 1.5;">
+                  ${rejectionReason}
+                </p>
+              </div>
+              
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 25px 0;">
+                You are welcome to register again with corrected information. Please click the button below to start a new registration.
+              </p>
+              
+              <div style="text-align: center; margin: 0 0 25px 0;">
+                <a href="${registerUrl}" style="display: inline-block; background: #1E40AF; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">
+                  Register Again
+                </a>
+              </div>
+              
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 15px 0; font-size: 14px;">
+                If you have any questions, please contact our support team.
+              </p>
+              
+              <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
+              <p style="color: #9CA3AF; font-size: 12px; margin: 0; text-align: center;">
+                This is an automated message from Power Metal & Steel. Please do not reply to this email.
+              </p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `,
+    text: `
+Power Metal & Steel - Registration Update
+
+Hello, ${fullName}
+
+Thank you for your interest in registering with Power Metal & Steel. Unfortunately, we were unable to approve your ${accountType} Customer registration at this time.
+
+Reason for rejection:
+${rejectionReason}
+
+You are welcome to register again with corrected information. Please visit:
+${registerUrl}
+
+If you have any questions, please contact our support team.
+    `.trim(),
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Failed to send registration rejection email:', error);
+    return false;
+  }
+}
