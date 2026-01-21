@@ -157,6 +157,7 @@ export default function App() {
   // Track previous auth status to detect session expiry
   const prevStatusRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(false);
+  const hasInitializedPageRef = useRef(false); // Track if we've set the initial page
 
   // Detect session expiry (transition from authenticated to unauthenticated)
   useEffect(() => {
@@ -235,7 +236,7 @@ export default function App() {
     };
   }, [status]);
 
-  // Sync session with local state
+  // Sync session with local state - only set initial page once per login
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
       // Reset session expired flag on successful login
@@ -246,18 +247,28 @@ export default function App() {
       const primaryRole = roles[0] || "admin";
       setUserRole(primaryRole);
       
-      // Customer goes to CRM portal
-      if (primaryRole === "customer") {
-        setSystemMode("CRM");
-        setCurrentPage("customer-portal");
-      } else {
-        // All other roles go to ERP portal
-        setSystemMode("ERP");
-        setCurrentPage("billing-dashboard");
+      // Only set the initial page on first authentication, not on session refresh
+      if (!hasInitializedPageRef.current) {
+        hasInitializedPageRef.current = true;
+        
+        // Customer goes to CRM portal
+        if (primaryRole === "customer") {
+          setSystemMode("CRM");
+          setCurrentPage("customer-portal");
+        } else {
+          // All other roles go to ERP portal
+          setSystemMode("ERP");
+          setCurrentPage("billing-dashboard");
+        }
+        
+        // Go directly to dashboard
+        setAuthScreen("dashboard");
       }
-      
-      // Go directly to dashboard
-      setAuthScreen("dashboard");
+    }
+    
+    // Reset the flag when user logs out
+    if (status === "unauthenticated") {
+      hasInitializedPageRef.current = false;
     }
   }, [status, session]);
 
