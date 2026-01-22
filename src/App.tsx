@@ -568,7 +568,7 @@ export default function App() {
   const renderPage = () => {
     switch (currentPage) {
       case "user-management":
-        return <UserManagement />;
+        return <UserManagement userRole={userRole} />;
       case "billing-dashboard":
         return <BillingDashboard 
           onNavigateToCreditNotes={() => setCurrentPage("credit-notes")}

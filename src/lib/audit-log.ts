@@ -142,3 +142,46 @@ export async function logUserStatusChanged(
     ipAddress,
   });
 }
+
+/**
+ * Helper to create a user approval audit log
+ */
+export async function logUserApproved(
+  performedBy: AuditLogEntry['performedBy'],
+  targetUser: { userId: string; email: string; firstName?: string; lastName?: string },
+  assignedRole?: string,
+  ipAddress?: string
+): Promise<void> {
+  await writeAuditLog({
+    action: 'USER_APPROVED',
+    performedBy,
+    targetUser,
+    details: {
+      previousStatus: 'pending',
+      newStatus: 'active',
+      assignedRole,
+    },
+    ipAddress,
+  });
+}
+
+/**
+ * Helper to create a user rejection audit log
+ */
+export async function logUserRejected(
+  performedBy: AuditLogEntry['performedBy'],
+  targetUser: { userId: string; email: string; firstName?: string; lastName?: string },
+  rejectionReason: string,
+  ipAddress?: string
+): Promise<void> {
+  await writeAuditLog({
+    action: 'USER_REJECTED',
+    performedBy,
+    targetUser,
+    details: {
+      rejectionReason,
+      userDeleted: true,
+    },
+    ipAddress,
+  });
+}

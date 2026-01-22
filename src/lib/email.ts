@@ -280,6 +280,97 @@ If you didn't request a password reset, you can safely ignore this email.
 }
 
 /**
+ * Send an approval email to notify user their account is now active
+ */
+export async function sendApprovalEmail(
+  email: string,
+  firstName?: string,
+  lastName?: string,
+  accountType?: 'staff' | 'individual' | 'business'
+): Promise<boolean> {
+  const fromAddress = process.env.SMTP_FROM || 'noreply@powermetalsteel.com';
+  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  const loginUrl = `${baseUrl}`;
+  
+  const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
+  const typeLabel = accountType === 'staff' ? 'Staff' : 
+                   accountType === 'business' ? 'Business Customer' : 'Individual Customer';
+  
+  const mailOptions = {
+    from: `"Power Metal & Steel" <${fromAddress}>`,
+    to: email,
+    subject: 'Account Approved - Power Metal & Steel',
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Account Approved</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f4f4f5;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 24px;">Power Metal & Steel</h1>
+            </div>
+            <div style="background: white; padding: 40px 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <div style="text-align: center; margin-bottom: 25px;">
+                <div style="background: #D1FAE5; width: 60px; height: 60px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;">
+                  <span style="font-size: 32px;">✓</span>
+                </div>
+              </div>
+              <h2 style="color: #111827; margin: 0 0 20px 0; font-size: 20px; text-align: center;">
+                Congratulations, ${fullName}!
+              </h2>
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 25px 0; text-align: center;">
+                Your ${typeLabel} account has been approved. You can now log in and start using our platform.
+              </p>
+              
+              <div style="text-align: center; margin: 0 0 25px 0;">
+                <a href="${loginUrl}" style="display: inline-block; background: #059669; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">
+                  Log In Now
+                </a>
+              </div>
+              
+              <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; padding: 16px; margin: 0 0 25px 0;">
+                <p style="color: #166534; margin: 0; font-size: 14px;">
+                  <strong>🎉 What's next?</strong><br>
+                  Log in with your email and password to explore our scaffolding rental services.
+                </p>
+              </div>
+              
+              <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
+              <p style="color: #9CA3AF; font-size: 12px; margin: 0; text-align: center;">
+                This is an automated message from Power Metal & Steel. Please do not reply to this email.
+              </p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `,
+    text: `
+Power Metal & Steel - Account Approved
+
+Congratulations, ${fullName}!
+
+Your ${typeLabel} account has been approved. You can now log in and start using our platform.
+
+Log in at: ${loginUrl}
+
+If you have any questions, please contact our support team.
+    `.trim(),
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Failed to send approval email:', error);
+    return false;
+  }
+}
+
+/**
  * Send a registration rejection email with reason and link to re-register
  */
 export async function sendRegistrationRejectionEmail(

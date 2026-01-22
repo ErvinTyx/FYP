@@ -1,9 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
 import { sendRegistrationRejectionEmail } from '@/lib/email';
+import { logUserRejected } from '@/lib/audit-log';
+
+// Roles allowed to reject users
+const ADMIN_ROLES = ['super_user', 'admin'];
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    // Only admin/super_user can reject users
+    const hasAdminRole = session.user.roles?.some(role => ADMIN_ROLES.includes(role));
+    if (!hasAdminRole) {
+      return NextResponse.json(
+        { success: false, message: 'Forbidden: Only admin and super_user can reject users' },
+        { status: 403 }
+      );
+    }
+
     const { userId, rejectionReason } = await request.json();
 
     // Validate required fields
@@ -45,6 +68,28 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Get client IP for audit log
+    const ipAddress = request.headers.get('x-forwarded-for') || 
+                      request.headers.get('x-real-ip') || 
+                      'unknown';
+
+    // Write audit log BEFORE deletion (while user data still exists)
+    await logUserRejected(
+      {
+        userId: session.user.id,
+        email: session.user.email,
+        roles: session.user.roles || [],
+      },
+      {
+        userId: user.id,
+        email: user.email,
+        firstName: user.firstName || undefined,
+        lastName: user.lastName || undefined,
+      },
+      rejectionReason,
+      ipAddress
+    );
 
     // Send rejection email before deleting the user
     const emailSent = await sendRegistrationRejectionEmail(
