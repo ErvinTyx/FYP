@@ -618,7 +618,15 @@ export default function App() {
       case "project-closure":
         return <ProjectClosureManagement />;
       case "profile":
-        return <ProfilePage currentUserName={getRoleName()} currentUserRole={getRoleName()} />;
+        return (
+          <ProfilePage 
+            userId={session?.user?.id}
+            currentUserName={session?.user?.name || getRoleName()}
+            currentUserRole={getRoleName()}
+            currentUserEmail={session?.user?.email || ""}
+            currentUserPhone={(session?.user as any)?.phone || ""}
+          />
+        );
       case "delivery-return-requests":
         return <DeliveryReturnManagement />;
       default:
