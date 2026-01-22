@@ -80,29 +80,26 @@ model ReportDefinition {
 
 model RFQ {
   id                String     @id @default(cuid())
-  rfqNumber         String     @unique @index
-  customerName      String     @index
-  customerEmail     String     @index
+  rfqNumber         String     @unique
+  customerName      String
+  customerEmail     String
   customerPhone     String
-  projectName       String     @index
+  projectName       String
   projectLocation   String
   requestedDate     DateTime
   requiredDate      DateTime
-  status            String     @default("draft") @index
+  status            String     @default("draft")
   totalAmount       Decimal    @default(0) @db.Decimal(15, 2)
   notes             String?    @db.LongText
-  createdBy         String     @index
+  createdBy         String
   items             RFQItem[]
-  createdAt         DateTime   @default(now()) @index
+  createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
-
-  @@index([rfqNumber])
-  @@index([status, createdAt])
 }
 
 model RFQItem {
   id                    String     @id @default(cuid())
-  rfqId                 String     @index
+  rfqId                 String
   rfq                   RFQ        @relation(fields: [rfqId], references: [id], onDelete: Cascade)
   scaffoldingItemId     String
   scaffoldingItemName   String
@@ -113,6 +110,4 @@ model RFQItem {
   notes                 String?    @db.Text
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
-
-  @@index([rfqId])
 }
