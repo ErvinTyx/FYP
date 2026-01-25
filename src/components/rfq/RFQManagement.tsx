@@ -43,12 +43,33 @@ export function RFQManagement() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rfqToReject, setRfqToReject] = useState<string | null>(null);
 
-  // Load RFQs from localStorage
+  // Load RFQs from API (and fallback to localStorage)
   useEffect(() => {
-    const savedRfqs = localStorage.getItem('rfqs');
-    if (savedRfqs) {
-      setRfqs(JSON.parse(savedRfqs));
-    }
+    const loadRFQs = async () => {
+      try {
+        const response = await fetch('/api/rfq');
+        if (response.ok) {
+          const data = await response.json();
+          setRfqs(data.data || []);
+          // Also save to localStorage as backup
+          localStorage.setItem('rfqs', JSON.stringify(data.data || []));
+        } else {
+          // Fallback to localStorage if API fails
+          const savedRfqs = localStorage.getItem('rfqs');
+          if (savedRfqs) {
+            setRfqs(JSON.parse(savedRfqs));
+          }
+        }
+      } catch (error) {
+        console.error('Error loading RFQs:', error);
+        // Fallback to localStorage if API fails
+        const savedRfqs = localStorage.getItem('rfqs');
+        if (savedRfqs) {
+          setRfqs(JSON.parse(savedRfqs));
+        }
+      }
+    };
+    loadRFQs();
   }, []);
 
   // Save RFQs to localStorage
@@ -77,24 +98,66 @@ export function RFQManagement() {
     setRejectDialogOpen(true);
   };
 
-  const confirmReject = () => {
+  const confirmReject = async () => {
     if (rfqToReject) {
-      const updatedRfqs = rfqs.map(rfq => 
-        rfq.id === rfqToReject ? { ...rfq, status: 'rejected' as const } : rfq
-      );
-      saveRfqs(updatedRfqs);
-      setRejectDialogOpen(false);
-      setRfqToReject(null);
-      toast.success('RFQ has been rejected');
+      try {
+        // Update via API
+        const response = await fetch(`/api/rfq/${rfqToReject}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'rejected',
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          toast.error(`Failed to reject RFQ: ${error.message}`);
+          return;
+        }
+
+        // Update local state
+        const updatedRfqs = rfqs.map(rfq => 
+          rfq.id === rfqToReject ? { ...rfq, status: 'rejected' as const } : rfq
+        );
+        saveRfqs(updatedRfqs);
+        setRejectDialogOpen(false);
+        setRfqToReject(null);
+        toast.success('RFQ has been rejected');
+      } catch (error) {
+        toast.error(`Error rejecting RFQ: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.error('Reject error:', error);
+      }
     }
   };
 
-  const handleStatusChange = (id: string, newStatus: RFQ['status']) => {
-    const updatedRfqs = rfqs.map(rfq => 
-      rfq.id === id ? { ...rfq, status: newStatus, updatedAt: new Date().toISOString() } : rfq
-    );
-    saveRfqs(updatedRfqs);
-    toast.success(`RFQ status updated to ${newStatus}`);
+  const handleStatusChange = async (id: string, newStatus: RFQ['status']) => {
+    try {
+      // Update via API - only send the status change
+      const response = await fetch(`/api/rfq/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        toast.error(`Failed to update status: ${error.message}`);
+        return;
+      }
+
+      // Update local state
+      const updatedRfqs = rfqs.map(rfq => 
+        rfq.id === id ? { ...rfq, status: newStatus, updatedAt: new Date().toISOString() } : rfq
+      );
+      saveRfqs(updatedRfqs);
+      toast.success(`RFQ status updated to ${newStatus}`);
+    } catch (error) {
+      toast.error(`Error updating status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Status change error:', error);
+    }
   };
 
   const handleDownloadRFQ = (rfq: RFQ) => {
@@ -304,13 +367,13 @@ export function RFQManagement() {
           <td>${item.scaffoldingItemName}${item.notes ? `<br><span style="font-size: 12px; color: #6B7280;">${item.notes}</span>` : ''}</td>
           <td class="text-right">${item.quantity}</td>
           <td class="text-right">${item.unit}</td>
-          <td class="text-right">${item.unitPrice.toFixed(2)}</td>
-          <td class="text-right">${item.totalPrice.toFixed(2)}</td>
+          <td class="text-right">${Number(item.unitPrice).toFixed(2)}</td>
+          <td class="text-right">${Number(item.totalPrice).toFixed(2)}</td>
         </tr>
         `).join('')}
         <tr class="total-row">
           <td colspan="5" class="text-right">Total Amount:</td>
-          <td class="text-right total-amount">RM ${rfq.totalAmount.toFixed(2)}</td>
+          <td class="text-right total-amount">RM ${Number(rfq.totalAmount).toFixed(2)}</td>
         </tr>
       </tbody>
     </table>
@@ -356,17 +419,49 @@ export function RFQManagement() {
     toast.success('Print dialog opened - You can save as PDF from the print dialog');
   };
 
-  const handleSave = (rfq: RFQ) => {
-    if (selectedRFQ) {
-      // Update existing
-      const updatedRfqs = rfqs.map(r => r.id === rfq.id ? rfq : r);
-      saveRfqs(updatedRfqs);
-    } else {
-      // Create new
-      saveRfqs([...rfqs, rfq]);
+  const handleSave = async (rfq: RFQ) => {
+    try {
+      if (selectedRFQ) {
+        // Update existing RFQ
+        const response = await fetch(`/api/rfq/${rfq.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rfq),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          toast.error(`Failed to update RFQ: ${error.message}`);
+          return;
+        }
+
+        const updatedRfqs = rfqs.map(r => r.id === rfq.id ? rfq : r);
+        saveRfqs(updatedRfqs);
+        toast.success('RFQ updated successfully');
+      } else {
+        // Create new RFQ
+        const response = await fetch('/api/rfq', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rfq),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          toast.error(`Failed to create RFQ: ${error.message}`);
+          return;
+        }
+
+        const createdRFQ = await response.json();
+        saveRfqs([...rfqs, createdRFQ.data || rfq]);
+        toast.success('RFQ created successfully');
+      }
+      setViewMode('list');
+      setSelectedRFQ(null);
+    } catch (error) {
+      toast.error(`Error saving RFQ: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Save error:', error);
     }
-    setViewMode('list');
-    setSelectedRFQ(null);
   };
 
   const handleCancel = () => {
@@ -599,7 +694,7 @@ export function RFQManagement() {
                   <div className="flex lg:flex-col items-center lg:items-end gap-4">
                     <div className="text-right">
                       <p className="text-sm text-gray-500">Total Amount</p>
-                      <p className="text-[#231F20]">RM {rfq.totalAmount.toFixed(2)}</p>
+                      <p className="text-[#231F20]">RM {Number(rfq.totalAmount).toFixed(2)}</p>
                     </div>
                     <div className="flex gap-2">
                       <Button

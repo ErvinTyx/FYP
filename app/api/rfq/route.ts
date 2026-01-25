@@ -7,19 +7,20 @@
  * Endpoints:
  * POST /api/rfq - Create new RFQ
  * GET /api/rfq - Get all RFQs
- * GET /api/rfq/[id] - Get specific RFQ
- * PUT /api/rfq/[id] - Update RFQ
- * DELETE /api/rfq/[id] - Delete RFQ
- * GET /api/rfq/stats - Get RFQ statistics
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  createRFQ,
-  getAllRFQs,
-  getRFQStats,
-  CreateRFQPayload,
-} from '@/services/rfq.service';
+import { prisma } from '@/lib/prisma';
+
+/**
+ * Helper function to generate unique RFQ number
+ */
+function generateRFQNumber(): string {
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+  const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
+  return `RFQ-${dateStr}-${random}`;
+}
 
 /**
  * POST /api/rfq
@@ -27,26 +28,96 @@ import {
  */
 export async function POST(request: NextRequest) {
   try {
-    const payload: CreateRFQPayload = await request.json();
+    const {
+      customerName,
+      customerEmail,
+      customerPhone,
+      projectName,
+      projectLocation,
+      requestedDate,
+      requiredDate,
+      status,
+      totalAmount,
+      notes,
+      createdBy,
+      items,
+    } = await request.json();
 
     // Validate required fields
-    if (!payload.customerName || !payload.customerEmail || !payload.projectName) {
+    if (!customerName || !customerEmail || !projectName || !createdBy) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Missing required fields: customerName, customerEmail, projectName',
+          message: 'Required fields missing: customerName, customerEmail, projectName, createdBy',
         },
         { status: 400 }
       );
     }
 
-    const rfq = await createRFQ(payload);
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customerEmail)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Invalid email format',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Create RFQ with transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const rfqNumber = generateRFQNumber();
+
+      // Create RFQ header
+      const rfq = await tx.rFQ.create({
+        data: {
+          rfqNumber,
+          customerName,
+          customerEmail,
+          customerPhone: customerPhone || '',
+          projectName,
+          projectLocation: projectLocation || '',
+          requestedDate: requestedDate ? new Date(requestedDate) : new Date(),
+          requiredDate: requiredDate ? new Date(requiredDate) : new Date(),
+          status: status || 'draft',
+          totalAmount: totalAmount || 0,
+          notes: notes || '',
+          createdBy,
+        },
+      });
+
+      // Create RFQ items if provided
+      if (items && Array.isArray(items) && items.length > 0) {
+        await tx.rFQItem.createMany({
+          data: items.map((item: any) => ({
+            rfqId: rfq.id,
+            scaffoldingItemId: item.scaffoldingItemId || '',
+            scaffoldingItemName: item.scaffoldingItemName || '',
+            quantity: item.quantity || 0,
+            unit: item.unit || '',
+            unitPrice: item.unitPrice || 0,
+            totalPrice: item.totalPrice || 0,
+            notes: item.notes || '',
+          })),
+        });
+      }
+
+      // Return complete RFQ with items
+      return tx.rFQ.findUnique({
+        where: { id: rfq.id },
+        include: {
+          items: true,
+        },
+      });
+    });
 
     return NextResponse.json(
       {
         success: true,
         message: 'RFQ created successfully',
-        data: rfq,
+        data: result,
       },
       { status: 201 }
     );
@@ -55,7 +126,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create RFQ',
+        message: 'An error occurred while creating RFQ',
       },
       { status: 500 }
     );
@@ -78,7 +149,15 @@ export async function GET(request: NextRequest) {
     if (customerEmail) filters.customerEmail = customerEmail;
     if (createdBy) filters.createdBy = createdBy;
 
-    const rfqs = await getAllRFQs(filters);
+    const rfqs = await prisma.rFQ.findMany({
+      where: filters,
+      include: {
+        items: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
 
     return NextResponse.json(
       {
@@ -93,7 +172,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve RFQs',
+        message: 'An error occurred while retrieving RFQs',
       },
       { status: 500 }
     );

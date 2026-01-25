@@ -78,7 +78,7 @@ model ReportDefinition {
   updatedAt DateTime @updatedAt
 }
 
-model RFQ {
+model rFQ {
   id                String     @id @default(cuid())
   rfqNumber         String     @unique
   customerName      String
@@ -92,15 +92,15 @@ model RFQ {
   totalAmount       Decimal    @default(0) @db.Decimal(15, 2)
   notes             String?    @db.LongText
   createdBy         String
-  items             RFQItem[]
+  items             rFQItem[]
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 }
 
-model RFQItem {
+model rFQItem {
   id                    String     @id @default(cuid())
   rfqId                 String
-  rfq                   RFQ        @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  rfq                   rFQ        @relation(fields: [rfqId], references: [id], onDelete: Cascade)
   scaffoldingItemId     String
   scaffoldingItemName   String
   quantity              Int

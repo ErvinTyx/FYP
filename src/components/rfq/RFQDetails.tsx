@@ -234,13 +234,13 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
           <td>${item.scaffoldingItemName}${item.notes ? `<br><span style="font-size: 12px; color: #6B7280;">${item.notes}</span>` : ''}</td>
           <td class="text-right">${item.quantity}</td>
           <td class="text-right">${item.unit}</td>
-          <td class="text-right">${item.unitPrice.toFixed(2)}</td>
-          <td class="text-right">${item.totalPrice.toFixed(2)}</td>
+          <td class="text-right">${Number(item.unitPrice).toFixed(2)}</td>
+          <td class="text-right">${Number(item.totalPrice).toFixed(2)}</td>
         </tr>
         `).join('')}
         <tr class="total-row">
           <td colspan="5" class="text-right">Total Amount:</td>
-          <td class="text-right total-amount">RM ${rfq.totalAmount.toFixed(2)}</td>
+          <td class="text-right total-amount">RM ${Number(rfq.totalAmount).toFixed(2)}</td>
         </tr>
       </tbody>
     </table>
@@ -441,10 +441,10 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
                     <TableCell className="text-right">{item.quantity}</TableCell>
                     <TableCell className="text-right">{item.unit}</TableCell>
                     <TableCell className="text-right">
-                      {item.unitPrice.toFixed(2)}
+                      {Number(item.unitPrice).toFixed(2)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {item.totalPrice.toFixed(2)}
+                      {Number(item.totalPrice).toFixed(2)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -454,7 +454,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
                   </TableCell>
                   <TableCell className="text-right">
                     <span className="text-[#231F20]">
-                      RM {rfq.totalAmount.toFixed(2)}
+                      RM {Number(rfq.totalAmount).toFixed(2)}
                     </span>
                   </TableCell>
                 </TableRow>

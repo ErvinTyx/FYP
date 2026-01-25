@@ -94,7 +94,7 @@ CREATE TABLE `ReportDefinition` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable for RFQ Module
-CREATE TABLE `RFQ` (
+CREATE TABLE `rFQ` (
     `id` VARCHAR(191) NOT NULL,
     `rfqNumber` VARCHAR(191) NOT NULL,
     `customerName` VARCHAR(191) NOT NULL,
@@ -111,19 +111,12 @@ CREATE TABLE `RFQ` (
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
-    UNIQUE INDEX `RFQ_rfqNumber_key`(`rfqNumber`),
-    INDEX `RFQ_customerName_idx`(`customerName`),
-    INDEX `RFQ_customerEmail_idx`(`customerEmail`),
-    INDEX `RFQ_projectName_idx`(`projectName`),
-    INDEX `RFQ_status_idx`(`status`),
-    INDEX `RFQ_createdBy_idx`(`createdBy`),
-    INDEX `RFQ_createdAt_idx`(`createdAt`),
-    INDEX `RFQ_status_createdAt_idx`(`status`, `createdAt`),
+    UNIQUE INDEX `rFQ_rfqNumber_key`(`rfqNumber`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable for RFQItem Module
-CREATE TABLE `RFQItem` (
+CREATE TABLE `rFQItem` (
     `id` VARCHAR(191) NOT NULL,
     `rfqId` VARCHAR(191) NOT NULL,
     `scaffoldingItemId` VARCHAR(191) NOT NULL,
@@ -136,7 +129,6 @@ CREATE TABLE `RFQItem` (
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
-    INDEX `RFQItem_rfqId_idx`(`rfqId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -147,4 +139,4 @@ ALTER TABLE `UserRole` ADD CONSTRAINT `UserRole_userId_fkey` FOREIGN KEY (`userI
 ALTER TABLE `UserRole` ADD CONSTRAINT `UserRole_roleId_fkey` FOREIGN KEY (`roleId`) REFERENCES `Role`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `RFQItem` ADD CONSTRAINT `RFQItem_rfqId_fkey` FOREIGN KEY (`rfqId`) REFERENCES `RFQ`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `rFQItem` ADD CONSTRAINT `rFQItem_rfqId_fkey` FOREIGN KEY (`rfqId`) REFERENCES `rFQ`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
