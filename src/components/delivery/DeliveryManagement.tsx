@@ -124,152 +124,6 @@ export interface DeliveryOrder {
   notes?: string;
 }
 
-// Mock data
-const mockDeliveries: DeliveryOrder[] = [
-  {
-    id: 'DEL-001',
-    doNumber: 'DO-2026-001',
-    orderId: 'ORD-2026-156',
-    agreementId: 'AGR-2026-089',
-    customerName: 'ABC Construction Sdn Bhd',
-    customerContact: '+60 12-345-6789',
-    customerAddress: 'No. 45, Jalan Ampang, 50450 Kuala Lumpur',
-    siteAddress: 'Lot 123, Jalan Bukit Bintang, 55100 KL',
-    type: 'delivery',
-    items: [
-      {
-        id: 'ITM-001',
-        scaffoldingItemId: 'SCAF-001',
-        scaffoldingItemName: 'Steel Pipe Scaffolding - Standard (6m)',
-        quantity: 50,
-        unit: 'pcs',
-        availableStock: 200,
-        weight: '25kg/pc',
-        dimensions: '48.3mm x 6m'
-      },
-      {
-        id: 'ITM-002',
-        scaffoldingItemId: 'SCAF-002',
-        scaffoldingItemName: 'Scaffold Board - Wooden (3.9m)',
-        quantity: 30,
-        unit: 'pcs',
-        availableStock: 150,
-        weight: '20kg/pc',
-        dimensions: '225mm x 38mm x 3.9m'
-      }
-    ],
-    status: 'pending',
-    scheduledDate: '2026-12-15',
-    scheduledTimeSlot: '09:00 - 12:00',
-    createdBy: 'Sales Staff',
-    createdAt: '2026-12-02T09:00:00',
-    updatedAt: '2026-12-02T09:00:00',
-  },
-  {
-    id: 'DEL-002',
-    doNumber: 'DO-2026-002',
-    orderId: 'ORD-2026-157',
-    agreementId: 'AGR-2026-090',
-    customerName: 'XYZ Builders Sdn Bhd',
-    customerContact: '+60 13-456-7890',
-    customerAddress: 'Unit 12-3, Tower A, The Pinnacle, 50088 KL',
-    siteAddress: 'Site 45B, Taman Desa Development',
-    type: 'pickup',
-    items: [
-      {
-        id: 'ITM-003',
-        scaffoldingItemId: 'SCAF-003',
-        scaffoldingItemName: 'H-Frame Scaffolding (1.7m x 1.2m)',
-        quantity: 20,
-        unit: 'pcs',
-        availableStock: 80,
-        weight: '22kg/pc',
-        dimensions: '1.7m x 1.2m'
-      }
-    ],
-    status: 'pending',
-    scheduledDate: '2026-12-18',
-    scheduledTimeSlot: '14:00 - 17:00',
-    createdBy: 'Sales Staff',
-    createdAt: '2026-12-05T09:00:00',
-    updatedAt: '2026-12-05T09:00:00',
-  },
-  {
-    id: 'DEL-003',
-    doNumber: 'DO-2026-003',
-    orderId: 'ORD-2026-158',
-    agreementId: 'AGR-2026-091',
-    customerName: 'Prime Engineering Works',
-    customerContact: '+60 14-567-8901',
-    customerAddress: 'Level 5, Menara TH, Jalan Tun Razak',
-    siteAddress: 'Plaza Metro, Jalan Raja Chulan',
-    type: 'delivery',
-    items: [
-      {
-        id: 'ITM-004',
-        scaffoldingItemId: 'SCAF-004',
-        scaffoldingItemName: 'Ringlock System - Vertical (3m)',
-        quantity: 60,
-        unit: 'pcs',
-        availableStock: 120,
-        weight: '20kg/pc'
-      },
-      {
-        id: 'ITM-005',
-        scaffoldingItemId: 'SCAF-005',
-        scaffoldingItemName: 'Steel Ledger (2m)',
-        quantity: 40,
-        unit: 'pcs',
-        availableStock: 100,
-        weight: '12kg/pc'
-      }
-    ],
-    status: 'pending',
-    scheduledDate: '2026-12-20',
-    scheduledTimeSlot: '09:00 - 12:00',
-    createdBy: 'Sales Staff',
-    createdAt: '2026-12-08T09:00:00',
-    updatedAt: '2026-12-08T09:00:00',
-  },
-  {
-    id: 'DEL-004',
-    doNumber: 'DO-2026-004',
-    orderId: 'ORD-2026-159',
-    agreementId: 'AGR-2026-092',
-    customerName: 'Golden Projects Sdn Bhd',
-    customerContact: '+60 15-678-9012',
-    customerAddress: 'No. 88, Jalan Sultan Ismail, 50250 KL',
-    siteAddress: 'Summit Mall Development, Subang Jaya',
-    type: 'pickup',
-    items: [
-      {
-        id: 'ITM-006',
-        scaffoldingItemId: 'SCAF-006',
-        scaffoldingItemName: 'Steel Tube - Heavy Duty (4m)',
-        quantity: 100,
-        unit: 'pcs',
-        availableStock: 300,
-        weight: '18kg/pc',
-        dimensions: '48.3mm x 4m'
-      },
-      {
-        id: 'ITM-007',
-        scaffoldingItemId: 'SCAF-007',
-        scaffoldingItemName: 'Swivel Coupler',
-        quantity: 150,
-        unit: 'pcs',
-        availableStock: 500,
-        weight: '1.5kg/pc'
-      }
-    ],
-    status: 'pending',
-    scheduledDate: '2026-12-22',
-    scheduledTimeSlot: '14:00 - 17:00',
-    createdBy: 'Sales Staff',
-    createdAt: '2026-12-10T09:00:00',
-    updatedAt: '2026-12-10T09:00:00',
-  },
-];
 
 export function DeliveryManagement() {
   const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
@@ -280,13 +134,18 @@ export function DeliveryManagement() {
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
 
   useEffect(() => {
-    // Load from localStorage or use mock data
-    const saved = localStorage.getItem('deliveryOrders');
-    if (saved) {
-      setDeliveries(JSON.parse(saved));
+    // Check if we need to clear old sample data (one-time cleanup)
+    const hasCleared = localStorage.getItem('deliveryOrdersCleared');
+    if (!hasCleared) {
+      localStorage.removeItem('deliveryOrders');
+      localStorage.setItem('deliveryOrdersCleared', 'true');
+      setDeliveries([]);
     } else {
-      setDeliveries(mockDeliveries);
-      localStorage.setItem('deliveryOrders', JSON.stringify(mockDeliveries));
+      // Load from localStorage for user-added data
+      const saved = localStorage.getItem('deliveryOrders');
+      if (saved) {
+        setDeliveries(JSON.parse(saved));
+      }
     }
   }, []);
 
