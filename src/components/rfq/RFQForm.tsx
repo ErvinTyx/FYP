@@ -104,7 +104,7 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
   };
 
   const calculateTotal = () => {
-    return items.reduce((sum, item) => sum + item.totalPrice, 0);
+    return items.reduce((sum, item) => sum + Number(item.totalPrice), 0);
   };
 
   useEffect(() => {

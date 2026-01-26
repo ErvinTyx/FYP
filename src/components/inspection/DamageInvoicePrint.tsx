@@ -45,8 +45,9 @@ export function DamageInvoicePrint({ invoice, onClose }: DamageInvoicePrintProps
       </div>
 
       {/* Printable Invoice */}
-      <Card className="max-w-4xl mx-auto">
-        <CardContent className="p-12" ref={printRef}>
+      <div ref={printRef} id="print-content">
+        <Card className="max-w-4xl mx-auto">
+          <CardContent className="p-12">
           {/* Header */}
           <div className="border-b-4 border-[#F15929] pb-6 mb-6">
             <div className="flex justify-between items-start">
@@ -224,21 +225,32 @@ export function DamageInvoicePrint({ invoice, onClose }: DamageInvoicePrintProps
           </div>
         </CardContent>
       </Card>
+      </div>
 
       <style>{`
         @media print {
           body * {
             visibility: hidden;
           }
-          ${printRef.current ? '#print-area, #print-area *' : ''} {
-            visibility: visible;
+          #print-content, #print-content * {
+            visibility: visible !important;
           }
-          .print\\:hidden {
-            display: none !important;
+          #print-content {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+          body, html {
+            margin: 0;
+            padding: 0;
+          }
+          .p-6 {
+            padding: 0 !important;
           }
           @page {
-            margin: 1cm;
             size: A4;
+            margin: 0;
           }
         }
       `}</style>
