@@ -571,38 +571,6 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
               )}
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="agreeTerms"
-                  checked={formData.agreeTerms}
-                  onCheckedChange={(checked) => updateFormData("agreeTerms", checked)}
-                />
-                <Label htmlFor="agreeTerms" className="cursor-pointer">
-                  I agree to the terms and conditions
-                </Label>
-              </div>
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="agreePolicy"
-                  checked={formData.agreePolicy}
-                  onCheckedChange={(checked) => updateFormData("agreePolicy", checked)}
-                />
-                <Label htmlFor="agreePolicy" className="cursor-pointer">
-                  I accept the data privacy policy
-                </Label>
-              </div>
-              <div className="flex items-start space-x-2">
-                <Checkbox
-                  id="agreeAccess"
-                  checked={formData.agreeAccess}
-                  onCheckedChange={(checked) => updateFormData("agreeAccess", checked)}
-                />
-                <Label htmlFor="agreeAccess" className="cursor-pointer">
-                  I understand the access rules
-                </Label>
-              </div>
-            </div>
 
             <Card className="border-[#E5E7EB] bg-[#F9FAFB]">
               <CardContent className="pt-4">
@@ -631,9 +599,6 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
                 onClick={handleCompleteRegistration}
                 className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
                 disabled={
-                  !formData.agreeTerms || 
-                  !formData.agreePolicy || 
-                  !formData.agreeAccess ||
                   !formData.password ||
                   !formData.confirmPassword ||
                   isLoadingSubmit

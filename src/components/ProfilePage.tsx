@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { User, Lock, Eye, EyeOff, Check, Mail, Phone } from "lucide-react";
+import { User, Lock, Eye, EyeOff, Check, Mail, Phone, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Input } from "./ui/input";
@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 
 interface ProfilePageProps {
+  userId?: string;
   currentUserName?: string;
   currentUserRole?: string;
   currentUserEmail?: string;
@@ -24,6 +25,7 @@ interface ProfilePageProps {
 }
 
 export function ProfilePage({ 
+  userId,
   currentUserName = "John Smith",
   currentUserRole = "Admin",
   currentUserEmail = "john.smith@example.com",
@@ -36,17 +38,18 @@ export function ProfilePage({
 
   // Email fields
   const [email, setEmail] = useState(currentUserEmail);
+  const [pendingEmail, setPendingEmail] = useState("");
   const [emailError, setEmailError] = useState("");
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailVerificationCode, setEmailVerificationCode] = useState("");
   const [emailCodeError, setEmailCodeError] = useState("");
+  const [isEmailLoading, setIsEmailLoading] = useState(false);
+  const [isVerifyEmailLoading, setIsVerifyEmailLoading] = useState(false);
 
   // Phone fields
   const [phone, setPhone] = useState(currentUserPhone);
   const [phoneError, setPhoneError] = useState("");
-  const [showPhoneVerification, setShowPhoneVerification] = useState(false);
-  const [phoneVerificationCode, setPhoneVerificationCode] = useState("");
-  const [phoneCodeError, setPhoneCodeError] = useState("");
+  const [isPhoneLoading, setIsPhoneLoading] = useState(false);
 
   // Password fields
   const [currentPassword, setCurrentPassword] = useState("");
@@ -56,6 +59,8 @@ export function ProfilePage({
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
+  const [isPasswordLoading, setIsPasswordLoading] = useState(false);
+  const [isForgotPasswordLoading, setIsForgotPasswordLoading] = useState(false);
 
   // Modal state
   const [showPasswordConfirmModal, setShowPasswordConfirmModal] = useState(false);
@@ -90,19 +95,33 @@ export function ProfilePage({
     return true;
   };
 
+  /**
+   * Password requirements (stricter):
+   * - Minimum 12 characters
+   * - At least 1 uppercase letter (A-Z)
+   * - At least 1 lowercase letter (a-z)
+   * - At least 1 special character (!@#$%^&* etc.)
+   * - At least 1 number (0-9)
+   */
   const validatePassword = (password: string): { valid: boolean; message: string } => {
     if (!password) {
       return { valid: true, message: "" }; // Empty is OK if user doesn't want to change password
     }
 
-    if (password.length < 8) {
-      return { valid: false, message: "Password must be at least 8 characters." };
+    if (password.length < 12) {
+      return { valid: false, message: "Password must be at least 12 characters." };
     }
-    if (!/[a-zA-Z]/.test(password)) {
-      return { valid: false, message: "Password must contain at least 1 letter." };
+    if (!/[A-Z]/.test(password)) {
+      return { valid: false, message: "Password must contain at least 1 uppercase letter." };
+    }
+    if (!/[a-z]/.test(password)) {
+      return { valid: false, message: "Password must contain at least 1 lowercase letter." };
     }
     if (!/\d/.test(password)) {
-      return { valid: false, message: "Password must contain at least 1 digit." };
+      return { valid: false, message: "Password must contain at least 1 number." };
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      return { valid: false, message: "Password must contain at least 1 special character." };
     }
     return { valid: true, message: "" };
   };
@@ -116,68 +135,122 @@ export function ProfilePage({
   };
 
   // Email update handlers
-  const handleUpdateEmail = () => {
+  const handleUpdateEmail = async () => {
     if (!validateEmail(email)) return;
-    
-    // Simulate sending verification code
-    setShowEmailVerification(true);
-    setEmailVerificationCode("");
-    setEmailCodeError("");
-    
-    toast.info("Verification code sent to your new email address.", {
-      duration: 3000,
-    });
+    if (email === currentUserEmail) {
+      setEmailError("New email must be different from current email.");
+      return;
+    }
+
+    setIsEmailLoading(true);
+    setEmailError("");
+
+    try {
+      const response = await fetch("/api/profile/update-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newEmail: email }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setEmailError(data.message || "Failed to send verification code.");
+        return;
+      }
+
+      // Store pending email and show verification modal
+      setPendingEmail(email);
+      setShowEmailVerification(true);
+      setEmailVerificationCode("");
+      setEmailCodeError("");
+      
+      toast.info("Verification code sent to your new email address.", {
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error("Update email error:", error);
+      setEmailError("An error occurred. Please try again.");
+    } finally {
+      setIsEmailLoading(false);
+    }
   };
 
-  const handleVerifyEmail = () => {
+  const handleVerifyEmail = async () => {
     if (!emailVerificationCode.trim()) {
       setEmailCodeError("Please enter the verification code.");
       return;
     }
 
-    // Simulate verification (in real app, verify with backend)
-    if (emailVerificationCode === "123456") {
+    setIsVerifyEmailLoading(true);
+    setEmailCodeError("");
+
+    try {
+      const response = await fetch("/api/profile/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          newEmail: pendingEmail, 
+          code: emailVerificationCode 
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setEmailCodeError(data.message || "Invalid verification code.");
+        return;
+      }
+
       setShowEmailVerification(false);
       toast.success("Email updated successfully.", {
         duration: 2500,
       });
       setEmailVerificationCode("");
       setEmailCodeError("");
-    } else {
-      setEmailCodeError("Invalid verification code. Please try again.");
+      // Update the displayed email
+      setEmail(pendingEmail);
+    } catch (error) {
+      console.error("Verify email error:", error);
+      setEmailCodeError("An error occurred. Please try again.");
+    } finally {
+      setIsVerifyEmailLoading(false);
     }
   };
 
   // Phone update handlers
-  const handleUpdatePhone = () => {
+  const handleUpdatePhone = async () => {
     if (!validatePhone(phone)) return;
-    
-    // Simulate sending verification code
-    setShowPhoneVerification(true);
-    setPhoneVerificationCode("");
-    setPhoneCodeError("");
-    
-    toast.info("Verification code sent to your new phone number.", {
-      duration: 3000,
-    });
-  };
-
-  const handleVerifyPhone = () => {
-    if (!phoneVerificationCode.trim()) {
-      setPhoneCodeError("Please enter the verification code.");
+    if (phone === currentUserPhone) {
+      setPhoneError("New phone must be different from current phone.");
       return;
     }
 
-    // Simulate verification (in real app, verify with backend)
-    if (phoneVerificationCode === "123456") {
-      setShowPhoneVerification(false);
+    setIsPhoneLoading(true);
+    setPhoneError("");
+
+    try {
+      const response = await fetch("/api/profile/update-phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPhone: phone }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setPhoneError(data.message || "Failed to update phone number.");
+        return;
+      }
+
       toast.success("Phone number updated successfully.", {
         duration: 2500,
       });
-      setPhoneVerificationCode("");
-      setPhoneCodeError("");
-    } else {
-      setPhoneCodeError("Invalid verification code. Please try again.");
+    } catch (error) {
+      console.error("Update phone error:", error);
+      setPhoneError("An error occurred. Please try again.");
+    } finally {
+      setIsPhoneLoading(false);
     }
   };
 
@@ -211,11 +284,28 @@ export function ProfilePage({
     setShowPasswordConfirmModal(true);
   };
 
-  const handleConfirmPasswordUpdate = () => {
+  const handleConfirmPasswordUpdate = async () => {
     setShowPasswordConfirmModal(false);
-    
-    // Simulate API call
-    setTimeout(() => {
+    setIsPasswordLoading(true);
+    setPasswordError("");
+
+    try {
+      const response = await fetch("/api/profile/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          currentPassword, 
+          newPassword 
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setPasswordError(data.message || "Failed to update password.");
+        return;
+      }
+
       toast.success("Password updated successfully.", {
         duration: 2500,
       });
@@ -224,7 +314,43 @@ export function ProfilePage({
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    }, 300);
+    } catch (error) {
+      console.error("Change password error:", error);
+      setPasswordError("An error occurred. Please try again.");
+    } finally {
+      setIsPasswordLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setIsForgotPasswordLoading(true);
+
+    try {
+      const response = await fetch("/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: currentUserEmail }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Password reset link sent to your email.", {
+          duration: 3000,
+        });
+      } else {
+        toast.error(data.message || "Failed to send password reset link.", {
+          duration: 3000,
+        });
+      }
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      toast.error("An error occurred. Please try again.", {
+        duration: 3000,
+      });
+    } finally {
+      setIsForgotPasswordLoading(false);
+    }
   };
 
   const getPasswordStrength = (password: string): { strength: string; color: string } => {
@@ -233,7 +359,8 @@ export function ProfilePage({
     const validation = validatePassword(password);
     if (!validation.valid) return { strength: "Weak", color: "text-[#DC2626]" };
     
-    if (password.length >= 12 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password)) {
+    // Strong if meets all requirements and has length >= 16
+    if (password.length >= 16) {
       return { strength: "Strong", color: "text-[#059669]" };
     }
     
@@ -241,6 +368,15 @@ export function ProfilePage({
   };
 
   const passwordStrength = getPasswordStrength(newPassword);
+
+  // Check individual password requirements
+  const passwordChecks = {
+    length: newPassword.length >= 12,
+    uppercase: /[A-Z]/.test(newPassword),
+    lowercase: /[a-z]/.test(newPassword),
+    number: /\d/.test(newPassword),
+    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword),
+  };
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -315,6 +451,7 @@ export function ProfilePage({
               onBlur={() => validateEmail(email)}
               className={`h-10 ${emailError ? "border-[#DC2626] focus-visible:ring-[#DC2626]" : ""}`}
               placeholder="Enter your email address"
+              disabled={isEmailLoading}
             />
             {emailError && (
               <p className="text-[#DC2626] text-[14px]">{emailError}</p>
@@ -324,9 +461,17 @@ export function ProfilePage({
           <div className="flex justify-end">
             <Button
               onClick={handleUpdateEmail}
+              disabled={isEmailLoading}
               className="bg-[#F15929] hover:bg-[#D14821] h-10 px-6 rounded-lg"
             >
-              Update Email
+              {isEmailLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                "Update Email"
+              )}
             </Button>
           </div>
         </CardContent>
@@ -342,7 +487,7 @@ export function ProfilePage({
             <div>
               <CardTitle className="text-[18px]">Phone Number</CardTitle>
               <CardDescription className="text-[14px] text-[#6B7280] mt-1">
-                Update your phone number (verification required)
+                Update your phone number
               </CardDescription>
             </div>
           </div>
@@ -361,6 +506,7 @@ export function ProfilePage({
               onBlur={() => validatePhone(phone)}
               className={`h-10 ${phoneError ? "border-[#DC2626] focus-visible:ring-[#DC2626]" : ""}`}
               placeholder="Enter your phone number"
+              disabled={isPhoneLoading}
             />
             {phoneError && (
               <p className="text-[#DC2626] text-[14px]">{phoneError}</p>
@@ -370,9 +516,17 @@ export function ProfilePage({
           <div className="flex justify-end">
             <Button
               onClick={handleUpdatePhone}
+              disabled={isPhoneLoading}
               className="bg-[#F15929] hover:bg-[#D14821] h-10 px-6 rounded-lg"
             >
-              Update Phone
+              {isPhoneLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update Phone"
+              )}
             </Button>
           </div>
         </CardContent>
@@ -405,6 +559,7 @@ export function ProfilePage({
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 className="h-10 pr-10"
                 placeholder="Enter current password"
+                disabled={isPasswordLoading}
               />
               <button
                 type="button"
@@ -414,6 +569,14 @@ export function ProfilePage({
                 {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              disabled={isForgotPasswordLoading}
+              className="text-[14px] text-[#F15929] hover:text-[#D14821] hover:underline disabled:opacity-50"
+            >
+              {isForgotPasswordLoading ? "Sending..." : "Forgot Password?"}
+            </button>
           </div>
 
           {/* New Password */}
@@ -430,6 +593,7 @@ export function ProfilePage({
                 }}
                 className={`h-10 pr-10 ${passwordError ? "border-[#DC2626] focus-visible:ring-[#DC2626]" : ""}`}
                 placeholder="Enter new password"
+                disabled={isPasswordLoading}
               />
               <button
                 type="button"
@@ -448,21 +612,33 @@ export function ProfilePage({
               <p className="text-[12px] text-[#6B7280]">Password must meet the following requirements:</p>
               <div className="space-y-1 pl-4">
                 <div className="flex items-center gap-2 text-[12px]">
-                  <Check className={`h-3 w-3 ${newPassword.length >= 8 ? "text-[#059669]" : "text-[#D1D5DB]"}`} />
-                  <span className={newPassword.length >= 8 ? "text-[#059669]" : "text-[#6B7280]"}>
-                    At least 8 characters
+                  <Check className={`h-3 w-3 ${passwordChecks.length ? "text-[#059669]" : "text-[#D1D5DB]"}`} />
+                  <span className={passwordChecks.length ? "text-[#059669]" : "text-[#6B7280]"}>
+                    At least 12 characters
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-[12px]">
-                  <Check className={`h-3 w-3 ${/[a-zA-Z]/.test(newPassword) ? "text-[#059669]" : "text-[#D1D5DB]"}`} />
-                  <span className={/[a-zA-Z]/.test(newPassword) ? "text-[#059669]" : "text-[#6B7280]"}>
-                    At least 1 letter
+                  <Check className={`h-3 w-3 ${passwordChecks.uppercase ? "text-[#059669]" : "text-[#D1D5DB]"}`} />
+                  <span className={passwordChecks.uppercase ? "text-[#059669]" : "text-[#6B7280]"}>
+                    At least 1 uppercase letter (A-Z)
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-[12px]">
-                  <Check className={`h-3 w-3 ${/\d/.test(newPassword) ? "text-[#059669]" : "text-[#D1D5DB]"}`} />
-                  <span className={/\d/.test(newPassword) ? "text-[#059669]" : "text-[#6B7280]"}>
-                    At least 1 digit
+                  <Check className={`h-3 w-3 ${passwordChecks.lowercase ? "text-[#059669]" : "text-[#D1D5DB]"}`} />
+                  <span className={passwordChecks.lowercase ? "text-[#059669]" : "text-[#6B7280]"}>
+                    At least 1 lowercase letter (a-z)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <Check className={`h-3 w-3 ${passwordChecks.number ? "text-[#059669]" : "text-[#D1D5DB]"}`} />
+                  <span className={passwordChecks.number ? "text-[#059669]" : "text-[#6B7280]"}>
+                    At least 1 number (0-9)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <Check className={`h-3 w-3 ${passwordChecks.special ? "text-[#059669]" : "text-[#D1D5DB]"}`} />
+                  <span className={passwordChecks.special ? "text-[#059669]" : "text-[#6B7280]"}>
+                    At least 1 special character (!@#$%^&* etc.)
                   </span>
                 </div>
               </div>
@@ -484,6 +660,7 @@ export function ProfilePage({
                 onBlur={validatePasswordMatch}
                 className={`h-10 pr-10 ${passwordError ? "border-[#DC2626] focus-visible:ring-[#DC2626]" : ""}`}
                 placeholder="Re-enter new password"
+                disabled={isPasswordLoading}
               />
               <button
                 type="button"
@@ -501,9 +678,17 @@ export function ProfilePage({
           <div className="flex justify-end">
             <Button
               onClick={handleSavePassword}
+              disabled={isPasswordLoading}
               className="bg-[#F15929] hover:bg-[#D14821] h-10 px-6 rounded-lg"
             >
-              Save Changes
+              {isPasswordLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
             </Button>
           </div>
         </CardContent>
@@ -515,7 +700,7 @@ export function ProfilePage({
           <AlertDialogHeader>
             <AlertDialogTitle>Verify Email Address</AlertDialogTitle>
             <AlertDialogDescription>
-              Please enter the 6-digit verification code sent to {email}
+              Please enter the 6-digit verification code sent to {pendingEmail}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-4">
@@ -532,6 +717,7 @@ export function ProfilePage({
                 className={`h-10 ${emailCodeError ? "border-[#DC2626] focus-visible:ring-[#DC2626]" : ""}`}
                 placeholder="Enter 6-digit code"
                 maxLength={6}
+                disabled={isVerifyEmailLoading}
               />
               {emailCodeError && (
                 <p className="text-[#DC2626] text-[14px]">{emailCodeError}</p>
@@ -539,61 +725,29 @@ export function ProfilePage({
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setShowEmailVerification(false);
-              setEmailVerificationCode("");
-              setEmailCodeError("");
-            }}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel 
+              disabled={isVerifyEmailLoading}
+              onClick={() => {
+                setShowEmailVerification(false);
+                setEmailVerificationCode("");
+                setEmailCodeError("");
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleVerifyEmail}
+              disabled={isVerifyEmailLoading}
               className="bg-[#F15929] hover:bg-[#D14821]"
             >
-              Verify
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Phone Verification Modal */}
-      <AlertDialog open={showPhoneVerification} onOpenChange={setShowPhoneVerification}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Verify Phone Number</AlertDialogTitle>
-            <AlertDialogDescription>
-              Please enter the 6-digit verification code sent to {phone}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-4">
-            <div className="space-y-2">
-              <Label htmlFor="phoneCode">Verification Code</Label>
-              <Input
-                id="phoneCode"
-                type="text"
-                value={phoneVerificationCode}
-                onChange={(e) => {
-                  setPhoneVerificationCode(e.target.value);
-                  if (phoneCodeError) setPhoneCodeError("");
-                }}
-                className={`h-10 ${phoneCodeError ? "border-[#DC2626] focus-visible:ring-[#DC2626]" : ""}`}
-                placeholder="Enter 6-digit code"
-                maxLength={6}
-              />
-              {phoneCodeError && (
-                <p className="text-[#DC2626] text-[14px]">{phoneCodeError}</p>
+              {isVerifyEmailLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                "Verify"
               )}
-            </div>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setShowPhoneVerification(false);
-              setPhoneVerificationCode("");
-              setPhoneCodeError("");
-            }}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleVerifyPhone}
-              className="bg-[#F15929] hover:bg-[#D14821]"
-            >
-              Verify
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

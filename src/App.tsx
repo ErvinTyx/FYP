@@ -157,6 +157,7 @@ export default function App() {
   // Track previous auth status to detect session expiry
   const prevStatusRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(false);
+  const hasInitializedPageRef = useRef(false); // Track if we've set the initial page
 
   // Detect session expiry (transition from authenticated to unauthenticated)
   useEffect(() => {
@@ -179,7 +180,63 @@ export default function App() {
     prevStatusRef.current = status;
   }, [status]);
 
-  // Sync session with local state
+  // Store expiresAt in a ref to avoid re-running effect on every session update
+  const sessionExpiresAtRef = useRef<number | null>(null);
+  
+  // Update the ref when session changes, but only if we get a new expiresAt
+  useEffect(() => {
+    const expiresAt = (session as any)?.expiresAt as number | undefined;
+    if (expiresAt && sessionExpiresAtRef.current !== expiresAt) {
+      sessionExpiresAtRef.current = expiresAt;
+    }
+  }, [session]);
+
+  // Check session expiration based on expiresAt timestamp from server
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    // Get expiresAt from ref or session
+    const expiresAt = sessionExpiresAtRef.current || (session as any)?.expiresAt as number | undefined;
+    
+    if (!expiresAt) {
+      return;
+    }
+
+    const checkExpiration = () => {
+      const now = Date.now();
+      
+      if (now >= expiresAt) {
+        // Session has expired - sign out and show expired page
+        wasAuthenticatedRef.current = true;
+        signOut({ redirect: false }).then(() => {
+          setSessionExpired(true);
+        });
+      }
+    };
+
+    // Check every 10 seconds
+    const interval = setInterval(checkExpiration, 10 * 1000);
+
+    // Also set a timeout for exact expiration time
+    const timeUntilExpiry = expiresAt - Date.now();
+    let timeout: NodeJS.Timeout | null = null;
+    
+    if (timeUntilExpiry > 0) {
+      timeout = setTimeout(checkExpiration, timeUntilExpiry + 100);
+    } else {
+      // Already expired
+      checkExpiration();
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [status]);
+
+  // Sync session with local state - only set initial page once per login
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
       // Reset session expired flag on successful login
@@ -190,18 +247,28 @@ export default function App() {
       const primaryRole = roles[0] || "admin";
       setUserRole(primaryRole);
       
-      // Customer goes to CRM portal
-      if (primaryRole === "customer") {
-        setSystemMode("CRM");
-        setCurrentPage("customer-portal");
-      } else {
-        // All other roles go to ERP portal
-        setSystemMode("ERP");
-        setCurrentPage("billing-dashboard");
+      // Only set the initial page on first authentication, not on session refresh
+      if (!hasInitializedPageRef.current) {
+        hasInitializedPageRef.current = true;
+        
+        // Customer goes to CRM portal
+        if (primaryRole === "customer") {
+          setSystemMode("CRM");
+          setCurrentPage("customer-portal");
+        } else {
+          // All other roles go to ERP portal
+          setSystemMode("ERP");
+          setCurrentPage("billing-dashboard");
+        }
+        
+        // Go directly to dashboard
+        setAuthScreen("dashboard");
       }
-      
-      // Go directly to dashboard
-      setAuthScreen("dashboard");
+    }
+    
+    // Reset the flag when user logs out
+    if (status === "unauthenticated") {
+      hasInitializedPageRef.current = false;
     }
   }, [status, session]);
 
@@ -312,6 +379,19 @@ export default function App() {
   // Show session expired page if session has expired
   if (sessionExpired && status === "unauthenticated") {
     return <SessionExpiredPage onReturnToLogin={handleSessionExpiredReturn} />;
+  }
+
+  // Show loading while transitioning from login to dashboard
+  // This prevents the glitch where dashboard shows briefly before state is fully updated
+  if (status === "authenticated" && authScreen !== "dashboard") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F15929] via-[#F15929] to-[#D14820]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
+          <p className="text-white text-lg">Preparing dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   // Show authentication screens if not authenticated
@@ -511,7 +591,7 @@ export default function App() {
   const renderPage = () => {
     switch (currentPage) {
       case "user-management":
-        return <UserManagement />;
+        return <UserManagement userRole={userRole} />;
       case "billing-dashboard":
         return <BillingDashboard 
           onNavigateToCreditNotes={() => setCurrentPage("credit-notes")}
@@ -561,7 +641,15 @@ export default function App() {
       case "project-closure":
         return <ProjectClosureManagement />;
       case "profile":
-        return <ProfilePage currentUserName={getRoleName()} currentUserRole={getRoleName()} />;
+        return (
+          <ProfilePage 
+            userId={session?.user?.id}
+            currentUserName={session?.user?.name || getRoleName()}
+            currentUserRole={getRoleName()}
+            currentUserEmail={session?.user?.email || ""}
+            currentUserPhone={(session?.user as any)?.phone || ""}
+          />
+        );
       case "delivery-return-requests":
         return <DeliveryReturnManagement />;
       default:

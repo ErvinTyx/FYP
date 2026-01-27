@@ -1,0 +1,7 @@
+# Ignore all uploaded files
+*
+
+# But keep the directory structure
+!.gitignore
+!identity-documents/
+!identity-documents/.gitkeep
