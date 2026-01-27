@@ -97,7 +97,7 @@ export function ConditionReportList({ reports, searchQuery, onEdit, onCreateRepa
                     <Wrench className="size-4 text-gray-400" />
                     <div>
                       <p className="text-gray-500">Repair Cost</p>
-                      <p className="text-[#231F20]">RM {report.totalRepairCost.toFixed(2)}</p>
+                      <p className="text-[#231F20]">RM {parseFloat(report.totalRepairCost.toString()).toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
