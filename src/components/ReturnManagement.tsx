@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Package, Calendar as CalendarIcon, CheckCircle2, AlertCircle, Eye,
   AlertTriangle, ClipboardCheck, ArrowRight, Plus, PackageCheck, Truck,
@@ -30,6 +30,20 @@ export function ReturnManagement() {
   const [returns, setReturns] = useState<Return[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'workflow' | 'details'>('list');
   const [selectedReturn, setSelectedReturn] = useState<Return | null>(null);
+
+  // Load returns from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('returnOrders');
+    if (saved) {
+      setReturns(JSON.parse(saved));
+    }
+  }, []);
+
+  // Save to localStorage whenever returns change
+  const saveReturns = (updated: Return[]) => {
+    setReturns(updated);
+    localStorage.setItem('returnOrders', JSON.stringify(updated));
+  };
 
   const getReturnStatusBadge = (status: Return['status']) => {
     const statusConfig = {
@@ -64,10 +78,10 @@ export function ReturnManagement() {
     const isNew = !returns.find(r => r.id === returnOrder.id);
     
     if (isNew) {
-      setReturns([returnOrder, ...returns]);
+      saveReturns([returnOrder, ...returns]);
       toast.success('Return created successfully');
     } else {
-      setReturns(returns.map(r => r.id === returnOrder.id ? returnOrder : r));
+      saveReturns(returns.map(r => r.id === returnOrder.id ? returnOrder : r));
       toast.success('Return updated successfully');
     }
     

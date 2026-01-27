@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Plus, FileText, Truck, Package, CheckCircle, Clock, XCircle, Phone, Mail, MapPin, Calendar, User, ArrowRight, Download, Upload, Check, X, Loader } from 'lucide-react';
 import DeliveryOrderGeneration from './DeliveryOrderGeneration';
 
@@ -7,6 +7,16 @@ type DeliveryStatus = 'Pending' | 'Quoted' | 'DO Generated' | 'Confirmed' | 'Pac
 type ReturnStatus = 'Requested' | 'Quoted' | 'Agreed' | 'Scheduled' | 'In Transit' | 'Received' | 'Customer Notified' | 'GRN Generated' | 'Cancelled';
 type ReturnType = 'partial' | 'full';
 type CollectionMethod = 'transport' | 'self-return';
+
+interface RentalAgreement {
+  id: string;
+  agreementNumber: string;
+  projectName: string;
+  hirer: string;
+  hirerPhone: string | null;
+  location: string | null;
+  status: string;
+}
 
 interface DeliverySet {
   id: string;
@@ -91,166 +101,239 @@ export default function DeliveryReturnManagement() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [customerOTP, setCustomerOTP] = useState('');
 
-  // Mock data
-  const [deliveryRequests, setDeliveryRequests] = useState<DeliveryRequest[]>([
-    {
-      id: 'DR001',
-      requestId: 'DR-2026-001',
-      customerName: 'ABC Construction Sdn Bhd',
-      agreementNo: 'AGR-2026-001',
-      customerPhone: '+60123456789',
-      customerEmail: 'contact@abc.com',
-      deliveryAddress: 'Jalan Raja Laut, 50350 Kuala Lumpur',
-      deliveryType: 'delivery',
-      requestDate: '2026-12-01',
-      totalSets: 3,
-      deliveredSets: 0,
-      sets: [
-        {
-          id: 'SET-A',
-          setName: 'Set A - Initial Phase',
-          items: [
-            { name: 'Scaffolding Pipe 6m', quantity: 100 },
-            { name: 'Coupler Standard', quantity: 200 },
-            { name: 'Base Plate', quantity: 50 }
-          ],
-          scheduledPeriod: 'Month 1-3',
-          status: 'Pending'
-        },
-        {
-          id: 'SET-B',
-          setName: 'Set B - Extension Phase',
-          items: [
-            { name: 'Scaffolding Pipe 4m', quantity: 150 },
-            { name: 'Coupler Swivel', quantity: 180 },
-            { name: 'Ladder Beam', quantity: 30 }
-          ],
-          scheduledPeriod: 'Month 4-6',
-          status: 'Pending'
-        },
-        {
-          id: 'SET-C',
-          setName: 'Set C - Final Phase',
-          items: [
-            { name: 'H-Frame Scaffolding', quantity: 80 },
-            { name: 'Cross Brace', quantity: 120 },
-            { name: 'Walk Board', quantity: 60 }
-          ],
-          scheduledPeriod: 'Month 7-9',
-          status: 'Pending'
-        }
-      ]
-    },
-    {
-      id: 'DR002',
-      requestId: 'DR-2026-002',
-      customerName: 'XYZ Development Sdn Bhd',
-      agreementNo: 'AGR-2026-002',
-      customerPhone: '+60129876543',
-      customerEmail: 'info@xyz.com',
-      deliveryAddress: 'Jalan Ampang, 50450 Kuala Lumpur',
-      deliveryType: 'delivery',
-      requestDate: '2026-12-03',
-      totalSets: 1,
-      deliveredSets: 0,
-      sets: [
-        {
-          id: 'SET-D',
-          setName: 'Set A - Main Structure',
-          items: [
-            { name: 'Steel Tube 4m', quantity: 200 },
-            { name: 'Joint Pin', quantity: 150 },
-            { name: 'Base Jack', quantity: 80 },
-            { name: 'Safety Net', quantity: 40 }
-          ],
-          scheduledPeriod: 'Month 1-6',
-          status: 'Pending'
-        }
-      ]
-    }
+  // Data state - fetched from API
+  const [deliveryRequests, setDeliveryRequests] = useState<DeliveryRequest[]>([]);
+  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Create modal states
+  const [showCreateDeliveryModal, setShowCreateDeliveryModal] = useState(false);
+  const [showCreateReturnModal, setShowCreateReturnModal] = useState(false);
+  const [rentalAgreements, setRentalAgreements] = useState<RentalAgreement[]>([]);
+  const [selectedAgreementId, setSelectedAgreementId] = useState<string>('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Create Delivery Form states
+  const [newDeliveryForm, setNewDeliveryForm] = useState({
+    customerEmail: '',
+    deliveryType: 'delivery' as DeliveryType,
+  });
+  const [deliverySets, setDeliverySets] = useState<{
+    setName: string;
+    scheduledPeriod: string;
+    items: { name: string; quantity: number }[];
+  }[]>([{ setName: 'Set A', scheduledPeriod: '', items: [{ name: '', quantity: 1 }] }]);
+
+  // Create Return Form states
+  const [newReturnForm, setNewReturnForm] = useState({
+    setName: '',
+    reason: '',
+    customerEmail: '',
+    returnType: 'full' as ReturnType,
+    collectionMethod: 'transport' as CollectionMethod,
+  });
+  const [returnItems, setReturnItems] = useState<{ name: string; quantity: number }[]>([
+    { name: '', quantity: 1 },
   ]);
 
-  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([
-    {
-      id: 'RR001',
-      requestId: 'RR-2026-001',
-      customerName: 'DEF Builders',
-      agreementNo: 'AGR-2026-003',
-      setName: 'Set A - Foundation Phase',
-      items: [
-        { name: 'Scaffolding Pipe 6m', quantity: 80 },
-        { name: 'Coupler Standard', quantity: 160 },
-        { name: 'Base Plate', quantity: 40 }
-      ],
-      requestDate: '2026-12-02',
-      status: 'Requested',
-      reason: 'Project completed',
-      pickupAddress: 'Jalan Ipoh, 51200 Kuala Lumpur',
-      customerPhone: '+60124445555',
-      customerEmail: 'info@def.com',
-      returnType: 'full',
-      collectionMethod: 'transport'
-    },
-    {
-      id: 'RR002',
-      requestId: 'RR-2026-002',
-      customerName: 'ABC Construction Sdn Bhd',
-      agreementNo: 'AGR-2026-001',
-      setName: 'Set A - Initial Phase',
-      items: [
-        { name: 'Scaffolding Pipe 6m', quantity: 50 },
-        { name: 'Coupler Standard', quantity: 100 }
-      ],
-      requestDate: '2026-12-08',
-      status: 'Requested',
-      reason: 'Partial return - Phase 1 completed',
-      pickupAddress: 'Jalan Raja Laut, 50350 Kuala Lumpur',
-      customerPhone: '+60123456789',
-      customerEmail: 'contact@abc.com',
-      returnType: 'partial',
-      collectionMethod: 'self-return'
-    },
-    {
-      id: 'RR003',
-      requestId: 'RR-2026-003',
-      customerName: 'Megah Engineering Sdn Bhd',
-      agreementNo: 'AGR-2026-004',
-      setName: 'Set C - Rooftop',
-      items: [
-        { name: 'Aluminum Tube 4m', quantity: 100 },
-        { name: 'Edge Protection', quantity: 60 },
-        { name: 'Toe Board', quantity: 50 }
-      ],
-      requestDate: '2026-12-05',
-      status: 'Requested',
-      reason: 'Phase completed ahead of schedule',
-      pickupAddress: 'Jalan Sultan Ismail, 50250 Kuala Lumpur',
-      customerPhone: '+60167654321',
-      customerEmail: 'projects@megah.com',
-      returnType: 'full',
-      collectionMethod: 'self-return'
-    },
-    {
-      id: 'RR004',
-      requestId: 'RR-2026-004',
-      customerName: 'Sunrise Development Sdn Bhd',
-      agreementNo: 'AGR-2026-007',
-      setName: 'Set A - Bridge Construction',
-      items: [
-        { name: 'Heavy Duty Tube 6m', quantity: 120 },
-        { name: 'Beam Clamp', quantity: 90 },
-        { name: 'Support Frame', quantity: 45 }
-      ],
-      requestDate: '2026-12-07',
-      status: 'Requested',
-      reason: 'Partial return - Downsizing project scope',
-      pickupAddress: 'Jalan Damansara, 60000 Kuala Lumpur',
-      customerPhone: '+60172223333',
-      customerEmail: 'ops@sunrise.com',
-      returnType: 'partial',
-      collectionMethod: 'transport'
+  // Fetch delivery requests from API
+  const fetchDeliveryRequests = useCallback(async () => {
+    try {
+      const response = await fetch('/api/delivery');
+      const data = await response.json();
+      if (data.success) {
+        setDeliveryRequests(data.deliveryRequests);
+      } else {
+        console.error('Failed to fetch delivery requests:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching delivery requests:', error);
     }
-  ]);
+  }, []);
+
+  // Fetch return requests from API
+  const fetchReturnRequests = useCallback(async () => {
+    try {
+      const response = await fetch('/api/return');
+      const data = await response.json();
+      if (data.success) {
+        setReturnRequests(data.returnRequests);
+      } else {
+        console.error('Failed to fetch return requests:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching return requests:', error);
+    }
+  }, []);
+
+  // Fetch rental agreements for dropdown
+  const fetchRentalAgreements = useCallback(async () => {
+    try {
+      const response = await fetch('/api/rental-agreement');
+      const data = await response.json();
+      if (data.success) {
+        setRentalAgreements(data.agreements);
+      } else {
+        console.error('Failed to fetch rental agreements:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching rental agreements:', error);
+    }
+  }, []);
+
+  // Generate request ID based on agreement number
+  const generateDeliveryRequestId = (agreementNo: string) => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    return `DEL-${agreementNo}-${date}`;
+  };
+
+  const generateReturnRequestId = (agreementNo: string) => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    return `RET-${agreementNo}-${date}`;
+  };
+
+  // Create Delivery Request handler
+  const handleCreateDeliveryRequest = async () => {
+    const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
+    if (!agreement) {
+      alert('Please select a rental agreement');
+      return;
+    }
+
+    // Validate sets
+    const validSets = deliverySets.filter(set => 
+      set.scheduledPeriod.trim() && 
+      set.items.some(item => item.name.trim())
+    );
+
+    if (validSets.length === 0) {
+      alert('Please add at least one set with items');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const requestId = generateDeliveryRequestId(agreement.agreementNumber);
+      
+      const response = await fetch('/api/delivery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          customerName: agreement.hirer,
+          agreementNo: agreement.agreementNumber,
+          customerPhone: agreement.hirerPhone || '',
+          customerEmail: newDeliveryForm.customerEmail,
+          deliveryAddress: agreement.location || '',
+          deliveryType: newDeliveryForm.deliveryType,
+          sets: validSets.map(set => ({
+            setName: set.setName,
+            scheduledPeriod: set.scheduledPeriod,
+            items: set.items.filter(item => item.name.trim()).map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+            })),
+          })),
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        setShowCreateDeliveryModal(false);
+        setSelectedAgreementId('');
+        setNewDeliveryForm({ customerEmail: '', deliveryType: 'delivery' });
+        setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', items: [{ name: '', quantity: 1 }] }]);
+        alert('Delivery request created successfully!');
+      } else {
+        alert('Failed to create delivery request: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error creating delivery request:', error);
+      alert('An error occurred while creating the delivery request');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Create Return Request handler
+  const handleCreateReturnRequest = async () => {
+    const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
+    if (!agreement) {
+      alert('Please select a rental agreement');
+      return;
+    }
+
+    // Validate items
+    const validItems = returnItems.filter(item => item.name.trim());
+    if (validItems.length === 0) {
+      alert('Please add at least one item to return');
+      return;
+    }
+
+    if (!newReturnForm.setName.trim()) {
+      alert('Please enter a set name');
+      return;
+    }
+
+    if (!newReturnForm.reason.trim()) {
+      alert('Please enter a reason for return');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const requestId = generateReturnRequestId(agreement.agreementNumber);
+      
+      const response = await fetch('/api/return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          customerName: agreement.hirer,
+          agreementNo: agreement.agreementNumber,
+          setName: newReturnForm.setName,
+          reason: newReturnForm.reason,
+          pickupAddress: agreement.location || '',
+          customerPhone: agreement.hirerPhone || '',
+          customerEmail: newReturnForm.customerEmail,
+          returnType: newReturnForm.returnType,
+          collectionMethod: newReturnForm.collectionMethod,
+          items: validItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        await fetchReturnRequests();
+        setShowCreateReturnModal(false);
+        setSelectedAgreementId('');
+        setNewReturnForm({ setName: '', reason: '', customerEmail: '', returnType: 'full', collectionMethod: 'transport' });
+        setReturnItems([{ name: '', quantity: 1 }]);
+        alert('Return request created successfully!');
+      } else {
+        alert('Failed to create return request: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error creating return request:', error);
+      alert('An error occurred while creating the return request');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Fetch data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      await Promise.all([fetchDeliveryRequests(), fetchReturnRequests(), fetchRentalAgreements()]);
+      setIsLoading(false);
+    };
+    fetchData();
+  }, [fetchDeliveryRequests, fetchReturnRequests, fetchRentalAgreements]);
 
   const getStatusColor = (status: DeliveryStatus | ReturnStatus) => {
     switch (status) {
@@ -281,30 +364,31 @@ export default function DeliveryReturnManagement() {
     setShowQuotationModal(true);
   };
 
-  const handleConfirmQuotation = () => {
+  const handleConfirmQuotation = async () => {
     if (selectedRequest && selectedSet && deliveryFee) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
-            sets: req.sets.map(s => {
-              if (s.id === selectedSet.id) {
-                return {
-                  ...s,
-                  deliveryFee: parseFloat(deliveryFee),
-                  status: 'Quoted' as DeliveryStatus
-                };
-              }
-              return s;
-            })
-          };
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId: selectedSet.id,
+            deliveryFee: parseFloat(deliveryFee),
+            status: 'Quoted',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchDeliveryRequests();
+          setShowQuotationModal(false);
+          setDeliveryFee('');
+          alert('Quotation issued successfully!');
+        } else {
+          alert('Failed to issue quotation: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowQuotationModal(false);
-      setDeliveryFee('');
-      alert('Quotation issued successfully!');
+      } catch (error) {
+        console.error('Error issuing quotation:', error);
+        alert('An error occurred while issuing quotation');
+      }
     }
   };
 
@@ -313,37 +397,84 @@ export default function DeliveryReturnManagement() {
     setShowReturnQuotationModal(true);
   };
 
-  const handleConfirmReturnQuotation = () => {
+  const handleConfirmReturnQuotation = async () => {
     if (selectedReturnRequest && pickupFee) {
-      const updatedRequests = returnRequests.map(req => {
-        if (req.id === selectedReturnRequest.id) {
-          return {
-            ...req,
+      try {
+        const response = await fetch('/api/return', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: selectedReturnRequest.id,
             pickupFee: parseFloat(pickupFee),
-            status: 'Quoted' as ReturnStatus
-          };
+            status: 'Quoted',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchReturnRequests();
+          setShowReturnQuotationModal(false);
+          setPickupFee('');
+          alert('Return pickup quotation issued successfully!');
+        } else {
+          alert('Failed to issue quotation: ' + data.message);
         }
-        return req;
-      });
-      setReturnRequests(updatedRequests);
-      setShowReturnQuotationModal(false);
-      setPickupFee('');
-      alert('Return pickup quotation issued successfully!');
+      } catch (error) {
+        console.error('Error issuing return quotation:', error);
+        alert('An error occurred while issuing return quotation');
+      }
     }
   };
 
-  const handleAgreeReturnQuotation = (request: ReturnRequest) => {
-    const updatedRequests = returnRequests.map(req => {
-      if (req.id === request.id) {
-        return {
-          ...req,
-          status: 'Agreed' as ReturnStatus
+  const handleAgreeReturnQuotation = async (request: ReturnRequest) => {
+    try {
+      const response = await fetch('/api/return', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: request.id,
+          status: 'Agreed',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Create entry in ReturnManagement localStorage
+        const returnOrder = {
+          id: request.id,
+          customer: request.customerName,
+          customerContact: request.customerPhone || '',
+          orderId: request.requestId,
+          returnType: request.returnType === 'full' ? 'Full' : 'Partial',
+          transportationType: request.collectionMethod === 'transport' ? 'Transportation Needed' : 'Self Return',
+          items: request.items.map((item, idx) => ({
+            id: `return-item-${idx}`,
+            name: item.name,
+            category: 'Scaffolding',
+            quantity: item.quantity,
+            quantityReturned: 0,
+            status: 'Good' as const,
+          })),
+          requestDate: request.requestDate,
+          status: 'Approved' as const,
+          pickupAddress: request.pickupAddress,
         };
+
+        // Save to localStorage for ReturnManagement to pick up
+        const existingReturns = JSON.parse(localStorage.getItem('returnOrders') || '[]');
+        // Check if already exists (avoid duplicates)
+        if (!existingReturns.find((r: { id: string }) => r.id === returnOrder.id)) {
+          existingReturns.push(returnOrder);
+          localStorage.setItem('returnOrders', JSON.stringify(existingReturns));
+        }
+
+        await fetchReturnRequests();
+        alert('Customer agreed to return quotation. It is now available in Return Management.');
+      } else {
+        alert('Failed to update status: ' + data.message);
       }
-      return req;
-    });
-    setReturnRequests(updatedRequests);
-    alert('Customer agreed to return quotation. Status updated to Agreed.');
+    } catch (error) {
+      console.error('Error agreeing to quotation:', error);
+      alert('An error occurred while updating status');
+    }
   };
 
   const handleIssuePackingList = (request: DeliveryRequest, set: DeliverySet) => {
@@ -352,52 +483,54 @@ export default function DeliveryReturnManagement() {
     setShowPackingListModal(true);
   };
 
-  const handleConfirmPackingList = () => {
+  const handleConfirmPackingList = async () => {
     if (selectedRequest && selectedSet) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
-            sets: req.sets.map(s => {
-              if (s.id === selectedSet.id) {
-                return {
-                  ...s,
-                  packingListIssued: true,
-                  status: 'Packing List Issued' as DeliveryStatus
-                };
-              }
-              return s;
-            })
-          };
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId: selectedSet.id,
+            packingListIssued: true,
+            status: 'Packing List Issued',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchDeliveryRequests();
+          setShowPackingListModal(false);
+          alert('Packing list issued successfully!');
+        } else {
+          alert('Failed to issue packing list: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowPackingListModal(false);
-      alert('Packing list issued successfully!');
+      } catch (error) {
+        console.error('Error issuing packing list:', error);
+        alert('An error occurred while issuing packing list');
+      }
     }
   };
 
-  const handleUpdatePackingLoading = (request: DeliveryRequest, set: DeliverySet) => {
-    const updatedRequests = deliveryRequests.map(req => {
-      if (req.id === request.id) {
-        return {
-          ...req,
-          sets: req.sets.map(s => {
-            if (s.id === set.id) {
-              return {
-                ...s,
-                status: 'Packing & Loading' as DeliveryStatus
-              };
-            }
-            return s;
-          })
-        };
+  const handleUpdatePackingLoading = async (request: DeliveryRequest, set: DeliverySet) => {
+    try {
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId: set.id,
+          status: 'Packing & Loading',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        alert('Status updated to Packing & Loading');
+      } else {
+        alert('Failed to update status: ' + data.message);
       }
-      return req;
-    });
-    setDeliveryRequests(updatedRequests);
-    alert('Status updated to Packing & Loading');
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('An error occurred while updating status');
+    }
   };
 
   const handleDriverAcknowledge = (request: DeliveryRequest, set: DeliverySet) => {
@@ -406,31 +539,32 @@ export default function DeliveryReturnManagement() {
     setShowDriverAckModal(true);
   };
 
-  const handleConfirmDriverAck = () => {
+  const handleConfirmDriverAck = async () => {
     if (selectedRequest && selectedSet && driverName && vehicleNumber) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
-            sets: req.sets.map(s => {
-              if (s.id === selectedSet.id) {
-                return {
-                  ...s,
-                  driverAcknowledged: true,
-                  status: 'Driver Acknowledged' as DeliveryStatus
-                };
-              }
-              return s;
-            })
-          };
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId: selectedSet.id,
+            driverAcknowledged: true,
+            status: 'Driver Acknowledged',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchDeliveryRequests();
+          setShowDriverAckModal(false);
+          setDriverName('');
+          setVehicleNumber('');
+          alert('Driver acknowledged successfully!');
+        } else {
+          alert('Failed to acknowledge: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowDriverAckModal(false);
-      setDriverName('');
-      setVehicleNumber('');
-      alert('Driver acknowledged successfully!');
+      } catch (error) {
+        console.error('Error acknowledging driver:', error);
+        alert('An error occurred while acknowledging driver');
+      }
     }
   };
 
@@ -440,31 +574,32 @@ export default function DeliveryReturnManagement() {
     setShowCustomerAckModal(true);
   };
 
-  const handleConfirmCustomerAck = () => {
+  const handleConfirmCustomerAck = async () => {
     if (selectedRequest && selectedSet && customerOTP) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
-            sets: req.sets.map(s => {
-              if (s.id === selectedSet.id) {
-                return {
-                  ...s,
-                  customerAcknowledged: true,
-                  otp: customerOTP,
-                  status: 'Customer Confirmed' as DeliveryStatus
-                };
-              }
-              return s;
-            })
-          };
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId: selectedSet.id,
+            customerAcknowledged: true,
+            otp: customerOTP,
+            status: 'Customer Confirmed',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchDeliveryRequests();
+          setShowCustomerAckModal(false);
+          setCustomerOTP('');
+          alert('Customer acknowledgement confirmed! Signed DO stored.');
+        } else {
+          alert('Failed to confirm: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowCustomerAckModal(false);
-      setCustomerOTP('');
-      alert('Customer acknowledgement confirmed! Signed DO stored.');
+      } catch (error) {
+        console.error('Error confirming customer:', error);
+        alert('An error occurred while confirming customer');
+      }
     }
   };
 
@@ -473,23 +608,42 @@ export default function DeliveryReturnManagement() {
     setShowPickupTimeModal(true);
   };
 
-  const handleSavePickupTime = () => {
+  const handleSavePickupTime = async () => {
     if (selectedRequest && pickupDate && pickupTime) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: selectedRequest.id,
             pickupTime: `${pickupDate} ${pickupTime}`,
-            sets: req.sets.map(s => ({ ...s, status: 'Confirmed' as DeliveryStatus }))
-          };
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          // Update all sets to Confirmed status
+          for (const set of selectedRequest.sets) {
+            await fetch('/api/delivery', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                setId: set.id,
+                status: 'Confirmed',
+              }),
+            });
+          }
+          await fetchDeliveryRequests();
+          setShowPickupTimeModal(false);
+          setPickupDate('');
+          setPickupTime('');
+          alert('Pickup time confirmed successfully!');
+        } else {
+          alert('Failed to save pickup time: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowPickupTimeModal(false);
-      setPickupDate('');
-      setPickupTime('');
-      alert('Pickup time confirmed successfully!');
+      } catch (error) {
+        console.error('Error saving pickup time:', error);
+        alert('An error occurred while saving pickup time');
+      }
     }
   };
 
@@ -500,27 +654,63 @@ export default function DeliveryReturnManagement() {
     setShowDOModal(true);
   };
 
-  const handleDOGenerated = (request: DeliveryRequest, set: DeliverySet) => {
-    const updatedRequests = deliveryRequests.map(req => {
-      if (req.id === request.id) {
-        return {
-          ...req,
-          sets: req.sets.map(s => {
-            if (s.id === set.id) {
-              return {
-                ...s,
-                status: 'DO Generated' as DeliveryStatus
-              };
-            }
-            return s;
-          })
+  const handleDOGenerated = async (request: DeliveryRequest, set: DeliverySet) => {
+    try {
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId: set.id,
+          status: 'DO Generated',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Create entry in DeliveryManagement localStorage
+        const doNumber = `DO-${request.agreementNo}-${set.setName.replace('Set ', '')}`;
+        const deliveryOrder = {
+          id: `${request.id}-${set.id}`,
+          doNumber,
+          orderId: request.requestId,
+          agreementId: request.agreementNo,
+          customerName: request.customerName,
+          customerContact: request.customerPhone || '',
+          customerAddress: request.deliveryAddress,
+          siteAddress: request.deliveryAddress,
+          type: request.deliveryType,
+          items: set.items.map((item, idx) => ({
+            id: `item-${idx}`,
+            scaffoldingItemId: `item-${idx}`,
+            scaffoldingItemName: item.name,
+            quantity: item.quantity,
+            unit: 'pcs',
+            availableStock: item.quantity,
+          })),
+          status: 'pending',
+          scheduledDate: set.deliveryDate || undefined,
+          createdBy: 'System',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
+
+        // Save to localStorage for DeliveryManagement to pick up
+        const existingOrders = JSON.parse(localStorage.getItem('deliveryOrders') || '[]');
+        // Check if already exists (avoid duplicates)
+        if (!existingOrders.find((o: { id: string }) => o.id === deliveryOrder.id)) {
+          existingOrders.push(deliveryOrder);
+          localStorage.setItem('deliveryOrders', JSON.stringify(existingOrders));
+        }
+
+        await fetchDeliveryRequests();
+        setShowDOModal(false);
+        alert('Delivery Order generated successfully! It is now available in Delivery Management.');
+      } else {
+        alert('Failed to generate DO: ' + data.message);
       }
-      return req;
-    });
-    setDeliveryRequests(updatedRequests);
-    setShowDOModal(false);
-    alert('Delivery Order generated successfully!');
+    } catch (error) {
+      console.error('Error generating DO:', error);
+      alert('An error occurred while generating DO');
+    }
   };
 
   const handleViewDO = (request: DeliveryRequest, set: DeliverySet) => {
@@ -533,19 +723,28 @@ export default function DeliveryReturnManagement() {
     setShowReturnDOModal(true);
   };
 
-  const handleReturnDOGenerated = (request: ReturnRequest) => {
-    const updatedRequests = returnRequests.map(req => {
-      if (req.id === request.id) {
-        return {
-          ...req,
-          status: 'DO Generated' as ReturnStatus
-        };
+  const handleReturnDOGenerated = async (request: ReturnRequest) => {
+    try {
+      const response = await fetch('/api/return', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: request.id,
+          status: 'Scheduled', // Return DO generated means pickup is scheduled
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchReturnRequests();
+        setShowReturnDOModal(false);
+        alert('Return DO generated successfully!');
+      } else {
+        alert('Failed to generate Return DO: ' + data.message);
       }
-      return req;
-    });
-    setReturnRequests(updatedRequests);
-    setShowReturnDOModal(false);
-    alert('Return DO generated successfully!');
+    } catch (error) {
+      console.error('Error generating Return DO:', error);
+      alert('An error occurred while generating Return DO');
+    }
   };
 
   const handleViewReturnDO = (request: ReturnRequest) => {
@@ -618,6 +817,19 @@ export default function DeliveryReturnManagement() {
           <h1 className="text-[#231F20]">Delivery & Return Management</h1>
           <p className="text-gray-600">Manage delivery and return requests with quotation workflow</p>
         </div>
+        <button
+          onClick={() => {
+            if (activeTab === 'delivery') {
+              setShowCreateDeliveryModal(true);
+            } else {
+              setShowCreateReturnModal(true);
+            }
+          }}
+          className="flex items-center space-x-2 px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg transition-colors"
+        >
+          <Plus className="size-5" />
+          <span>Create {activeTab === 'delivery' ? 'Delivery' : 'Return'} Request</span>
+        </button>
       </div>
 
       {/* Tabs */}
@@ -667,7 +879,17 @@ export default function DeliveryReturnManagement() {
       {/* Delivery Requests Tab */}
       {activeTab === 'delivery' && (
         <div className="space-y-6">
-          {filteredDeliveryRequests.map((request) => (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader className="size-8 animate-spin text-[#F15929]" />
+              <span className="ml-3 text-gray-600">Loading delivery requests...</span>
+            </div>
+          ) : filteredDeliveryRequests.length === 0 ? (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <Truck className="size-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">No delivery requests found</p>
+            </div>
+          ) : filteredDeliveryRequests.map((request) => (
             <div key={request.id} className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
               {/* Request Header */}
               <div className="flex items-start justify-between pb-4 border-b">
@@ -780,20 +1002,23 @@ export default function DeliveryReturnManagement() {
               </div>
             </div>
           ))}
-
-          {filteredDeliveryRequests.length === 0 && (
-            <div className="text-center py-12 bg-gray-50 rounded-lg">
-              <Truck className="size-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No delivery requests found</p>
-            </div>
-          )}
         </div>
       )}
 
       {/* Return Requests Tab */}
       {activeTab === 'return' && (
         <div className="space-y-4">
-          {filteredReturnRequests.map((request) => (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader className="size-8 animate-spin text-[#F15929]" />
+              <span className="ml-3 text-gray-600">Loading return requests...</span>
+            </div>
+          ) : filteredReturnRequests.length === 0 ? (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <Package className="size-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">No return requests found</p>
+            </div>
+          ) : filteredReturnRequests.map((request) => (
             <div key={request.id} className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
               <div className="flex items-start justify-between">
                 <div className="space-y-2 flex-1">
@@ -891,13 +1116,6 @@ export default function DeliveryReturnManagement() {
               </div>
             </div>
           ))}
-
-          {filteredReturnRequests.length === 0 && (
-            <div className="text-center py-12 bg-gray-50 rounded-lg">
-              <Package className="size-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No return requests found</p>
-            </div>
-          )}
         </div>
       )}
 
@@ -1131,6 +1349,419 @@ export default function DeliveryReturnManagement() {
           customerEmail={selectedReturnRequest.customerEmail}
           onClose={() => setShowViewReturnDOModal(false)}
         />
+      )}
+
+      {/* Create Delivery Request Modal */}
+      {showCreateDeliveryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl my-8 mx-4 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold text-[#231F20]">Create Delivery Request</h3>
+            
+            <div className="space-y-4">
+              {/* Agreement Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Rental Agreement *</label>
+                <select
+                  value={selectedAgreementId}
+                  onChange={(e) => setSelectedAgreementId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="">-- Select Agreement --</option>
+                  {rentalAgreements.map((agreement) => (
+                    <option key={agreement.id} value={agreement.id}>
+                      {agreement.agreementNumber} - {agreement.hirer} ({agreement.projectName})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Auto-populated fields (read-only display) */}
+              {selectedAgreementId && (() => {
+                const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
+                if (!agreement) return null;
+                return (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Agreement:</p>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Customer Name:</span>
+                        <span className="ml-2 text-gray-900">{agreement.hirer}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Phone:</span>
+                        <span className="ml-2 text-gray-900">{agreement.hirerPhone || 'N/A'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Delivery Address:</span>
+                        <span className="ml-2 text-gray-900">{agreement.location || 'N/A'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Request ID:</span>
+                        <span className="ml-2 text-gray-900 font-mono">
+                          DEL-{agreement.agreementNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Customer Email */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Customer Email</label>
+                <input
+                  type="email"
+                  value={newDeliveryForm.customerEmail}
+                  onChange={(e) => setNewDeliveryForm({ ...newDeliveryForm, customerEmail: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  placeholder="customer@email.com"
+                />
+              </div>
+
+              {/* Delivery Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Type *</label>
+                <select
+                  value={newDeliveryForm.deliveryType}
+                  onChange={(e) => setNewDeliveryForm({ ...newDeliveryForm, deliveryType: e.target.value as DeliveryType })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="delivery">Delivery (Company delivers to customer)</option>
+                  <option value="pickup">Pickup (Customer picks up from company)</option>
+                </select>
+              </div>
+
+              {/* Sets Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">Delivery Sets *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextSetLetter = String.fromCharCode(65 + deliverySets.length);
+                      setDeliverySets([
+                        ...deliverySets,
+                        { setName: `Set ${nextSetLetter}`, scheduledPeriod: '', items: [{ name: '', quantity: 1 }] },
+                      ]);
+                    }}
+                    className="text-sm text-[#F15929] hover:text-[#d94d1f] flex items-center space-x-1"
+                  >
+                    <Plus className="size-4" />
+                    <span>Add Set</span>
+                  </button>
+                </div>
+
+                {deliverySets.map((set, setIndex) => (
+                  <div key={setIndex} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-medium text-gray-700">{set.setName}</h5>
+                      {deliverySets.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setDeliverySets(deliverySets.filter((_, i) => i !== setIndex))}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Scheduled Period *</label>
+                      <input
+                        type="text"
+                        value={set.scheduledPeriod}
+                        onChange={(e) => {
+                          const updated = [...deliverySets];
+                          updated[setIndex].scheduledPeriod = e.target.value;
+                          setDeliverySets(updated);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
+                        placeholder="e.g., 1 Jan 2026 - 31 Mar 2026"
+                      />
+                    </div>
+
+                    {/* Items in Set */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs text-gray-500">Items *</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...deliverySets];
+                            updated[setIndex].items.push({ name: '', quantity: 1 });
+                            setDeliverySets(updated);
+                          }}
+                          className="text-xs text-[#F15929] hover:text-[#d94d1f]"
+                        >
+                          + Add Item
+                        </button>
+                      </div>
+                      {set.items.map((item, itemIndex) => (
+                        <div key={itemIndex} className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const updated = [...deliverySets];
+                              updated[setIndex].items[itemIndex].name = e.target.value;
+                              setDeliverySets(updated);
+                            }}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
+                            placeholder="Item name"
+                          />
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const updated = [...deliverySets];
+                              updated[setIndex].items[itemIndex].quantity = parseInt(e.target.value) || 1;
+                              setDeliverySets(updated);
+                            }}
+                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
+                            placeholder="Qty"
+                          />
+                          {set.items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...deliverySets];
+                                updated[setIndex].items = updated[setIndex].items.filter((_, i) => i !== itemIndex);
+                                setDeliverySets(updated);
+                              }}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <X className="size-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setShowCreateDeliveryModal(false);
+                  setSelectedAgreementId('');
+                  setNewDeliveryForm({ customerEmail: '', deliveryType: 'delivery' });
+                  setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', items: [{ name: '', quantity: 1 }] }]);
+                }}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                disabled={isCreating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateDeliveryRequest}
+                disabled={isCreating || !selectedAgreementId}
+                className="px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {isCreating && <Loader className="size-4 animate-spin" />}
+                <span>Create Delivery Request</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Return Request Modal */}
+      {showCreateReturnModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl my-8 mx-4 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold text-[#231F20]">Create Return Request</h3>
+            
+            <div className="space-y-4">
+              {/* Agreement Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Rental Agreement *</label>
+                <select
+                  value={selectedAgreementId}
+                  onChange={(e) => setSelectedAgreementId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="">-- Select Agreement --</option>
+                  {rentalAgreements.map((agreement) => (
+                    <option key={agreement.id} value={agreement.id}>
+                      {agreement.agreementNumber} - {agreement.hirer} ({agreement.projectName})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Auto-populated fields (read-only display) */}
+              {selectedAgreementId && (() => {
+                const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
+                if (!agreement) return null;
+                return (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Agreement:</p>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Customer Name:</span>
+                        <span className="ml-2 text-gray-900">{agreement.hirer}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Phone:</span>
+                        <span className="ml-2 text-gray-900">{agreement.hirerPhone || 'N/A'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Pickup Address:</span>
+                        <span className="ml-2 text-gray-900">{agreement.location || 'N/A'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Request ID:</span>
+                        <span className="ml-2 text-gray-900 font-mono">
+                          RET-{agreement.agreementNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Set Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Set Name *</label>
+                <input
+                  type="text"
+                  value={newReturnForm.setName}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, setName: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  placeholder="e.g., Set A"
+                />
+              </div>
+
+              {/* Return Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Return Type *</label>
+                <select
+                  value={newReturnForm.returnType}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, returnType: e.target.value as ReturnType })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="full">Full Return (All items in set)</option>
+                  <option value="partial">Partial Return (Some items)</option>
+                </select>
+              </div>
+
+              {/* Collection Method */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Collection Method *</label>
+                <select
+                  value={newReturnForm.collectionMethod}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, collectionMethod: e.target.value as CollectionMethod })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="transport">Transport (Company picks up)</option>
+                  <option value="self-return">Self Return (Customer delivers)</option>
+                </select>
+              </div>
+
+              {/* Customer Email */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Customer Email</label>
+                <input
+                  type="email"
+                  value={newReturnForm.customerEmail}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, customerEmail: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  placeholder="customer@email.com"
+                />
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reason for Return *</label>
+                <textarea
+                  value={newReturnForm.reason}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  rows={3}
+                  placeholder="Enter reason for return..."
+                />
+              </div>
+
+              {/* Items Section */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">Items to Return *</label>
+                  <button
+                    type="button"
+                    onClick={() => setReturnItems([...returnItems, { name: '', quantity: 1 }])}
+                    className="text-sm text-[#F15929] hover:text-[#d94d1f] flex items-center space-x-1"
+                  >
+                    <Plus className="size-4" />
+                    <span>Add Item</span>
+                  </button>
+                </div>
+                {returnItems.map((item, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={item.name}
+                      onChange={(e) => {
+                        const updated = [...returnItems];
+                        updated[index].name = e.target.value;
+                        setReturnItems(updated);
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
+                      placeholder="Item name"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) => {
+                        const updated = [...returnItems];
+                        updated[index].quantity = parseInt(e.target.value) || 1;
+                        setReturnItems(updated);
+                      }}
+                      className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
+                      placeholder="Qty"
+                    />
+                    {returnItems.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setReturnItems(returnItems.filter((_, i) => i !== index))}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setShowCreateReturnModal(false);
+                  setSelectedAgreementId('');
+                  setNewReturnForm({ setName: '', reason: '', customerEmail: '', returnType: 'full', collectionMethod: 'transport' });
+                  setReturnItems([{ name: '', quantity: 1 }]);
+                }}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                disabled={isCreating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateReturnRequest}
+                disabled={isCreating || !selectedAgreementId || !newReturnForm.setName || !newReturnForm.reason}
+                className="px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {isCreating && <Loader className="size-4 animate-spin" />}
+                <span>Create Return Request</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
