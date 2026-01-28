@@ -47,3 +47,8 @@ npm run dev
 ```
 
 The application will be available at `http://localhost:3000`.
+
+---
+
+# ["Check out Api docs"](./docs/api.md)
+
