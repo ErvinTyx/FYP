@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession, signOut } from "next-auth/react";
 import {
   Users,
@@ -69,6 +69,7 @@ import { ForgotPasswordEmailEntry } from "./components/auth/ForgotPasswordEmailE
 import { ForgotPasswordCodeEntry } from "./components/auth/ForgotPasswordCodeEntry";
 import { ForgotPasswordNewPassword } from "./components/auth/ForgotPasswordNewPassword";
 import { ForgotPasswordSuccess } from "./components/auth/ForgotPasswordSuccess";
+import { SessionExpiredPage } from "./components/auth/SessionExpiredPage";
 
 // Page Components
 import { UserManagement } from "./components/UserManagement";
@@ -151,6 +152,125 @@ export default function App() {
   const [systemMode, setSystemMode] = useState<SystemMode>("ERP");
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [sessionExpired, setSessionExpired] = useState(false);
+  
+  // Track previous auth status to detect session expiry
+  const prevStatusRef = useRef<string | null>(null);
+  const wasAuthenticatedRef = useRef(false);
+  const hasInitializedPageRef = useRef(false); // Track if we've set the initial page
+
+  // Detect session expiry (transition from authenticated to unauthenticated)
+  useEffect(() => {
+    // If currently authenticated, remember this
+    if (status === "authenticated") {
+      wasAuthenticatedRef.current = true;
+    }
+    
+    // Detect session expiry: was authenticated before, now unauthenticated
+    if (
+      status === "unauthenticated" && 
+      wasAuthenticatedRef.current && 
+      prevStatusRef.current === "authenticated"
+    ) {
+      setSessionExpired(true);
+      wasAuthenticatedRef.current = false;
+    }
+    
+    // Update previous status
+    prevStatusRef.current = status;
+  }, [status]);
+
+  // Store expiresAt in a ref to avoid re-running effect on every session update
+  const sessionExpiresAtRef = useRef<number | null>(null);
+  
+  // Update the ref when session changes, but only if we get a new expiresAt
+  useEffect(() => {
+    const expiresAt = (session as any)?.expiresAt as number | undefined;
+    if (expiresAt && sessionExpiresAtRef.current !== expiresAt) {
+      sessionExpiresAtRef.current = expiresAt;
+    }
+  }, [session]);
+
+  // Check session expiration based on expiresAt timestamp from server
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    // Get expiresAt from ref or session
+    const expiresAt = sessionExpiresAtRef.current || (session as any)?.expiresAt as number | undefined;
+    
+    if (!expiresAt) {
+      return;
+    }
+
+    const checkExpiration = () => {
+      const now = Date.now();
+      
+      if (now >= expiresAt) {
+        // Session has expired - sign out and show expired page
+        wasAuthenticatedRef.current = true;
+        signOut({ redirect: false }).then(() => {
+          setSessionExpired(true);
+        });
+      }
+    };
+
+    // Check every 10 seconds
+    const interval = setInterval(checkExpiration, 10 * 1000);
+
+    // Also set a timeout for exact expiration time
+    const timeUntilExpiry = expiresAt - Date.now();
+    let timeout: NodeJS.Timeout | null = null;
+    
+    if (timeUntilExpiry > 0) {
+      timeout = setTimeout(checkExpiration, timeUntilExpiry + 100);
+    } else {
+      // Already expired
+      checkExpiration();
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [status]);
+
+  // Sync session with local state - only set initial page once per login
+  useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      // Reset session expired flag on successful login
+      setSessionExpired(false);
+      
+      const roles = session.user.roles || [];
+      // Get primary role (first role or default)
+      const primaryRole = roles[0] || "admin";
+      setUserRole(primaryRole);
+      
+      // Only set the initial page on first authentication, not on session refresh
+      if (!hasInitializedPageRef.current) {
+        hasInitializedPageRef.current = true;
+        
+        // Customer goes to CRM portal
+        if (primaryRole === "customer") {
+          setSystemMode("CRM");
+          setCurrentPage("customer-portal");
+        } else {
+          // All other roles go to ERP portal
+          setSystemMode("ERP");
+          setCurrentPage("billing-dashboard");
+        }
+        
+        // Go directly to dashboard
+        setAuthScreen("dashboard");
+      }
+    }
+    
+    // Reset the flag when user logs out
+    if (status === "unauthenticated") {
+      hasInitializedPageRef.current = false;
+    }
+  }, [status, session]);
 
   // Sync session with local state
   useEffect(() => {
@@ -236,12 +356,12 @@ export default function App() {
   };
 
   const handleLogoutConfirm = async () => {
-    await signOut({ redirect: false });
-    setUserRole("");
-    setSystemMode("ERP");
-    setCurrentPage("billing-dashboard");
+    await signOut({ callbackUrl: "/", redirect: true });
+  };
+
+  const handleSessionExpiredReturn = () => {
+    setSessionExpired(false);
     setAuthScreen("portal-selector");
-    setShowLogoutDialog(false);
   };
 
   // Show loading state while checking session
@@ -251,6 +371,24 @@ export default function App() {
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
           <p className="text-white text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show session expired page if session has expired
+  if (sessionExpired && status === "unauthenticated") {
+    return <SessionExpiredPage onReturnToLogin={handleSessionExpiredReturn} />;
+  }
+
+  // Show loading while transitioning from login to dashboard
+  // This prevents the glitch where dashboard shows briefly before state is fully updated
+  if (status === "authenticated" && authScreen !== "dashboard") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F15929] via-[#F15929] to-[#D14820]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
+          <p className="text-white text-lg">Preparing dashboard...</p>
         </div>
       </div>
     );
@@ -266,6 +404,7 @@ export default function App() {
       <LoginPage
         onLogin={handleStaffLogin}
         onNavigateToRegister={() => setAuthScreen("register-select")}
+        onNavigateToForgotPassword={() => setAuthScreen("forgot-password-email")}
         onBack={() => setAuthScreen("portal-selector")}
       />
     );
@@ -452,7 +591,7 @@ export default function App() {
   const renderPage = () => {
     switch (currentPage) {
       case "user-management":
-        return <UserManagement />;
+        return <UserManagement userRole={userRole} />;
       case "billing-dashboard":
         return <BillingDashboard 
           onNavigateToCreditNotes={() => setCurrentPage("credit-notes")}
@@ -502,7 +641,15 @@ export default function App() {
       case "project-closure":
         return <ProjectClosureManagement />;
       case "profile":
-        return <ProfilePage currentUserName={getRoleName()} currentUserRole={getRoleName()} />;
+        return (
+          <ProfilePage 
+            userId={session?.user?.id}
+            currentUserName={session?.user?.name || getRoleName()}
+            currentUserRole={getRoleName()}
+            currentUserEmail={session?.user?.email || ""}
+            currentUserPhone={(session?.user as any)?.phone || ""}
+          />
+        );
       case "delivery-return-requests":
         return <DeliveryReturnManagement />;
       default:

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Building2, UserCircle, Upload, CheckCircle, Clock, Mail, Lock, Shield, AlertCircle, FileText } from "lucide-react";
+import { ArrowLeft, Building2, UserCircle, Upload, CheckCircle, Clock, Mail, Lock, Shield, AlertCircle, FileText, Info } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -10,6 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../ui/popover";
 
 interface CustomerRegistrationProps {
   onBack: () => void;
@@ -19,18 +24,20 @@ interface CustomerRegistrationProps {
 type IndividualStep = 1 | 2 | 3 | 4 | 5;
 type BusinessStep = 1 | 2 | 3 | 4 | 5;
 
+type IdType = 'NRIC' | 'PASSPORT' | 'ARMY';
+
 interface IndividualFormData {
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
-  tin: string;
   verificationCode: string;
   password: string;
   confirmPassword: string;
-  icNumber: string;
-  icFrontImage: File | null;
-  icBackImage: File | null;
+  tin: string;
+  idType: IdType;
+  idNumber: string;
+  identityDocument: File | null;
 }
 
 interface BusinessFormData {
@@ -41,8 +48,10 @@ interface BusinessFormData {
   verificationCode: string;
   password: string;
   confirmPassword: string;
-  brn: string;
   tin: string;
+  idNumber: string; // BRN (Business Registration Number)
+  idType: 'BRN';
+  identityDocument: File | null;
 }
 
 export function CustomerRegistration({ onBack, onComplete }: CustomerRegistrationProps) {
@@ -54,13 +63,13 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     lastName: '',
     email: '',
     phone: '',
-    tin: '',
     verificationCode: '',
     password: '',
     confirmPassword: '',
-    icNumber: '',
-    icFrontImage: null,
-    icBackImage: null,
+    tin: '',
+    idType: 'NRIC',
+    idNumber: '',
+    identityDocument: null,
   });
   const [businessFormData, setBusinessFormData] = useState<BusinessFormData>({
     firstName: '',
@@ -70,13 +79,19 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     verificationCode: '',
     password: '',
     confirmPassword: '',
-    brn: '',
     tin: '',
+    idNumber: '', // BRN
+    idType: 'BRN',
+    identityDocument: null,
   });
   const [errors, setErrors] = useState<Partial<Record<keyof IndividualFormData, string>>>({});
   const [businessErrors, setBusinessErrors] = useState<Partial<Record<keyof BusinessFormData, string>>>({});
   const [resendCountdown, setResendCountdown] = useState(0);
   const [isCodeSent, setIsCodeSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
 
   // TIN Validation - Must be IG followed by 12 digits (for individuals)
   const validateTIN = (tin: string): boolean => {
@@ -85,9 +100,9 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
   };
 
   // Business Registration Number (BRN) Validation
-  const validateBRN = (brn: string): boolean => {
+  const validateBRN = (brnValue: string): boolean => {
     // Remove spaces/dashes for validation
-    const cleanBRN = brn.replace(/[\s-]/g, '');
+    const cleanBRN = brnValue.replace(/[\s-]/g, '');
     
     // Must be exactly 12 digits
     if (!/^\d{12}$/.test(cleanBRN)) {
@@ -158,18 +173,39 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
   };
 
   // Business Step 2 validation (Email Verification)
-  const validateBusinessStep2 = (): boolean => {
+  const validateBusinessStep2 = async (): Promise<boolean> => {
     if (!businessFormData.verificationCode.trim()) {
       setBusinessErrors({ verificationCode: 'Verification code is required' });
       return false;
     }
-    // Simulate validation (in real app, verify with backend)
-    if (businessFormData.verificationCode !== '123456') {
-      setBusinessErrors({ verificationCode: 'Invalid verification code. Please try again.' });
+
+    setIsVerifyingCode(true);
+    try {
+      const response = await fetch('/api/register/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: businessFormData.email,
+          code: businessFormData.verificationCode,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setBusinessErrors({ verificationCode: data.message || 'Invalid verification code. Please try again.' });
+        return false;
+      }
+
+      setBusinessErrors({});
+      return true;
+    } catch (error) {
+      console.error('Verification error:', error);
+      setBusinessErrors({ verificationCode: 'Failed to verify code. Please try again.' });
       return false;
+    } finally {
+      setIsVerifyingCode(false);
     }
-    setBusinessErrors({});
-    return true;
   };
 
   // Business Step 3 validation (Password)
@@ -191,37 +227,73 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     return Object.keys(newErrors).length === 0;
   };
 
-  // Business Step 4 validation (BRN and TIN)
+  // Business Step 4 validation (TIN, BRN, and Identity Document)
   const validateBusinessStep4 = (): boolean => {
     const newErrors: Partial<Record<keyof BusinessFormData, string>> = {};
-
-    if (!businessFormData.brn.trim()) {
-      newErrors.brn = 'Business Registration Number is required';
-    } else if (!validateBRN(businessFormData.brn)) {
-      newErrors.brn = 'Invalid BRN format. Must be 12 digits (YYYY-TT-NNNNNN)';
-    }
 
     if (!businessFormData.tin.trim()) {
       newErrors.tin = 'Tax Identification Number is required';
     } else if (!validateCompanyTIN(businessFormData.tin)) {
-      newErrors.tin = 'Invalid TIN format. Must be a valid prefix (C, CS, D, E, F, FA, PT, TA, TC, TN, TR, TP, J, LE) followed by 12 digits';
+      newErrors.tin = 'Invalid TIN format';
+    }
+
+    if (!businessFormData.idNumber.trim()) {
+      newErrors.idNumber = 'Business Registration Number is required';
+    } else if (!validateBRN(businessFormData.idNumber)) {
+      newErrors.idNumber = 'Invalid BRN format';
+    }
+
+    if (!businessFormData.identityDocument) {
+      newErrors.identityDocument = 'Identity supporting document is required';
     }
 
     setBusinessErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle Business Step Submissions
-  const handleBusinessStep1Submit = () => {
-    if (validateBusinessStep1()) {
-      setBusinessStep(2);
-      setIsCodeSent(true);
-      startResendCountdown();
+  // Send verification code via API
+  const sendVerificationCode = async (email: string, firstName?: string): Promise<boolean> => {
+    setIsSendingCode(true);
+    try {
+      const response = await fetch('/api/register/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, firstName }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        console.error('Failed to send code:', data.message);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Send code error:', error);
+      return false;
+    } finally {
+      setIsSendingCode(false);
     }
   };
 
-  const handleBusinessStep2Submit = () => {
-    if (validateBusinessStep2()) {
+  // Handle Business Step Submissions
+  const handleBusinessStep1Submit = async () => {
+    if (validateBusinessStep1()) {
+      const codeSent = await sendVerificationCode(businessFormData.email, businessFormData.firstName);
+      if (codeSent) {
+        setBusinessStep(2);
+        setIsCodeSent(true);
+        startResendCountdown();
+      } else {
+        setBusinessErrors({ email: 'Failed to send verification code. Please try again.' });
+      }
+    }
+  };
+
+  const handleBusinessStep2Submit = async () => {
+    const isValid = await validateBusinessStep2();
+    if (isValid) {
       setBusinessStep(3);
     }
   };
@@ -232,9 +304,60 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     }
   };
 
-  const handleBusinessStep4Submit = () => {
-    if (validateBusinessStep4()) {
+  const handleBusinessStep4Submit = async () => {
+    if (!validateBusinessStep4()) {
+      return;
+    }
+
+    // Submit to API
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      // First, upload the identity document
+      let identityDocumentUrl: string | null = null;
+      if (businessFormData.identityDocument) {
+        try {
+          identityDocumentUrl = await uploadFileToServer(businessFormData.identityDocument);
+        } catch {
+          setSubmitError('Failed to upload identity document. Please try again.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      const response = await fetch('/api/register/customer/business', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName: businessFormData.firstName,
+          lastName: businessFormData.lastName,
+          email: businessFormData.email,
+          phone: businessFormData.phone,
+          password: businessFormData.password,
+          tin: businessFormData.tin,
+          idNumber: businessFormData.idNumber, // BRN
+          idType: businessFormData.idType,
+          identityDocumentUrl: identityDocumentUrl,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setSubmitError(data.message || 'Registration failed. Please try again.');
+        return;
+      }
+
+      // Success - move to pending approval step
       setBusinessStep(5);
+    } catch (error) {
+      console.error('Business registration error:', error);
+      setSubmitError('An error occurred while submitting registration. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -256,23 +379,22 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required';
     }
-    if (!formData.tin.trim()) {
-      newErrors.tin = 'TIN is required';
-    } else if (!validateTIN(formData.tin)) {
-      newErrors.tin = 'TIN must be in format: IG followed by 12 digits (e.g., IG123456789012)';
-    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   // Handle Step 1 submission
-  const handleStep1Submit = () => {
+  const handleStep1Submit = async () => {
     if (validateStep1()) {
-      setIndividualStep(2);
-      // Simulate sending verification code
-      setIsCodeSent(true);
-      startResendCountdown();
+      const codeSent = await sendVerificationCode(formData.email, formData.firstName);
+      if (codeSent) {
+        setIndividualStep(2);
+        setIsCodeSent(true);
+        startResendCountdown();
+      } else {
+        setErrors({ email: 'Failed to send verification code. Please try again.' });
+      }
     }
   };
 
@@ -290,27 +412,59 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     }, 1000);
   };
 
-  // Handle resend code
-  const handleResendCode = () => {
-    if (resendCountdown === 0) {
-      alert('Verification code resent to ' + formData.email);
-      startResendCountdown();
+  // Handle resend code for individual
+  const handleResendCode = async () => {
+    if (resendCountdown === 0 && !isSendingCode) {
+      const codeSent = await sendVerificationCode(formData.email, formData.firstName);
+      if (codeSent) {
+        startResendCountdown();
+      }
+    }
+  };
+
+  // Handle resend code for business
+  const handleBusinessResendCode = async () => {
+    if (resendCountdown === 0 && !isSendingCode) {
+      const codeSent = await sendVerificationCode(businessFormData.email, businessFormData.firstName);
+      if (codeSent) {
+        startResendCountdown();
+      }
     }
   };
 
   // Validate verification code
-  const handleStep2Submit = () => {
+  const handleStep2Submit = async () => {
     if (!formData.verificationCode.trim()) {
       setErrors({ verificationCode: 'Verification code is required' });
       return;
     }
-    // Simulate validation (in real app, verify with backend)
-    if (formData.verificationCode !== '123456') {
-      setErrors({ verificationCode: 'Invalid verification code. Please try again.' });
-      return;
+
+    setIsVerifyingCode(true);
+    try {
+      const response = await fetch('/api/register/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          code: formData.verificationCode,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setErrors({ verificationCode: data.message || 'Invalid verification code. Please try again.' });
+        return;
+      }
+
+      setErrors({});
+      setIndividualStep(3);
+    } catch (error) {
+      console.error('Verification error:', error);
+      setErrors({ verificationCode: 'Failed to verify code. Please try again.' });
+    } finally {
+      setIsVerifyingCode(false);
     }
-    setErrors({});
-    setIndividualStep(3);
   };
 
   // Validate password
@@ -334,31 +488,129 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     }
   };
 
-  // Validate ID verification
-  const handleStep4Submit = () => {
-    const newErrors: Partial<Record<keyof IndividualFormData, string>> = {};
-
-    if (!formData.icNumber.trim()) {
-      newErrors.icNumber = 'IC number is required';
-    }
-    if (!formData.icFrontImage) {
-      newErrors.icFrontImage = 'IC front image is required';
-    }
-    if (!formData.icBackImage) {
-      newErrors.icBackImage = 'IC back image is required';
-    }
-
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length === 0) {
-      setIndividualStep(5);
+  // Get label for ID number based on idType
+  const getIdNumberLabel = (idType: IdType): string => {
+    switch (idType) {
+      case 'NRIC':
+        return 'NRIC Number';
+      case 'PASSPORT':
+        return 'Passport Number';
+      case 'ARMY':
+        return 'Army ID Number';
     }
   };
 
-  // Handle file upload
-  const handleFileUpload = (field: 'icFrontImage' | 'icBackImage', file: File | null) => {
-    setFormData({ ...formData, [field]: file });
+  // Validate and submit individual customer registration
+  const handleStep4Submit = async () => {
+    const newErrors: Partial<Record<keyof IndividualFormData, string>> = {};
+
+    if (!formData.tin.trim()) {
+      newErrors.tin = 'TIN is required';
+    } else if (!validateTIN(formData.tin)) {
+      newErrors.tin = 'TIN must be in format: IG followed by 12 digits';
+    }
+    if (!formData.idNumber.trim()) {
+      newErrors.idNumber = `${getIdNumberLabel(formData.idType)} is required`;
+    }
+    if (!formData.identityDocument) {
+      newErrors.identityDocument = 'Identity supporting document is required';
+    }
+
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+
+    // Submit to API
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      // First, upload the identity document
+      let identityDocumentUrl: string | null = null;
+      if (formData.identityDocument) {
+        try {
+          identityDocumentUrl = await uploadFileToServer(formData.identityDocument);
+        } catch {
+          setSubmitError('Failed to upload identity document. Please try again.');
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      const response = await fetch('/api/register/customer/individual', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+          tin: formData.tin,
+          idType: formData.idType,
+          idNumber: formData.idNumber,
+          identityDocumentUrl: identityDocumentUrl,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setSubmitError(data.message || 'Registration failed. Please try again.');
+        return;
+      }
+
+      // Success - move to pending approval step
+      setIndividualStep(5);
+    } catch (error) {
+      console.error('Registration error:', error);
+      setSubmitError('An error occurred while submitting registration. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Upload file to server and return URL
+  const uploadFileToServer = async (file: File): Promise<string | null> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', 'identity-documents');
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'File upload failed');
+      }
+
+      return data.url;
+    } catch (error) {
+      console.error('File upload error:', error);
+      throw error;
+    }
+  };
+
+  // Handle file upload for individual form
+  const handleFileUpload = (file: File | null) => {
+    setFormData({ ...formData, identityDocument: file });
     if (file) {
-      setErrors({ ...errors, [field]: undefined });
+      setErrors({ ...errors, identityDocument: undefined });
+    }
+  };
+
+  // Handle file upload for business form
+  const handleBusinessFileUpload = (file: File | null) => {
+    setBusinessFormData({ ...businessFormData, identityDocument: file });
+    if (file) {
+      setBusinessErrors({ ...businessErrors, identityDocument: undefined });
     }
   };
 
@@ -551,8 +803,9 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                     type="button"
                     onClick={handleBusinessStep1Submit}
                     className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
+                    disabled={isSendingCode}
                   >
-                    Continue
+                    {isSendingCode ? 'Sending Code...' : 'Continue'}
                   </Button>
                 </div>
               </div>
@@ -608,13 +861,11 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                     </div>
                   ) : (
                     <button
-                      onClick={() => {
-                        alert('Verification code resent to ' + businessFormData.email);
-                        startResendCountdown();
-                      }}
-                      className="text-[#1E40AF] hover:text-[#1E3A8A] font-medium"
+                      onClick={handleBusinessResendCode}
+                      disabled={isSendingCode}
+                      className="text-[#1E40AF] hover:text-[#1E3A8A] font-medium disabled:opacity-50"
                     >
-                      Resend Code
+                      {isSendingCode ? 'Sending...' : 'Resend Code'}
                     </button>
                   )}
                 </div>
@@ -625,6 +876,7 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                     variant="outline"
                     onClick={() => setBusinessStep(1)}
                     className="h-10 px-6"
+                    disabled={isVerifyingCode}
                   >
                     Back
                   </Button>
@@ -632,14 +884,11 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                     type="button"
                     onClick={handleBusinessStep2Submit}
                     className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
+                    disabled={isVerifyingCode}
                   >
-                    Verify Email
+                    {isVerifyingCode ? 'Verifying...' : 'Verify Email'}
                   </Button>
                 </div>
-
-                <p className="text-xs text-center text-gray-500 pt-2">
-                  Demo: Use code <span className="font-mono bg-gray-100 px-2 py-1 rounded">123456</span> to verify
-                </p>
               </div>
             </>
           )}
@@ -662,9 +911,28 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="businessPassword">
-                    Password <span className="text-red-500">*</span>
-                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="businessPassword">
+                      Password <span className="text-red-500">*</span>
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="text-gray-400 hover:text-gray-600">
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 text-sm bg-white">
+                        <p className="font-medium mb-2">Password Requirements</p>
+                        <ul className="text-gray-600 space-y-1 text-xs">
+                          <li>• At least 8 characters</li>
+                          <li>• At least one uppercase letter</li>
+                          <li>• At least one lowercase letter</li>
+                          <li>• At least one number</li>
+                          <li>• At least one symbol</li>
+                        </ul>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                   <Input
                     id="businessPassword"
                     type="password"
@@ -695,28 +963,6 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                   )}
                 </div>
 
-                {/* Password Requirements */}
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                  <p className="text-xs text-gray-700 mb-2">Password must contain:</p>
-                  <ul className="text-xs text-gray-600 space-y-1">
-                    <li className={businessFormData.password.length >= 8 ? 'text-green-600' : ''}>
-                      • At least 8 characters
-                    </li>
-                    <li className={/[A-Z]/.test(businessFormData.password) ? 'text-green-600' : ''}>
-                      • At least one uppercase letter
-                    </li>
-                    <li className={/[a-z]/.test(businessFormData.password) ? 'text-green-600' : ''}>
-                      • At least one lowercase letter
-                    </li>
-                    <li className={/[0-9]/.test(businessFormData.password) ? 'text-green-600' : ''}>
-                      • At least one number
-                    </li>
-                    <li className={/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(businessFormData.password) ? 'text-green-600' : ''}>
-                      • At least one symbol
-                    </li>
-                  </ul>
-                </div>
-
                 <div className="flex justify-between gap-3 pt-4">
                   <Button
                     type="button"
@@ -738,7 +984,7 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
             </>
           )}
 
-          {/* Step 4: Business Details (BRN & TIN) */}
+          {/* Step 4: Business Details (TIN, BRN & Identity Document) */}
           {businessStep === 4 && (
             <>
               <div className="mb-6">
@@ -755,35 +1001,42 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
               </div>
 
               <div className="space-y-4">
+                {/* TIN Field - First */}
                 <div className="space-y-2">
-                  <Label htmlFor="brn">
-                    Business Registration Number (BRN) <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="brn"
-                    placeholder="202201234565"
-                    value={businessFormData.brn}
-                    onChange={(e) => setBusinessFormData({ ...businessFormData, brn: e.target.value })}
-                    className={`h-10 border-[#D1D5DB] ${businessErrors.brn ? 'border-red-500' : ''}`}
-                  />
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900">
-                    <p className="mb-2">Format: YYYY-TT-NNNNNN (12 digits)</p>
-                    <ul className="space-y-1 ml-2">
-                      <li>• First 4 digits: Year of incorporation</li>
-                      <li>• Next 2 digits: Entity type (01-06)</li>
-                      <li>• Last 6 digits: Unique entity number</li>
-                    </ul>
-                    <p className="mt-2">Example: 2022 01 234565</p>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="businessTin">
+                      Tax Identification Number (TIN) <span className="text-red-500">*</span>
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="text-gray-400 hover:text-gray-600">
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 text-sm bg-white">
+                        <p className="font-medium mb-2">TIN Format</p>
+                        <p className="text-gray-600 mb-2">Prefix + 12 digits</p>
+                        <p className="text-gray-600 mb-1">Valid prefixes:</p>
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-gray-500">
+                          <span>C (Companies)</span>
+                          <span>CS (Cooperative)</span>
+                          <span>D (Partnerships)</span>
+                          <span>E (Employers)</span>
+                          <span>F (Associations)</span>
+                          <span>FA (Entertainers)</span>
+                          <span>PT (LLPs)</span>
+                          <span>TA (Trust Bodies)</span>
+                          <span>TC (Unit Trusts)</span>
+                          <span>TN (Business Trusts)</span>
+                          <span>TR (REITs)</span>
+                          <span>TP (Estates)</span>
+                          <span>J (Hindu Families)</span>
+                          <span>LE (Labuan)</span>
+                        </div>
+                        <p className="text-gray-500 mt-2 text-xs">Example: C123456789012</p>
+                      </PopoverContent>
+                    </Popover>
                   </div>
-                  {businessErrors.brn && (
-                    <p className="text-xs text-red-500">{businessErrors.brn}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="businessTin">
-                    Tax Identification Number (TIN) <span className="text-red-500">*</span>
-                  </Label>
                   <Input
                     id="businessTin"
                     placeholder="C123456789012"
@@ -791,30 +1044,90 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                     onChange={(e) => setBusinessFormData({ ...businessFormData, tin: e.target.value.toUpperCase() })}
                     className={`h-10 border-[#D1D5DB] ${businessErrors.tin ? 'border-red-500' : ''}`}
                   />
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900">
-                    <p className="mb-2">Format: Prefix + 12 digits</p>
-                    <p className="mb-1">Valid prefixes:</p>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 ml-2">
-                      <span>• C (Companies)</span>
-                      <span>• CS (Cooperative)</span>
-                      <span>• D (Partnerships)</span>
-                      <span>• E (Employers)</span>
-                      <span>• F (Associations)</span>
-                      <span>• FA (Entertainers)</span>
-                      <span>• PT (LLPs)</span>
-                      <span>• TA (Trust Bodies)</span>
-                      <span>• TC (Unit Trusts)</span>
-                      <span>• TN (Business Trusts)</span>
-                      <span>• TR (REITs)</span>
-                      <span>• TP (Estates)</span>
-                      <span>• J (Hindu Families)</span>
-                      <span>• LE (Labuan)</span>
-                    </div>
-                  </div>
                   {businessErrors.tin && (
                     <p className="text-xs text-red-500">{businessErrors.tin}</p>
                   )}
                 </div>
+
+                {/* BRN Field - Second */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="idNumber">
+                      Business Registration Number (BRN) <span className="text-red-500">*</span>
+                    </Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="text-gray-400 hover:text-gray-600">
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 text-sm bg-white">
+                        <p className="font-medium mb-2">BRN Format</p>
+                        <p className="text-gray-600 mb-2">YYYY-TT-NNNNNN (12 digits)</p>
+                        <ul className="text-xs text-gray-500 space-y-1">
+                          <li>• First 4 digits: Year of incorporation</li>
+                          <li>• Next 2 digits: Entity type (01-06)</li>
+                          <li>• Last 6 digits: Unique entity number</li>
+                        </ul>
+                        <p className="text-gray-500 mt-2 text-xs">Example: 202201234565</p>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <Input
+                    id="idNumber"
+                    placeholder="202201234565"
+                    value={businessFormData.idNumber}
+                    onChange={(e) => setBusinessFormData({ ...businessFormData, idNumber: e.target.value })}
+                    className={`h-10 border-[#D1D5DB] ${businessErrors.idNumber ? 'border-red-500' : ''}`}
+                  />
+                  {businessErrors.idNumber && (
+                    <p className="text-xs text-red-500">{businessErrors.idNumber}</p>
+                  )}
+                </div>
+
+                {/* Identity Document Upload */}
+                <div className="space-y-2">
+                  <Label>
+                    Upload Identity Supporting Document <span className="text-red-500">*</span>
+                  </Label>
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-[#1E40AF] transition-colors ${
+                      businessErrors.identityDocument ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    onClick={() => document.getElementById('businessIdentityDocInput')?.click()}
+                  >
+                    <input
+                      id="businessIdentityDocInput"
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={(e) => handleBusinessFileUpload(e.target.files?.[0] || null)}
+                    />
+                    {businessFormData.identityDocument ? (
+                      <div className="flex items-center justify-center gap-2 text-green-600">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="text-sm">{businessFormData.identityDocument.name}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-sm text-gray-600">Click to upload identity document</p>
+                        <p className="text-xs text-gray-500 mt-1">PNG, JPG, PDF up to 10MB</p>
+                      </>
+                    )}
+                  </div>
+                  {businessErrors.identityDocument && (
+                    <p className="text-xs text-red-500">{businessErrors.identityDocument}</p>
+                  )}
+                </div>
+
+                {/* Error Message */}
+                {submitError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-red-700">{submitError}</p>
+                  </div>
+                )}
 
                 <div className="flex justify-between gap-3 pt-4">
                   <Button
@@ -822,6 +1135,7 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                     variant="outline"
                     onClick={() => setBusinessStep(3)}
                     className="h-10 px-6"
+                    disabled={isSubmitting}
                   >
                     Back
                   </Button>
@@ -829,8 +1143,9 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                     type="button"
                     onClick={handleBusinessStep4Submit}
                     className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
+                    disabled={isSubmitting}
                   >
-                    Submit Registration
+                    {isSubmitting ? 'Submitting...' : 'Submit Registration'}
                   </Button>
                 </div>
               </div>
@@ -890,7 +1205,7 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">BRN:</span>
-                    <span className="text-gray-900">{businessFormData.brn}</span>
+                    <span className="text-gray-900">{businessFormData.idNumber}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">TIN:</span>
@@ -1035,30 +1350,14 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="tin">
-                  Tax Identification Number (TIN) <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="tin"
-                  placeholder="IG123456789012"
-                  value={formData.tin}
-                  onChange={(e) => setFormData({ ...formData, tin: e.target.value.toUpperCase() })}
-                  className={`h-10 border-[#D1D5DB] ${errors.tin ? 'border-red-500' : ''}`}
-                />
-                <p className="text-xs text-gray-500">Format: IG followed by 12 digits</p>
-                {errors.tin && (
-                  <p className="text-xs text-red-500">{errors.tin}</p>
-                )}
-              </div>
-
               <div className="flex justify-end pt-4">
                 <Button
                   type="button"
                   onClick={handleStep1Submit}
                   className="bg-[#059669] hover:bg-[#047857] h-10 px-6"
+                  disabled={isSendingCode}
                 >
-                  Continue
+                  {isSendingCode ? 'Sending Code...' : 'Continue'}
                 </Button>
               </div>
             </div>
@@ -1115,9 +1414,10 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                 ) : (
                   <button
                     onClick={handleResendCode}
-                    className="text-[#059669] hover:text-[#047857] font-medium"
+                    disabled={isSendingCode}
+                    className="text-[#059669] hover:text-[#047857] font-medium disabled:opacity-50"
                   >
-                    Resend Code
+                    {isSendingCode ? 'Sending...' : 'Resend Code'}
                   </button>
                 )}
               </div>
@@ -1128,6 +1428,7 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                   variant="outline"
                   onClick={() => setIndividualStep(1)}
                   className="h-10 px-6"
+                  disabled={isVerifyingCode}
                 >
                   Back
                 </Button>
@@ -1165,9 +1466,25 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="password">
-                  Password <span className="text-red-500">*</span>
-                </Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="password">
+                    Password <span className="text-red-500">*</span>
+                  </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="text-gray-400 hover:text-gray-600">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 text-sm bg-white">
+                      <p className="font-medium mb-2">Password Requirements</p>
+                      <ul className="text-gray-600 space-y-1 text-xs">
+                        <li>• At least 8 characters</li>
+                        <li>• Recommended: Mix of letters, numbers, and symbols</li>
+                      </ul>
+                    </PopoverContent>
+                  </Popover>
+                </div>
                 <Input
                   id="password"
                   type="password"
@@ -1196,17 +1513,6 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                 {errors.confirmPassword && (
                   <p className="text-xs text-red-500">{errors.confirmPassword}</p>
                 )}
-              </div>
-
-              {/* Password Requirements */}
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                <p className="text-xs text-gray-700 mb-2">Password must contain:</p>
-                <ul className="text-xs text-gray-600 space-y-1">
-                  <li className={formData.password.length >= 8 ? 'text-green-600' : ''}>
-                    • At least 8 characters
-                  </li>
-                  <li>• Recommended: Mix of letters, numbers, and symbols</li>
-                </ul>
               </div>
 
               <div className="flex justify-between gap-3 pt-4">
@@ -1241,99 +1547,123 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
               </div>
               <h2 className="text-[#111827] mb-2 text-center">Identity Verification</h2>
               <p className="text-sm text-gray-600 text-center">
-                Upload your identification card for verification
+                Provide your tax and identity information for verification
               </p>
               <div className="border-b border-[#E5E7EB] my-4"></div>
             </div>
 
             <div className="space-y-4">
+              {/* TIN Field */}
               <div className="space-y-2">
-                <Label htmlFor="icNumber">
-                  IC Number <span className="text-red-500">*</span>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="individualTin">
+                    Tax Identification Number (TIN) <span className="text-red-500">*</span>
+                  </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="text-gray-400 hover:text-gray-600">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 text-sm bg-white">
+                      <p className="font-medium mb-1">TIN Format</p>
+                      <p className="text-gray-600">IG followed by 12 digits</p>
+                      <p className="text-gray-500 mt-1">Example: IG123456789012</p>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <Input
+                  id="individualTin"
+                  placeholder="IG123456789012"
+                  value={formData.tin}
+                  onChange={(e) => setFormData({ ...formData, tin: e.target.value.toUpperCase() })}
+                  className={`h-10 border-[#D1D5DB] ${errors.tin ? 'border-red-500' : ''}`}
+                />
+                {errors.tin && (
+                  <p className="text-xs text-red-500">{errors.tin}</p>
+                )}
+              </div>
+
+              {/* ID Type Dropdown */}
+              <div className="space-y-2">
+                <Label htmlFor="idType">
+                  ID Type <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={formData.idType}
+                  onValueChange={(value: IdType) => setFormData({ ...formData, idType: value })}
+                >
+                  <SelectTrigger className="h-10 border-[#D1D5DB]">
+                    <SelectValue placeholder="Select ID type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NRIC">NRIC</SelectItem>
+                    <SelectItem value="PASSPORT">Passport</SelectItem>
+                    <SelectItem value="ARMY">Army ID</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Dynamic ID Number Field */}
+              <div className="space-y-2">
+                <Label htmlFor="idNumber">
+                  {getIdNumberLabel(formData.idType)} <span className="text-red-500">*</span>
                 </Label>
                 <Input
-                  id="icNumber"
-                  placeholder="Enter your IC number"
-                  value={formData.icNumber}
-                  onChange={(e) => setFormData({ ...formData, icNumber: e.target.value })}
-                  className={`h-10 border-[#D1D5DB] ${errors.icNumber ? 'border-red-500' : ''}`}
+                  id="idNumber"
+                  placeholder={`Enter your ${getIdNumberLabel(formData.idType).toLowerCase()}`}
+                  value={formData.idNumber}
+                  onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })}
+                  className={`h-10 border-[#D1D5DB] ${errors.idNumber ? 'border-red-500' : ''}`}
                 />
-                {errors.icNumber && (
-                  <p className="text-xs text-red-500">{errors.icNumber}</p>
+                {errors.idNumber && (
+                  <p className="text-xs text-red-500">{errors.idNumber}</p>
                 )}
               </div>
 
-              {/* IC Front Upload */}
+              {/* Identity Document Upload */}
               <div className="space-y-2">
                 <Label>
-                  IC Front Image <span className="text-red-500">*</span>
+                  Upload Identity Supporting Document <span className="text-red-500">*</span>
                 </Label>
                 <div
                   className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-[#059669] transition-colors ${
-                    errors.icFrontImage ? 'border-red-500' : 'border-gray-300'
+                    errors.identityDocument ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  onClick={() => document.getElementById('icFrontInput')?.click()}
+                  onClick={() => document.getElementById('identityDocInput')?.click()}
                 >
                   <input
-                    id="icFrontInput"
+                    id="identityDocInput"
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.pdf"
                     className="hidden"
-                    onChange={(e) => handleFileUpload('icFrontImage', e.target.files?.[0] || null)}
+                    onChange={(e) => handleFileUpload(e.target.files?.[0] || null)}
                   />
-                  {formData.icFrontImage ? (
+                  {formData.identityDocument ? (
                     <div className="flex items-center justify-center gap-2 text-green-600">
                       <CheckCircle className="h-5 w-5" />
-                      <span className="text-sm">{formData.icFrontImage.name}</span>
+                      <span className="text-sm">{formData.identityDocument.name}</span>
                     </div>
                   ) : (
                     <>
                       <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">Click to upload IC front image</p>
-                      <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
+                      <p className="text-sm text-gray-600">Click to upload identity document</p>
+                      <p className="text-xs text-gray-500 mt-1">PNG, JPG, PDF up to 10MB</p>
                     </>
                   )}
                 </div>
-                {errors.icFrontImage && (
-                  <p className="text-xs text-red-500">{errors.icFrontImage}</p>
+                {errors.identityDocument && (
+                  <p className="text-xs text-red-500">{errors.identityDocument}</p>
                 )}
               </div>
 
-              {/* IC Back Upload */}
-              <div className="space-y-2">
-                <Label>
-                  IC Back Image <span className="text-red-500">*</span>
-                </Label>
-                <div
-                  className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-[#059669] transition-colors ${
-                    errors.icBackImage ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  onClick={() => document.getElementById('icBackInput')?.click()}
-                >
-                  <input
-                    id="icBackInput"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => handleFileUpload('icBackImage', e.target.files?.[0] || null)}
-                  />
-                  {formData.icBackImage ? (
-                    <div className="flex items-center justify-center gap-2 text-green-600">
-                      <CheckCircle className="h-5 w-5" />
-                      <span className="text-sm">{formData.icBackImage.name}</span>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">Click to upload IC back image</p>
-                      <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
-                    </>
-                  )}
+              {/* Error Message */}
+              {submitError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-red-700">{submitError}</p>
                 </div>
-                {errors.icBackImage && (
-                  <p className="text-xs text-red-500">{errors.icBackImage}</p>
-                )}
-              </div>
+              )}
 
               <div className="flex justify-between gap-3 pt-4">
                 <Button
@@ -1341,6 +1671,7 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                   variant="outline"
                   onClick={() => setIndividualStep(3)}
                   className="h-10 px-6"
+                  disabled={isSubmitting}
                 >
                   Back
                 </Button>
@@ -1348,8 +1679,9 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                   type="button"
                   onClick={handleStep4Submit}
                   className="bg-[#059669] hover:bg-[#047857] h-10 px-6"
+                  disabled={isSubmitting}
                 >
-                  Submit Registration
+                  {isSubmitting ? 'Submitting...' : 'Submit Registration'}
                 </Button>
               </div>
             </div>

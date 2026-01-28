@@ -7,30 +7,72 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String?
-  password  String
-  roles     UserRole[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  password            String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  firstName           String?
+  lastName            String?
+  phone               String?              @unique
+  status              String               @default("pending")
+  customer            Customer?
+  passwordSetupTokens PasswordSetupToken[]
+  roles               UserRole[]
+}
+
+model Customer {
+  id                  String   @id                          // Same as User.id (1-to-1 relation)
+  user                User     @relation(fields: [id], references: [id], onDelete: Cascade)
+  
+  customerType        String                                // 'individual' or 'business'
+  tin                 String                                // Tax Identification Number
+  idType              String                                // 'NRIC', 'PASSPORT', 'ARMY' (individual) or 'BRN' (business)
+  idNumber            String?                               // ID number: NRIC/Passport/Army for individual, BRN for business
+  identityDocumentUrl String?                               // Identity supporting document path
+  rejectionReason     String?                               // Reason if rejected by admin
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model VerificationCode {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model PasswordSetupToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "PasswordSetupToken_userId_fkey")
 }
 
 model Role {
   id        String     @id @default(cuid())
   name      String     @unique
-  users     UserRole[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  users     UserRole[]
 }
 
 model UserRole {
   userId String
   roleId String
-  user   User @relation(fields: [userId], references: [id])
-  role   Role @relation(fields: [roleId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 
   @@id([userId, roleId])
+  @@index([roleId], map: "UserRole_roleId_fkey")
 }
 
 model ContentItem {
@@ -56,7 +98,7 @@ model SalesOrder {
   id        String   @id @default(cuid())
   orderNo   String   @unique
   status    String
-  total     Decimal  @default(0)
+  total     Decimal  @default(0.000000000000000000000000000000)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -65,7 +107,7 @@ model BillingInvoice {
   id        String   @id @default(cuid())
   invoiceNo String   @unique
   status    String
-  total     Decimal  @default(0)
+  total     Decimal  @default(0.000000000000000000000000000000)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

@@ -6,8 +6,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   return (
     <NextAuthSessionProvider
       basePath="/api/auth"
-      refetchInterval={0}
-      refetchOnWindowFocus={false}
+      // Check session every 1 minute (60 seconds) for faster expiration detection
+      refetchInterval={60}
+      // Check session when user returns to the tab
+      refetchOnWindowFocus={true}
     >
       {children}
     </NextAuthSessionProvider>

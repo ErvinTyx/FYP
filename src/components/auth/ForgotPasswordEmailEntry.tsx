@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { ArrowLeft, Mail, Phone } from "lucide-react";
+import { ArrowLeft, Mail, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 
 interface ForgotPasswordEmailEntryProps {
   onBack: () => void;
@@ -12,92 +11,103 @@ interface ForgotPasswordEmailEntryProps {
 
 export function ForgotPasswordEmailEntry({
   onBack,
-  onContinue,
 }: ForgotPasswordEmailEntryProps) {
-  const [method, setMethod] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  const validatePhone = (phone: string) => {
-    // Malaysian phone format: +60 XX-XXX-XXXX or similar
-    const phoneRegex = /^(\+?60)?[0-9\s\-]{9,15}$/;
-    return phoneRegex.test(phone.replace(/\s/g, ""));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (method === "email") {
-      if (!email) {
-        setError("Please enter your email address.");
-        return;
-      }
+    if (!email) {
+      setError("Please enter your email address.");
+      return;
+    }
 
-      if (!validateEmail(email)) {
-        setError("Please enter a valid email address.");
-        return;
-      }
-    } else {
-      if (!phone) {
-        setError("Please enter your phone number.");
-        return;
-      }
-
-      if (!validatePhone(phone)) {
-        setError("Please enter a valid phone number.");
-        return;
-      }
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address.");
+      return;
     }
 
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      // Simulate checking if email/phone exists
-      // In production, this would call your backend API
-      const validEmails = [
-        "customer@demo.com",
-        "admin@company.com",
-        "sales@company.com",
-        "finance@company.com",
-        "operations@company.com",
-        "production@company.com",
-      ];
+    try {
+      const response = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
 
-      const validPhones = [
-        "+60123456789",
-        "+60198765432",
-        "0123456789",
-      ];
+      const data = await response.json();
 
-      if (method === "email" && !validEmails.includes(email)) {
-        setError("No account found for this email.");
-        setIsLoading(false);
-        return;
+      if (data.success) {
+        setIsSuccess(true);
+      } else {
+        setError(data.message || "Failed to send reset email. Please try again.");
       }
-
-      if (method === "phone" && !validPhones.includes(phone.replace(/\s/g, ""))) {
-        setError("No account found for this phone number.");
-        setIsLoading(false);
-        return;
-      }
-
+    } catch {
+      setError("An error occurred. Please try again.");
+    } finally {
       setIsLoading(false);
-      onContinue(method === "email" ? email : phone);
-    }, 800);
+    }
   };
 
+  // Success state - email sent
+  if (isSuccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#1E40AF] to-[#1E3A8A] flex items-center justify-center px-6 py-4 sm:px-8 md:px-12">
+        <div className="w-full max-w-md mx-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="h-8 w-8 text-[#059669]" />
+            </div>
+            <h2 className="text-[#111827] text-xl font-semibold mb-2">Check Your Email</h2>
+            <p className="text-[#6B7280] mb-2">
+              We've sent a password reset link to:
+            </p>
+            <p className="text-[#1E40AF] font-medium mb-6">{email}</p>
+            <p className="text-[#6B7280] text-sm mb-6">
+              Click the link in the email to reset your password. The link will expire in 1 hour.
+            </p>
+            <div className="space-y-3">
+              <Button
+                onClick={onBack}
+                className="w-full bg-[#1E40AF] hover:bg-[#1E3A8A] h-11"
+              >
+                Return to Login
+              </Button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSuccess(false);
+                  setEmail("");
+                }}
+                className="text-sm text-[#6B7280] hover:text-[#374151]"
+              >
+                Didn't receive the email? Try again
+              </button>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="text-center mt-6 text-white/80 text-sm">
+            © 2025 Power Metal & Steel. All rights reserved.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F15929] via-[#F15929] to-[#D14820] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-[#1E40AF] to-[#1E3A8A] flex items-center justify-center px-6 py-4 sm:px-8 md:px-12">
+      <div className="w-full max-w-md mx-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           {/* Header */}
           <div className="mb-6">
@@ -108,23 +118,10 @@ export function ForgotPasswordEmailEntry({
               <ArrowLeft className="h-4 w-4" />
               Back to Login
             </button>
-            <h2 className="text-[#231F20] mb-2">Reset Password</h2>
+            <h2 className="text-[#111827] text-xl font-semibold mb-2">Forgot Password?</h2>
             <p className="text-[#6B7280]">
-              {method === "email" 
-                ? "Enter the email associated with your account. We'll send a verification code."
-                : "Enter the phone number associated with your account. We'll send a verification code via SMS."}
+              Enter the email address associated with your account. We'll send you a link to reset your password.
             </p>
-          </div>
-
-          {/* Demo Credentials Info */}
-          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-800 mb-2">
-              <strong>Demo Credentials:</strong>
-            </p>
-            <div className="text-xs text-blue-700 space-y-1">
-              <p>📧 Email: customer@demo.com</p>
-              <p>📱 Phone: +60123456789</p>
-            </div>
           </div>
 
           {/* Form */}
@@ -147,88 +144,58 @@ export function ForgotPasswordEmailEntry({
               </div>
             )}
 
-            {/* Method Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="method">Select Method</Label>
-              <RadioGroup
-                value={method}
-                onValueChange={(value) => setMethod(value as "email" | "phone")}
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="email" />
-                  <Label htmlFor="email">Email</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="phone" />
-                  <Label htmlFor="phone">Phone</Label>
-                </div>
-              </RadioGroup>
-            </div>
-
             {/* Email Input */}
-            {method === "email" && (
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <div className="relative">
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="name@example.com"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      setError("");
-                    }}
-                    className="h-12 border-[#D1D5DB] pl-12"
-                    disabled={isLoading}
-                  />
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#6B7280]" />
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email Address</Label>
+              <div className="relative">
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError("");
+                  }}
+                  className="h-12 border-[#D1D5DB] pl-12"
+                  disabled={isLoading}
+                />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#6B7280]" />
               </div>
-            )}
-
-            {/* Phone Input */}
-            {method === "phone" && (
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <div className="relative">
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="+60 XX-XXX-XXXX"
-                    value={phone}
-                    onChange={(e) => {
-                      setPhone(e.target.value);
-                      setError("");
-                    }}
-                    className="h-12 border-[#D1D5DB] pl-12"
-                    disabled={isLoading}
-                  />
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[#6B7280]" />
-                </div>
-              </div>
-            )}
+            </div>
 
             {/* Submit Button */}
             <Button
               type="submit"
-              className="w-full h-12 bg-[#F15929] hover:bg-[#D14820]"
-              disabled={isLoading || (!email && !phone)}
+              className="w-full h-12 bg-[#1E40AF] hover:bg-[#1E3A8A]"
+              disabled={isLoading || !email}
             >
               {isLoading ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Sending...
                 </div>
               ) : (
-                "Send Verification Code"
+                "Send Reset Link"
               )}
             </Button>
+
+            {/* Help text */}
+            <p className="text-center text-sm text-[#6B7280]">
+              Remember your password?{" "}
+              <button
+                type="button"
+                onClick={onBack}
+                className="text-[#1E40AF] hover:text-[#1E3A8A]"
+              >
+                Back to Login
+              </button>
+            </p>
           </form>
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-6 text-white text-sm">
+        <div className="text-center mt-6 text-white/80 text-sm">
           © 2025 Power Metal & Steel. All rights reserved.
         </div>
       </div>
