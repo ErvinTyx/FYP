@@ -303,3 +303,126 @@ model InventoryAdjustment {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 }
+model RentalAgreement {
+  id                       String             @id @default(cuid())
+  agreementNumber          String             @unique
+  poNumber                 String?
+  projectName              String
+  owner                    String
+  ownerPhone               String?
+  hirer                    String
+  hirerPhone               String?
+  location                 String?
+  termOfHire               String?
+  transportation           String?
+  monthlyRental            Decimal            @default(0)
+  securityDeposit          Decimal            @default(0)
+  minimumCharges           Decimal            @default(0)
+  defaultInterest          Decimal            @default(0)
+  ownerSignatoryName       String?
+  ownerNRIC                String?
+  hirerSignatoryName       String?
+  hirerNRIC                String?
+  ownerSignature           String?            @db.Text
+  hirerSignature           String?            @db.Text
+  ownerSignatureDate       DateTime?
+  hirerSignatureDate       DateTime?
+  signedDocumentUrl        String?
+  signedDocumentUploadedAt DateTime?
+  signedDocumentUploadedBy String?
+  status                   String             @default("Draft")
+  currentVersion           Int                @default(1)
+  createdBy                String?
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+
+  versions                 AgreementVersion[]
+}
+
+model AgreementVersion {
+  id            String   @id @default(cuid())
+  versionNumber Int
+  changes       String?
+  allowedRoles  String?  @db.Text // JSON string of roles
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  agreementId   String
+  agreement     RentalAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+}
+
+// Delivery & Return Models
+model DeliveryRequest {
+  id              String        @id @default(cuid())
+  requestId       String        @unique
+  customerName    String
+  agreementNo     String
+  customerPhone   String?
+  customerEmail   String?
+  deliveryAddress String
+  deliveryType    String
+  requestDate     DateTime      @default(now())
+  totalSets       Int           @default(0)
+  deliveredSets   Int           @default(0)
+  pickupTime      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sets            DeliverySet[]
+}
+
+model DeliverySet {
+  id                   String            @id @default(cuid())
+  setName              String
+  scheduledPeriod      String
+  status               String            @default("Pending")
+  quotedAmount         Decimal?
+  deliveryFee          Decimal?
+  deliveryDate         DateTime?
+  packingListIssued    Boolean           @default(false)
+  driverAcknowledged   Boolean           @default(false)
+  customerAcknowledged Boolean           @default(false)
+  otp                  String?
+  signedDO             String?
+  deliveryRequestId    String
+  deliveryRequest      DeliveryRequest   @relation(fields: [deliveryRequestId], references: [id], onDelete: Cascade)
+  items                DeliverySetItem[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+}
+
+model DeliverySetItem {
+  id            String      @id @default(cuid())
+  name          String
+  quantity      Int
+  deliverySetId String
+  deliverySet   DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+}
+
+model ReturnRequest {
+  id               String              @id @default(cuid())
+  requestId        String              @unique
+  customerName     String
+  agreementNo      String
+  setName          String
+  requestDate      DateTime            @default(now())
+  scheduledDate    DateTime?
+  status           String              @default("Requested")
+  reason           String
+  pickupAddress    String
+  customerPhone    String?
+  customerEmail    String?
+  pickupFee        Decimal?
+  returnType       String
+  collectionMethod String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  items            ReturnRequestItem[]
+}
+
+model ReturnRequestItem {
+  id              String        @id @default(cuid())
+  name            String
+  quantity        Int
+  returnRequestId String
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+}

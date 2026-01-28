@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Package, Calendar as CalendarIcon, CheckCircle2, AlertCircle, Eye,
   AlertTriangle, ClipboardCheck, ArrowRight, Plus, PackageCheck, Truck,
@@ -26,71 +26,24 @@ import { format } from "date-fns";
 import { ReturnWorkflow, Return, ReturnItem } from "./return/ReturnWorkflow";
 import { ReturnDetails } from "./return/ReturnDetails";
 
-const mockReturns: Return[] = [
-  {
-    id: 'RET-2026-001',
-    customer: 'ABC Construction Sdn Bhd',
-    customerContact: '+60 12-345-6789',
-    orderId: 'ORD-2026-156',
-    returnType: 'Full',
-    transportationType: 'Transportation Needed',
-    items: [
-      { id: 'ITM-001', name: 'Steel Pipe Scaffolding 6m', category: 'Pipes', quantity: 100, quantityReturned: 0, status: 'Pending' },
-      { id: 'ITM-002', name: 'Coupler Standard', category: 'Connectors', quantity: 200, quantityReturned: 0, status: 'Pending' },
-      { id: 'ITM-003', name: 'Base Plate', category: 'Accessories', quantity: 50, quantityReturned: 0, status: 'Pending' },
-    ],
-    requestDate: '2026-12-02',
-    status: 'Requested'
-  },
-  {
-    id: 'RET-2026-002',
-    customer: 'Megah Engineering Sdn Bhd',
-    customerContact: '+60 13-456-7890',
-    orderId: 'ORD-2026-145',
-    returnType: 'Partial',
-    transportationType: 'Self Return',
-    items: [
-      { id: 'ITM-004', name: 'Aluminum Tube 4m', category: 'Tubes', quantity: 100, quantityReturned: 0, status: 'Pending' },
-      { id: 'ITM-005', name: 'Edge Protection', category: 'Safety', quantity: 60, quantityReturned: 0, status: 'Pending' },
-    ],
-    requestDate: '2026-12-05',
-    status: 'Requested'
-  },
-  {
-    id: 'RET-2026-003',
-    customer: 'DEF Builders',
-    customerContact: '+60 14-567-8901',
-    orderId: 'ORD-2026-134',
-    returnType: 'Full',
-    transportationType: 'Self Return',
-    items: [
-      { id: 'ITM-006', name: 'Ringlock System 2m', category: 'Systems', quantity: 150, quantityReturned: 0, status: 'Pending' },
-      { id: 'ITM-007', name: 'Ledger 1.5m', category: 'Systems', quantity: 120, quantityReturned: 0, status: 'Pending' },
-      { id: 'ITM-008', name: 'Diagonal Brace', category: 'Support', quantity: 100, quantityReturned: 0, status: 'Pending' },
-    ],
-    requestDate: '2026-12-08',
-    status: 'Requested'
-  },
-  {
-    id: 'RET-2026-004',
-    customer: 'Sunrise Development Sdn Bhd',
-    customerContact: '+60 15-678-9012',
-    orderId: 'ORD-2026-178',
-    returnType: 'Partial',
-    transportationType: 'Transportation Needed',
-    items: [
-      { id: 'ITM-009', name: 'Heavy Duty Tube 6m', category: 'Tubes', quantity: 120, quantityReturned: 0, status: 'Pending' },
-      { id: 'ITM-010', name: 'Beam Clamp', category: 'Connectors', quantity: 90, quantityReturned: 0, status: 'Pending' },
-    ],
-    requestDate: '2026-12-10',
-    status: 'Requested'
-  },
-];
-
 export function ReturnManagement() {
-  const [returns, setReturns] = useState<Return[]>(mockReturns);
+  const [returns, setReturns] = useState<Return[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'workflow' | 'details'>('list');
   const [selectedReturn, setSelectedReturn] = useState<Return | null>(null);
+
+  // Load returns from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('returnOrders');
+    if (saved) {
+      setReturns(JSON.parse(saved));
+    }
+  }, []);
+
+  // Save to localStorage whenever returns change
+  const saveReturns = (updated: Return[]) => {
+    setReturns(updated);
+    localStorage.setItem('returnOrders', JSON.stringify(updated));
+  };
 
   const getReturnStatusBadge = (status: Return['status']) => {
     const statusConfig = {
@@ -125,10 +78,10 @@ export function ReturnManagement() {
     const isNew = !returns.find(r => r.id === returnOrder.id);
     
     if (isNew) {
-      setReturns([returnOrder, ...returns]);
+      saveReturns([returnOrder, ...returns]);
       toast.success('Return created successfully');
     } else {
-      setReturns(returns.map(r => r.id === returnOrder.id ? returnOrder : r));
+      saveReturns(returns.map(r => r.id === returnOrder.id ? returnOrder : r));
       toast.success('Return updated successfully');
     }
     
