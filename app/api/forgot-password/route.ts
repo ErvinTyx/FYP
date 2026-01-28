@@ -28,7 +28,20 @@ export async function POST(request: NextRequest) {
         status: true,
       },
     });
-
+    
+    if (user){
+      if (user.status !== 'active') {
+        return NextResponse.json(
+          { success: false, message: 'Your account is inactive. Please contact support.' },
+          { status: 400 }
+        );
+      }
+    }else{
+      return NextResponse.json(
+        { success: false, message: 'No account found with this email.' },
+        { status: 400 }
+      );
+    }
     // Always return success to prevent email enumeration attacks
     // But only send email if user exists and is active
     if (user && user.status === 'active') {
@@ -68,7 +81,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'If an account exists with this email, you will receive a password reset link.',
-    });
+    }, { status: 200 });
   } catch (error) {
     console.error('Forgot password error:', error);
     return NextResponse.json(
