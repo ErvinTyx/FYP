@@ -104,7 +104,7 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
   };
 
   const calculateTotal = () => {
-    return items.reduce((sum, item) => sum + item.totalPrice, 0);
+    return items.reduce((sum, item) => sum + Number(item.totalPrice), 0);
   };
 
   useEffect(() => {
@@ -169,7 +169,7 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
             field: 'item_price',
             oldValue: oldItem.unitPrice,
             newValue: newItem.unitPrice,
-            description: `Modified ${newItem.scaffoldingItemName}: price changed from RM ${oldItem.unitPrice.toFixed(2)} to RM ${newItem.unitPrice.toFixed(2)}`
+            description: `Modified ${newItem.scaffoldingItemName}: price changed from RM ${Number(oldItem.unitPrice).toFixed(2)} to RM ${Number(newItem.unitPrice).toFixed(2)}`
           });
         }
       }
@@ -489,7 +489,7 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
                   
                   <div className="flex justify-between items-center pt-2 border-t">
                     <span className="text-gray-600">Total Price:</span>
-                    <span className="text-[#231F20]">RM {item.totalPrice.toFixed(2)}</span>
+                    <span className="text-[#231F20]">RM {Number(item.totalPrice).toFixed(2)}</span>
                   </div>
                 </div>
               ))}
@@ -499,7 +499,7 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
           {items.length > 0 && (
             <div className="flex justify-between items-center pt-4 border-t-2">
               <span className="text-[#231F20]">Grand Total:</span>
-              <span className="text-[#231F20]">RM {calculateTotal().toFixed(2)}</span>
+              <span className="text-[#231F20]">RM {Number(calculateTotal()).toFixed(2)}</span>
             </div>
           )}
         </CardContent>

@@ -5,12 +5,29 @@ import { logUserCreated } from '@/lib/audit-log';
 import { generatePasswordSetupToken, sendPasswordSetupEmail } from '@/lib/email';
 import bcrypt from 'bcrypt';
 
-// Roles allowed to manage users
+// Roles allowed to manage users (full admin access)
 const ADMIN_ROLES = ['super_user', 'admin'];
+
+// All internal staff roles
+const INTERNAL_STAFF_ROLES = ['super_user', 'admin', 'sales', 'finance', 'support', 'operations', 'production'];
+
+/**
+ * Determine user type based on roles
+ */
+function getUserType(roles: string[]): 'Internal Staff' | 'Individual Customer' | 'Business Customer' {
+  // Check if user has any internal staff role
+  if (roles.some(role => INTERNAL_STAFF_ROLES.includes(role))) {
+    return 'Internal Staff';
+  }
+  // Default to customer - will be determined by customer record
+  return 'Individual Customer';
+}
 
 /**
  * GET /api/user-management
- * List all users (admin/super_user only)
+ * List users with role-based filtering:
+ * - Admin/SuperAdmin: See ALL users (internal staff + customers)
+ * - Other internal staff: See ONLY customers
  */
 export async function GET(request: NextRequest) {
   try {
@@ -23,16 +40,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if user has admin privileges
-    const hasAdminRole = session.user.roles?.some(role => ADMIN_ROLES.includes(role));
-    if (!hasAdminRole) {
+    const userRoles = session.user.roles || [];
+    const hasAdminRole = userRoles.some(role => ADMIN_ROLES.includes(role));
+    const hasInternalRole = userRoles.some(role => INTERNAL_STAFF_ROLES.includes(role));
+
+    // Only internal staff can access user management
+    if (!hasInternalRole) {
       return NextResponse.json(
-        { success: false, message: 'Forbidden: Admin access required' },
+        { success: false, message: 'Forbidden: Internal staff access required' },
         { status: 403 }
       );
     }
 
+    // Build the where clause based on role
+    // Admin/SuperAdmin see all users, other staff see only customers
+    const whereClause = hasAdminRole ? {} : {
+      roles: {
+        some: {
+          role: {
+            name: 'customer'
+          }
+        }
+      }
+    };
+
     const users = await prisma.user.findMany({
+      where: whereClause,
       select: {
         id: true,
         email: true,
@@ -47,6 +80,15 @@ export async function GET(request: NextRequest) {
             role: true,
           },
         },
+        customer: {
+          select: {
+            customerType: true,
+            tin: true,
+            idType: true,
+            idNumber: true,
+            identityDocumentUrl: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -54,17 +96,44 @@ export async function GET(request: NextRequest) {
     });
 
     // Transform the data for the frontend
-    const transformedUsers = users.map(user => ({
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      phone: user.phone,
-      status: user.status,
-      roles: user.roles.map(ur => ur.role.name),
-      createdAt: user.createdAt.toISOString(),
-      updatedAt: user.updatedAt.toISOString(),
-    }));
+    const transformedUsers = users.map(user => {
+      const roles = user.roles.map(ur => ur.role.name);
+      const isCustomer = roles.includes('customer');
+      const hasCustomerRecord = !!user.customer;
+      
+      // Determine user type:
+      // - Has 'customer' role or has customer record = Customer (Individual/Business)
+      // - Has internal staff role = Internal Staff
+      // - No roles AND no customer record = Pending Internal Staff (registered via internal registration)
+      let userType: 'Internal Staff' | 'Individual Customer' | 'Business Customer';
+      if (isCustomer || hasCustomerRecord) {
+        // Customer - determine individual or business
+        userType = user.customer?.customerType === 'business' ? 'Business Customer' : 'Individual Customer';
+      } else {
+        // Internal Staff (either has staff role, or is pending staff with no role yet)
+        userType = 'Internal Staff';
+      }
+
+      return {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        status: user.status,
+        roles: roles,
+        userType,
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
+        // Customer-specific fields (only for customers)
+        ...(user.customer && {
+          tin: user.customer.tin,
+          idType: user.customer.idType,
+          idNumber: user.customer.idNumber,
+          identityDocumentUrl: user.customer.identityDocumentUrl,
+        }),
+      };
+    });
 
     return NextResponse.json({
       success: true,

@@ -9,15 +9,31 @@ datasource db {
 model User {
   id                  String               @id @default(cuid())
   email               String               @unique
-  phone               String?              @unique
-  firstName           String?
-  lastName            String?
   password            String
-  status              String               @default("pending") // pending, active, inactive, rejected
-  roles               UserRole[]
-  passwordSetupTokens PasswordSetupToken[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  firstName           String?
+  lastName            String?
+  phone               String?              @unique
+  status              String               @default("pending")
+  customer            Customer?
+  passwordSetupTokens PasswordSetupToken[]
+  roles               UserRole[]
+}
+
+model Customer {
+  id                  String   @id                          // Same as User.id (1-to-1 relation)
+  user                User     @relation(fields: [id], references: [id], onDelete: Cascade)
+  
+  customerType        String                                // 'individual' or 'business'
+  tin                 String                                // Tax Identification Number
+  idType              String                                // 'NRIC', 'PASSPORT', 'ARMY' (individual) or 'BRN' (business)
+  idNumber            String?                               // ID number: NRIC/Passport/Army for individual, BRN for business
+  identityDocumentUrl String?                               // Identity supporting document path
+  rejectionReason     String?                               // Reason if rejected by admin
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model VerificationCode {
@@ -37,23 +53,26 @@ model PasswordSetupToken {
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "PasswordSetupToken_userId_fkey")
 }
 
 model Role {
   id        String     @id @default(cuid())
   name      String     @unique
-  users     UserRole[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  users     UserRole[]
 }
 
 model UserRole {
   userId String
   roleId String
-  user   User @relation(fields: [userId], references: [id])
-  role   Role @relation(fields: [roleId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 
   @@id([userId, roleId])
+  @@index([roleId], map: "UserRole_roleId_fkey")
 }
 
 model ContentItem {
@@ -79,7 +98,7 @@ model SalesOrder {
   id        String   @id @default(cuid())
   orderNo   String   @unique
   status    String
-  total     Decimal  @default(0)
+  total     Decimal  @default(0.000000000000000000000000000000)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -88,7 +107,7 @@ model BillingInvoice {
   id        String   @id @default(cuid())
   invoiceNo String   @unique
   status    String
-  total     Decimal  @default(0)
+  total     Decimal  @default(0.000000000000000000000000000000)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -101,6 +120,189 @@ model ReportDefinition {
   updatedAt DateTime @updatedAt
 }
 
+model rFQ {
+  id                String     @id @default(cuid())
+  rfqNumber         String     @unique
+  customerName      String
+  customerEmail     String
+  customerPhone     String
+  projectName       String
+  projectLocation   String
+  requestedDate     DateTime
+  requiredDate      DateTime
+  status            String     @default("draft")
+  totalAmount       Decimal    @default(0) @db.Decimal(15, 2)
+  notes             String?    @db.LongText
+  createdBy         String
+  items             rFQItem[]
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model rFQItem {
+  id                    String     @id @default(cuid())
+  rfqId                 String
+  rfq                   rFQ        @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  scaffoldingItemId     String
+  scaffoldingItemName   String
+  quantity              Int
+  unit                  String
+  unitPrice             Decimal    @db.Decimal(15, 2)
+  totalPrice            Decimal    @db.Decimal(15, 2)
+  notes                 String?    @db.Text
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+}
+
+// Inspection & Maintenance Module Models
+model ConditionReport {
+  id                    String               @id @default(cuid())
+  rcfNumber             String               @unique
+  deliveryOrderNumber   String
+  customerName          String
+  returnedBy            String?
+  returnDate            String
+  inspectionDate        String
+  inspectedBy           String
+  status                String               @default("pending")
+  totalItemsInspected   Int                  @default(0)
+  totalGood             Int                  @default(0)
+  totalRepair           Int                  @default(0)
+  totalWriteOff         Int                  @default(0)
+  totalDamaged          Int                  @default(0)
+  totalRepairCost       Decimal              @default(0) @db.Decimal(15, 2)
+  notes                 String?              @db.LongText
+  items                 InspectionItem[]
+  repairSlips           OpenRepairSlip[]
+  inventoryAdjustments  InventoryAdjustment[]
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model InspectionItem {
+  id                    String               @id @default(cuid())
+  conditionReportId     String
+  conditionReport       ConditionReport      @relation(fields: [conditionReportId], references: [id], onDelete: Cascade)
+  scaffoldingItemId     String
+  scaffoldingItemName   String
+  quantity              Int
+  quantityGood          Int                  @default(0)
+  quantityRepair        Int                  @default(0)
+  quantityWriteOff      Int                  @default(0)
+  condition             String               @default("good")
+  damageDescription     String?              @db.Text
+  repairRequired        Boolean              @default(false)
+  estimatedRepairCost   Decimal              @default(0) @db.Decimal(15, 2)
+  originalItemPrice     Decimal              @default(0) @db.Decimal(15, 2)
+  repairSlipId          String?
+  inspectionChecklist   String?              @db.LongText
+  images                String?              @db.LongText
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model OpenRepairSlip {
+  id                    String               @id @default(cuid())
+  orpNumber             String               @unique
+  conditionReportId     String
+  conditionReport       ConditionReport      @relation(fields: [conditionReportId], references: [id], onDelete: Cascade)
+  rcfNumber             String
+  status                String               @default("open")
+  priority              String               @default("medium")
+  assignedTo            String?
+  startDate             String?
+  completionDate        String?
+  estimatedCost         Decimal              @default(0) @db.Decimal(15, 2)
+  actualCost            Decimal              @default(0) @db.Decimal(15, 2)
+  repairNotes           String?              @db.LongText
+  invoiceNumber         String?
+  damageInvoiceId       String?              @unique
+  createdBy             String
+  inventoryLevel        String?
+  items                 RepairItem[]
+  damageInvoice         DamageInvoice?       @relation(fields: [damageInvoiceId], references: [id])
+  inventoryAdjustments  InventoryAdjustment[]
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model RepairItem {
+  id                    String               @id @default(cuid())
+  repairSlipId          String
+  repairSlip            OpenRepairSlip       @relation(fields: [repairSlipId], references: [id], onDelete: Cascade)
+  inspectionItemId      String?
+  scaffoldingItemId     String
+  scaffoldingItemName   String
+  quantity              Int
+  quantityRepaired      Int                  @default(0)
+  quantityRemaining     Int                  @default(0)
+  damageType            String
+  damageDescription     String               @db.Text
+  repairActions         String?              @db.LongText
+  repairDescription     String?              @db.Text
+  repairStatus          String               @default("pending")
+  costPerUnit           Decimal              @default(0) @db.Decimal(15, 2)
+  totalCost             Decimal              @default(0) @db.Decimal(15, 2)
+  estimatedCostFromRFQ  Decimal?             @db.Decimal(15, 2)
+  finalCost             Decimal?             @db.Decimal(15, 2)
+  beforeImages          String?              @db.LongText
+  afterImages           String?              @db.LongText
+  completedDate         String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model DamageInvoice {
+  id                    String               @id @default(cuid())
+  invoiceNumber         String               @unique
+  orpNumber             String
+  invoiceDate           String
+  vendor                String?
+  items                 InvoiceItem[]
+  repairSlip            OpenRepairSlip?
+  subtotal              Decimal              @default(0) @db.Decimal(15, 2)
+  tax                   Decimal              @default(0) @db.Decimal(15, 2)
+  total                 Decimal              @default(0) @db.Decimal(15, 2)
+  paymentStatus         String               @default("pending")
+  paidDate              String?
+  notes                 String?              @db.LongText
+  createdFrom           String               @default("repair-slip")
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model InvoiceItem {
+  id                    String               @id @default(cuid())
+  damageInvoiceId       String
+  damageInvoice         DamageInvoice        @relation(fields: [damageInvoiceId], references: [id], onDelete: Cascade)
+  description           String
+  quantity              Int
+  unitPrice             Decimal              @db.Decimal(15, 2)
+  total                 Decimal              @db.Decimal(15, 2)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model InventoryAdjustment {
+  id                    String               @id @default(cuid())
+  adjustmentType        String
+  conditionReportId     String?
+  conditionReport       ConditionReport?     @relation(fields: [conditionReportId], references: [id], onDelete: SetNull)
+  repairSlipId          String?
+  repairSlip            OpenRepairSlip?      @relation(fields: [repairSlipId], references: [id], onDelete: SetNull)
+  scaffoldingItemId     String
+  scaffoldingItemName   String
+  quantity              Int
+  fromStatus            String
+  toStatus              String
+  referenceId           String
+  referenceType         String
+  adjustedBy            String
+  adjustedAt            String
+  notes                 String?              @db.Text
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
 model RentalAgreement {
   id                       String             @id @default(cuid())
   agreementNumber          String             @unique
