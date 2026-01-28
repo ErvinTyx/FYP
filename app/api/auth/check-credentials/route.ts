@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
         success: false,
         errorCode: 'MISSING_CREDENTIALS',
         message: 'Please enter both email and password.',
-      });
+      }, { status: 400 });
     }
 
     // Find user by email
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
         success: false,
         errorCode: 'INVALID_CREDENTIALS',
         message: 'Invalid email or password.',
-      });
+      }, { status: 401 });
     }
 
     // Check password
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         success: false,
         errorCode: 'INVALID_CREDENTIALS',
         message: 'Invalid email or password.',
-      });
+      }, { status: 401 });
     }
 
     // Password is correct, now check account status
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
         success: false,
         errorCode: 'ACCOUNT_PENDING',
         message: 'Please set up your password using the link sent to your email.',
-      });
+      }, { status: 401 });
     }
 
     if (user.status === 'inactive') {
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         success: false,
         errorCode: 'ACCOUNT_INACTIVE',
         message: 'Your account is inactive. Please contact support to reactivate your account.',
-      });
+      }, { status: 401 });
     }
 
     if (user.status === 'rejected') {
@@ -72,14 +72,14 @@ export async function POST(request: NextRequest) {
         success: false,
         errorCode: 'ACCOUNT_REJECTED',
         message: 'Your account registration was not approved. Please contact support for assistance.',
-      });
+      }, { status: 401 });
     }
 
     // All checks passed
     return NextResponse.json({
       success: true,
       message: 'Credentials valid',
-    });
+    }, { status: 200 });
   } catch (error) {
     console.error('Check credentials error:', error);
     return NextResponse.json({
