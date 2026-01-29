@@ -76,6 +76,39 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
   
   // Saving state for API persistence
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Customer selection states for OTP
+  const [customers, setCustomers] = useState<Array<{
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+  }>>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+
+  // Fetch customers for OTP selection
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        const response = await fetch('/api/user-management');
+        const data = await response.json();
+        
+        if (data.success && data.users) {
+          // Filter to only customers (users with 'customer' role)
+          const customerUsers = data.users.filter((user: { roles: string[] }) => 
+            user.roles.includes('customer')
+          );
+          setCustomers(customerUsers);
+        }
+      } catch (error) {
+        console.error('Failed to fetch customers:', error);
+      }
+    };
+    
+    fetchCustomers();
+  }, []);
 
   useEffect(() => {
     if (delivery) {
@@ -297,17 +330,46 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     }
   };
 
-  const handleSendOTP = () => {
-    if (!customerName) {
-      toast.error('Please enter customer name');
+  const handleSendOTP = async () => {
+    if (!selectedCustomerId) {
+      toast.error('Please select a customer');
       return;
     }
 
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(otp);
-    setOtpSent(true);
-    toast.success(`OTP sent to customer: ${otp}`);
+    const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+    if (!selectedCustomer) {
+      toast.error('Selected customer not found');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    
+    try {
+      const response = await fetch('/api/delivery/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: selectedCustomer.email,
+          customerName: customerName,
+          doNumber: formData.doNumber,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setGeneratedOtp(data.otp);
+        setOtpSent(true);
+        toast.success(`OTP sent to ${selectedCustomer.email}`);
+      } else {
+        toast.error(data.message || 'Failed to send OTP');
+      }
+    } catch (error) {
+      console.error('Error sending OTP:', error);
+      toast.error('Failed to send OTP. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
   const handleVerifyOTP = async () => {
@@ -907,14 +969,43 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
               )}
             </div>
 
-            {/* Customer Name */}
+            {/* Customer Selection */}
             <div className="space-y-2">
-              <Label>Customer Name</Label>
-              <Input
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Enter customer name"
-              />
+              <Label>Select Customer *</Label>
+              <Select 
+                value={selectedCustomerId} 
+                onValueChange={(value) => {
+                  setSelectedCustomerId(value);
+                  const customer = customers.find(c => c.id === value);
+                  if (customer) {
+                    const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.email;
+                    setCustomerName(fullName);
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.length === 0 ? (
+                    <SelectItem value="loading" disabled>Loading customers...</SelectItem>
+                  ) : (
+                    customers.map((customer) => {
+                      const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ');
+                      return (
+                        <SelectItem key={customer.id} value={customer.id}>
+                          {fullName || 'No Name'} - {customer.email}
+                        </SelectItem>
+                      );
+                    })
+                  )}
+                </SelectContent>
+              </Select>
+              {selectedCustomerId && (
+                <p className="text-sm text-gray-500">
+                  OTP will be sent to: {customers.find(c => c.id === selectedCustomerId)?.email}
+                </p>
+              )}
             </div>
 
             {/* Customer Signature */}
@@ -948,17 +1039,29 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                   variant="outline"
                   onClick={handleSendOTP}
                   className="w-full"
-                  disabled={!customerName}
+                  disabled={!selectedCustomerId || isSendingOtp}
                 >
-                  <Phone className="size-4 mr-2" />
-                  Send OTP to Customer
+                  {isSendingOtp ? (
+                    <>
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                      Sending OTP...
+                    </>
+                  ) : (
+                    <>
+                      <Phone className="size-4 mr-2" />
+                      Send OTP to Customer Email
+                    </>
+                  )}
                 </Button>
               ) : (
                 <div className="space-y-2">
                   <div className="p-3 bg-green-50 border border-green-200 rounded">
                     <p className="text-sm text-green-800">
                       <CheckCircle2 className="size-4 inline mr-1" />
-                      OTP sent: <strong>{generatedOtp}</strong>
+                      OTP sent to: <strong>{customers.find(c => c.id === selectedCustomerId)?.email}</strong>
+                    </p>
+                    <p className="text-xs text-green-600 mt-1">
+                      Ask customer to check their email for the verification code
                     </p>
                   </div>
                   <Input
