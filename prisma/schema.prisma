@@ -68,8 +68,8 @@ model Role {
 model UserRole {
   userId String
   roleId String
-  role   Role   @relation(fields: [roleId], references: [id])
   user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
 
   @@id([userId, roleId])
   @@index([roleId], map: "UserRole_roleId_fkey")
@@ -84,15 +84,87 @@ model ContentItem {
   updatedAt DateTime @updatedAt
 }
 
-model InventoryItem {
-  id          String   @id @default(cuid())
-  sku         String   @unique
-  name        String
-  description String?
-  quantity    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ============================================
+// INVENTORY MANAGEMENT MODELS
+// ============================================
+
+// Inventory Category (e.g., "Scaffolding", "Safety Equipment", "Tools")
+model Category {
+  id        String         @id @default(cuid())
+  name      String         @unique
+  items     CategoryItem[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 }
+
+// Junction table for many-to-many relationship between Category and Item
+model CategoryItem {
+  categoryId String
+  itemId     String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  item       Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, itemId])
+}
+
+// Inventory Item (base product)
+model Item {
+  id                 String             @id @default(cuid())
+  name               String
+  pricePerDayPc      Decimal            @default(0) // Rental price per day per piece
+  pricePerItem       Decimal            @default(0) // Purchase price per item
+  replacementPerItem Decimal            @default(0) // Replacement cost if damaged/lost
+  status             String             @default("Available") // Available, Unavailable, Discontinued
+  quantityAvailable  Int                @default(0)
+  quantityTotal      Int                @default(0)
+  categories         CategoryItem[]
+  variationTypes     VariationType[]
+  productVariations  ProductVariation[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+// Variation Type (e.g., "Height", "Material", "Color" for an item)
+model VariationType {
+  id        String                @id @default(cuid())
+  itemId    String
+  name      String // e.g., "Height", "Material"
+  type      String // e.g., "dropdown", "radio", "text"
+  item      Item                  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  options   VariationTypeOption[]
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+}
+
+// Variation Type Options (e.g., "4.7M", "3.5M" for Height variation)
+model VariationTypeOption {
+  id                String             @id @default(cuid())
+  variationTypeId   String
+  name              String // e.g., "4.7M", "Steel", "Red"
+  variationType     VariationType      @relation(fields: [variationTypeId], references: [id], onDelete: Cascade)
+  productVariations ProductVariation[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+// Product Variation (specific SKU variant with its own pricing/stock)
+model ProductVariation {
+  id                    String              @id @default(cuid())
+  itemId                String
+  variationTypeOptionId String
+  pricePerDayPc         Decimal             @default(0)
+  pricePerItem          Decimal             @default(0)
+  replacementPerItem    Decimal             @default(0)
+  status                String              @default("Available")
+  quantityAvailable     Int                 @default(0)
+  quantityTotal         Int                 @default(0)
+  item                  Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  variationTypeOption   VariationTypeOption @relation(fields: [variationTypeOptionId], references: [id], onDelete: Cascade)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+}
+
+// ============================================
 
 model SalesOrder {
   id        String   @id @default(cuid())
@@ -121,8 +193,8 @@ model ReportDefinition {
 }
 
 model rFQ {
-  id                String     @id @default(cuid())
-  rfqNumber         String     @unique
+  id                String            @id @default(cuid())
+  rfqNumber         String            @unique
   customerName      String
   customerEmail     String
   customerPhone     String
@@ -130,13 +202,15 @@ model rFQ {
   projectLocation   String
   requestedDate     DateTime
   requiredDate      DateTime
-  status            String     @default("draft")
-  totalAmount       Decimal    @default(0) @db.Decimal(15, 2)
-  notes             String?    @db.LongText
+  status            String            @default("draft")
+  totalAmount       Decimal           @default(0) @db.Decimal(15, 2)
+  notes             String?           @db.LongText
   createdBy         String
   items             rFQItem[]
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  deliveryRequests  DeliveryRequest[]
+  returnRequests    ReturnRequest[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 }
 
 model rFQItem {
@@ -218,6 +292,7 @@ model DamageInvoice {
 }
 
 model InvoiceItem {
+<<<<<<< HEAD
   id              String        @id @default(cuid())
   damageInvoiceId String
   damageInvoice   DamageInvoice @relation(fields: [damageInvoiceId], references: [id], onDelete: Cascade)
@@ -228,3 +303,421 @@ model InvoiceItem {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
+=======
+  id                    String               @id @default(cuid())
+  damageInvoiceId       String
+  damageInvoice         DamageInvoice        @relation(fields: [damageInvoiceId], references: [id], onDelete: Cascade)
+  description           String
+  quantity              Int
+  unitPrice             Decimal              @db.Decimal(15, 2)
+  total                 Decimal              @db.Decimal(15, 2)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model InventoryAdjustment {
+  id                    String               @id @default(cuid())
+  adjustmentType        String
+  conditionReportId     String?
+  conditionReport       ConditionReport?     @relation(fields: [conditionReportId], references: [id], onDelete: SetNull)
+  repairSlipId          String?
+  repairSlip            OpenRepairSlip?      @relation(fields: [repairSlipId], references: [id], onDelete: SetNull)
+  scaffoldingItemId     String
+  scaffoldingItemName   String
+  quantity              Int
+  fromStatus            String
+  toStatus              String
+  referenceId           String
+  referenceType         String
+  adjustedBy            String
+  adjustedAt            String
+  notes                 String?              @db.Text
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+model RentalAgreement {
+  id                       String    @id @default(cuid())
+  agreementNumber          String    @unique
+  poNumber                 String?
+  projectName              String
+  owner                    String
+  ownerPhone               String?
+  hirer                    String
+  hirerPhone               String?
+  location                 String?
+  termOfHire               String?
+  transportation           String?
+  monthlyRental            Decimal   @default(0)
+  securityDeposit          Decimal   @default(0)
+  minimumCharges           Decimal   @default(0)
+  defaultInterest          Decimal   @default(0)
+  ownerSignatoryName       String?
+  ownerNRIC                String?
+  hirerSignatoryName       String?
+  hirerNRIC                String?
+  ownerSignature           String?   @db.Text
+  hirerSignature           String?   @db.Text
+  ownerSignatureDate       DateTime?
+  hirerSignatureDate       DateTime?
+  signedDocumentUrl        String?
+  signedDocumentUploadedAt DateTime?
+  signedDocumentUploadedBy String?
+  status                   String    @default("Draft")
+  currentVersion           Int       @default(1)
+  createdBy                String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  versions AgreementVersion[]
+}
+
+model AgreementVersion {
+  id            String   @id @default(cuid())
+  versionNumber Int
+  changes       String?
+  allowedRoles  String?  @db.Text // JSON string of roles
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  agreementId String
+  agreement   RentalAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+}
+
+// Delivery & Return Models
+model DeliveryRequest {
+  id              String        @id @default(cuid())
+  requestId       String        @unique
+  customerName    String
+  agreementNo     String
+  customerPhone   String?
+  customerEmail   String?
+  deliveryAddress String
+  deliveryType    String
+  requestDate     DateTime      @default(now())
+  totalSets       Int           @default(0)
+  deliveredSets   Int           @default(0)
+  pickupTime      String?
+  rfqId           String?
+  rfq             rFQ?          @relation(fields: [rfqId], references: [id])
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sets            DeliverySet[]
+}
+
+// Main Delivery Set table - only id, status, and basic info
+model DeliverySet {
+  id                String            @id @default(cuid())
+  setName           String
+  scheduledPeriod   String
+  status            String            @default("Pending") // Pending, Packing List Issued, Stock Checked, Packing & Loading, In Transit, Ready for Pickup, Completed
+  quotedAmount      Decimal?
+  deliveryFee       Decimal?
+  deliveryRequestId String
+  deliveryRequest   DeliveryRequest   @relation(fields: [deliveryRequestId], references: [id], onDelete: Cascade)
+  items             DeliverySetItem[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  createdBy         String?
+  notes             String?
+
+  // Relations to step tables
+  packingList       DeliveryPackingList?
+  stockCheck        DeliveryStockCheck?
+  schedule          DeliverySchedule?
+  packingLoading    DeliveryPackingLoading?
+  dispatch          DeliveryDispatch?
+  doIssued          DeliveryDOIssued?
+  completion        DeliveryCompletion?
+  customerAck       DeliveryCustomerAck?
+}
+
+// Step 1: Packing List
+model DeliveryPackingList {
+  id                String      @id @default(cuid())
+  deliverySetId     String      @unique
+  deliverySet       DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+  packingListNumber String?
+  packingListDate   DateTime?
+  issuedBy          String?
+  issuedAt          DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+// Step 2: Stock Check
+model DeliveryStockCheck {
+  id                String      @id @default(cuid())
+  deliverySetId     String      @unique
+  deliverySet       DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+  checkDate         DateTime?
+  checkedBy         String?
+  notes             String?
+  allItemsAvailable Boolean?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+// Step 3: Schedule
+model DeliverySchedule {
+  id                String      @id @default(cuid())
+  deliverySetId     String      @unique
+  deliverySet       DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+  scheduledDate     DateTime?
+  scheduledTimeSlot String?
+  confirmedAt       DateTime?
+  confirmedBy       String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+// Step 4: Packing & Loading
+model DeliveryPackingLoading {
+  id                 String      @id @default(cuid())
+  deliverySetId      String      @unique
+  deliverySet        DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+  packingStartedAt   DateTime?
+  packingStartedBy   String?
+  loadingCompletedAt DateTime?
+  loadingCompletedBy String?
+  packingPhotos      Json?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+// Step 5: Dispatch (Driver Info)
+model DeliveryDispatch {
+  id                   String      @id @default(cuid())
+  deliverySetId        String      @unique
+  deliverySet          DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+  driverName           String?
+  driverContact        String?
+  vehicleNumber        String?
+  driverSignature      String?   @db.Text
+  driverAcknowledgedAt DateTime?
+  dispatchedAt         DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+}
+
+// Step 6: DO Issued
+model DeliveryDOIssued {
+  id            String      @id @default(cuid())
+  deliverySetId String      @unique
+  deliverySet   DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+  doNumber      String?
+  doIssuedAt    DateTime?
+  doIssuedBy    String?
+  signedDO      String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+// Step 7: Delivery Completion
+model DeliveryCompletion {
+  id             String      @id @default(cuid())
+  deliverySetId  String      @unique
+  deliverySet    DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+  deliveredAt    DateTime?
+  deliveryPhotos Json?
+  deliveredBy    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+// Step 8: Customer Acknowledgement
+model DeliveryCustomerAck {
+  id                     String      @id @default(cuid())
+  deliverySetId          String      @unique
+  deliverySet            DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+  customerAcknowledgedAt DateTime?
+  customerSignature      String?   @db.Text
+  customerSignedBy       String?
+  customerOTP            String?
+  verifiedOTP            Boolean?
+  inventoryUpdatedAt     DateTime?
+  inventoryStatus        String?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+}
+
+model DeliverySetItem {
+  id                String      @id @default(cuid())
+  name              String
+  quantity          Int
+  scaffoldingItemId String?
+  deliverySetId     String
+  deliverySet       DeliverySet @relation(fields: [deliverySetId], references: [id], onDelete: Cascade)
+}
+
+// Main Return Request table - only id, status, and basic request info
+model ReturnRequest {
+  id               String              @id @default(cuid())
+  requestId        String              @unique
+  customerName     String
+  agreementNo      String
+  setName          String
+  requestDate      DateTime            @default(now())
+  status           String              @default("Requested") // Requested, Approved, Pickup Scheduled, Pickup Confirmed, Driver Recording, In Transit, Received at Warehouse, Under Inspection, Sorting Complete, Customer Notified, Dispute Raised, Completed
+  reason           String
+  pickupAddress    String
+  customerPhone    String?
+  customerEmail    String?
+  pickupFee        Decimal?
+  returnType       String              // Partial, Full
+  collectionMethod String              // Self Return, Transportation Needed
+  rfqId            String?
+  rfq              rFQ?                @relation(fields: [rfqId], references: [id])
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  items            ReturnRequestItem[]
+
+  // Relations to step tables
+  schedule         ReturnSchedule?
+  pickupConfirm    ReturnPickupConfirm?
+  driverRecording  ReturnDriverRecording?
+  warehouseReceipt ReturnWarehouseReceipt?
+  inspection       ReturnInspection?
+  rcf              ReturnRCF?
+  notification     ReturnNotification?
+  completion       ReturnCompletion?
+}
+
+model ReturnRequestItem {
+  id                String        @id @default(cuid())
+  name              String
+  quantity          Int
+  quantityReturned  Int           @default(0)
+  itemStatus        String        @default("Good")
+  statusBreakdown   Json?         // { "Good": 5, "Damaged": 2, "Repairable": 1, ... }
+  notes             String?
+  scaffoldingItemId String?
+  returnRequestId   String
+  returnRequest     ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+}
+
+// Step 1: Schedule/Approval
+model ReturnSchedule {
+  id              String        @id @default(cuid())
+  returnRequestId String        @unique
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  scheduledDate   DateTime?
+  timeSlot        String?
+  approvedAt      DateTime?
+  approvedBy      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+// Step 2: Pickup Confirmation (for Transportation Needed)
+model ReturnPickupConfirm {
+  id              String        @id @default(cuid())
+  returnRequestId String        @unique
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  pickupDriver    String?
+  driverContact   String?
+  confirmedAt     DateTime?
+  confirmedBy     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+// Step 3: Driver Recording (for Transportation Needed)
+model ReturnDriverRecording {
+  id              String        @id @default(cuid())
+  returnRequestId String        @unique
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  driverPhotos    Json?
+  recordedAt      DateTime?
+  recordedBy      String?
+  inTransitAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+// Step 4: Warehouse Receipt
+model ReturnWarehouseReceipt {
+  id              String        @id @default(cuid())
+  returnRequestId String        @unique
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  warehousePhotos Json?
+  receivedAt      DateTime?
+  receivedBy      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+// Step 5: Inspection & GRN
+model ReturnInspection {
+  id               String        @id @default(cuid())
+  returnRequestId  String        @unique
+  returnRequest    ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  grnNumber        String?
+  inspectedAt      DateTime?
+  inspectedBy      String?
+  productionNotes  String?
+  hasExternalGoods Boolean       @default(false)
+  externalGoodsNotes String?
+  damagePhotos     Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+// Step 6: RCF Generation
+model ReturnRCF {
+  id              String        @id @default(cuid())
+  returnRequestId String        @unique
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  rcfNumber       String?
+  generatedAt     DateTime?
+  generatedBy     String?
+  skipped         Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+// Step 7: Customer Notification
+model ReturnNotification {
+  id              String        @id @default(cuid())
+  returnRequestId String        @unique
+  returnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  notificationSent Boolean      @default(false)
+  notifiedAt      DateTime?
+  notifiedBy      String?
+  disputeRaised   Boolean       @default(false)
+  disputeDescription String?
+  disputeRaisedAt DateTime?
+  disputeResolved Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+// Step 8: Completion
+model ReturnCompletion {
+  id               String        @id @default(cuid())
+  returnRequestId  String        @unique
+  returnRequest    ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  inventoryUpdated Boolean       @default(false)
+  soaUpdated       Boolean       @default(false)
+  completedAt      DateTime?
+  completedBy      String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+// ScaffoldingItem model for inventory management
+model ScaffoldingItem {
+  id         String   @id @default(cuid())
+  itemCode   String   @unique
+  name       String
+  category   String
+  quantity   Int      @default(0)
+  available  Int      @default(0)
+  price      Decimal  @default(0)
+  status     String   @default("Available")
+  location   String?
+  itemStatus String   @default("Available")
+  imageUrl   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+>>>>>>> main

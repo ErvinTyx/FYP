@@ -47,58 +47,9 @@ interface Return {
   condition: 'Good' | 'Damaged' | 'Needs Repair';
 }
 
-const mockDeliveries: Delivery[] = [
-  {
-    id: 'DEL-2024-001',
-    customer: 'Acme Construction',
-    items: 15,
-    date: '2024-11-05',
-    timeSlot: '09:00 - 12:00',
-    status: 'Scheduled',
-    address: 'Downtown Plaza, Main St'
-  },
-  {
-    id: 'DEL-2024-002',
-    customer: 'BuildRight Inc.',
-    items: 8,
-    date: '2024-11-04',
-    timeSlot: '14:00 - 17:00',
-    status: 'In Transit',
-    address: 'Riverside Complex, Oak Ave'
-  },
-  {
-    id: 'DEL-2024-003',
-    customer: 'Metro Builders',
-    items: 12,
-    date: '2024-11-03',
-    timeSlot: '09:00 - 12:00',
-    status: 'Delivered',
-    address: 'City Center Tower, Park Rd'
-  },
-];
-
-const mockReturns: Return[] = [
-  {
-    id: 'RET-2024-001',
-    customer: 'Premium Projects',
-    items: 5,
-    date: '2024-11-06',
-    status: 'Requested',
-    condition: 'Good'
-  },
-  {
-    id: 'RET-2024-002',
-    customer: 'Skyline Developers',
-    items: 3,
-    date: '2024-11-05',
-    status: 'Approved',
-    condition: 'Damaged'
-  },
-];
-
 export function DeliveryReturns() {
-  const [deliveries] = useState<Delivery[]>(mockDeliveries);
-  const [returns, setReturns] = useState<Return[]>(mockReturns);
+  const [deliveries] = useState<Delivery[]>([]);
+  const [returns, setReturns] = useState<Return[]>([]);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isReturnOpen, setIsReturnOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>();

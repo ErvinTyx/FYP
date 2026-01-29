@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Save, Send } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Send, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { RFQ, RFQItem, SCAFFOLDING_TYPES, RFQNotification, NotificationChange } from '../../types/rfq';
+import { RFQ, RFQItem, RFQNotification, NotificationChange } from '../../types/rfq';
 import {
   Select,
   SelectContent,
@@ -14,6 +14,20 @@ import {
   SelectValue,
 } from '../ui/select';
 import { toast } from 'sonner';
+
+// Type for scaffolding items from database
+interface DatabaseScaffoldingItem {
+  id: string;
+  itemCode: string;
+  name: string;
+  category: string;
+  quantity: number;
+  available: number;
+  price: number;
+  status: string;
+  location: string | null;
+  itemStatus: string;
+}
 
 interface RFQFormProps {
   rfq: RFQ | null;
@@ -39,6 +53,33 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
 
   const [items, setItems] = useState<RFQItem[]>([]);
   const [originalRFQ, setOriginalRFQ] = useState<RFQ | null>(null);
+  const [scaffoldingTypes, setScaffoldingTypes] = useState<DatabaseScaffoldingItem[]>([]);
+  const [loadingScaffolding, setLoadingScaffolding] = useState(true);
+
+  // Fetch scaffolding items from database
+  useEffect(() => {
+    const fetchScaffoldingItems = async () => {
+      try {
+        setLoadingScaffolding(true);
+        const response = await fetch('/api/scaffolding');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          setScaffoldingTypes(result.data);
+        } else {
+          console.error('Failed to fetch scaffolding items:', result.message);
+          toast.error('Failed to load scaffolding items');
+        }
+      } catch (error) {
+        console.error('Error fetching scaffolding items:', error);
+        toast.error('Failed to load scaffolding items');
+      } finally {
+        setLoadingScaffolding(false);
+      }
+    };
+
+    fetchScaffoldingItems();
+  }, []);
 
   useEffect(() => {
     if (rfq) {
@@ -86,11 +127,11 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         
         // If scaffolding item changed, update related fields
         if (field === 'scaffoldingItemId') {
-          const scaffoldingItem = SCAFFOLDING_TYPES.find(s => s.id === value);
+          const scaffoldingItem = scaffoldingTypes.find(s => s.id === value);
           if (scaffoldingItem) {
             updated.scaffoldingItemName = scaffoldingItem.name;
-            updated.unit = scaffoldingItem.unit;
-            updated.unitPrice = scaffoldingItem.basePrice;
+            updated.unit = 'piece'; // Default unit for scaffolding items
+            updated.unitPrice = scaffoldingItem.price;
           }
         }
         
@@ -452,14 +493,22 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
                       <Select
                         value={item.scaffoldingItemId}
                         onValueChange={(value) => updateItem(item.id, 'scaffoldingItemId', value)}
+                        disabled={loadingScaffolding}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select scaffolding type" />
+                          {loadingScaffolding ? (
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="size-4 animate-spin" />
+                              <span>Loading...</span>
+                            </div>
+                          ) : (
+                            <SelectValue placeholder="Select scaffolding type" />
+                          )}
                         </SelectTrigger>
                         <SelectContent>
-                          {SCAFFOLDING_TYPES.map(type => (
+                          {scaffoldingTypes.map(type => (
                             <SelectItem key={type.id} value={type.id}>
-                              {type.name} - RM {type.basePrice.toFixed(2)}/{type.unit}
+                              {type.itemCode} - {type.name} - RM {type.price.toFixed(2)}/piece
                             </SelectItem>
                           ))}
                         </SelectContent>

@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Truck, Package, CheckCircle2, Clock, AlertCircle, Plus, 
   Search, Filter, Eye, FileText, Download, ClipboardCheck,
   PackageCheck, MapPin, Calendar as CalendarIcon, User,
-  Warehouse, TrendingRight, MoreVertical, Edit
+  Warehouse, TrendingRight, MoreVertical, Edit, Loader2
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -57,15 +57,15 @@ export interface DeliveryOrder {
   type: 'delivery' | 'pickup';  // Type of delivery
   items: DeliveryItem[];
   
-  // Workflow status
+  // Workflow status (matching database values)
   status: 
-    | 'pending'                // DO created, waiting for packing list
-    | 'packing_list_issued'    // Packing list generated
-    | 'stock_checked'          // Stock availability verified
-    | 'packing_loading'        // Items being packed and loaded to lorry
-    | 'in_transit'             // On the way (delivery only)
-    | 'ready_for_pickup'       // Ready for customer pickup (pickup only)
-    | 'completed';             // Customer signed and OTP verified
+    | 'Pending'                // DO created, waiting for packing list
+    | 'Packing List Issued'    // Packing list generated
+    | 'Stock Checked'          // Stock availability verified
+    | 'Packing & Loading'      // Items being packed and loaded to lorry
+    | 'In Transit'             // On the way (delivery only)
+    | 'Ready for Pickup'       // Ready for customer pickup (pickup only)
+    | 'Completed';             // Customer signed and OTP verified
   
   // Packing list
   packingListNumber?: string;
@@ -124,152 +124,6 @@ export interface DeliveryOrder {
   notes?: string;
 }
 
-// Mock data
-const mockDeliveries: DeliveryOrder[] = [
-  {
-    id: 'DEL-001',
-    doNumber: 'DO-2026-001',
-    orderId: 'ORD-2026-156',
-    agreementId: 'AGR-2026-089',
-    customerName: 'ABC Construction Sdn Bhd',
-    customerContact: '+60 12-345-6789',
-    customerAddress: 'No. 45, Jalan Ampang, 50450 Kuala Lumpur',
-    siteAddress: 'Lot 123, Jalan Bukit Bintang, 55100 KL',
-    type: 'delivery',
-    items: [
-      {
-        id: 'ITM-001',
-        scaffoldingItemId: 'SCAF-001',
-        scaffoldingItemName: 'Steel Pipe Scaffolding - Standard (6m)',
-        quantity: 50,
-        unit: 'pcs',
-        availableStock: 200,
-        weight: '25kg/pc',
-        dimensions: '48.3mm x 6m'
-      },
-      {
-        id: 'ITM-002',
-        scaffoldingItemId: 'SCAF-002',
-        scaffoldingItemName: 'Scaffold Board - Wooden (3.9m)',
-        quantity: 30,
-        unit: 'pcs',
-        availableStock: 150,
-        weight: '20kg/pc',
-        dimensions: '225mm x 38mm x 3.9m'
-      }
-    ],
-    status: 'pending',
-    scheduledDate: '2026-12-15',
-    scheduledTimeSlot: '09:00 - 12:00',
-    createdBy: 'Sales Staff',
-    createdAt: '2026-12-02T09:00:00',
-    updatedAt: '2026-12-02T09:00:00',
-  },
-  {
-    id: 'DEL-002',
-    doNumber: 'DO-2026-002',
-    orderId: 'ORD-2026-157',
-    agreementId: 'AGR-2026-090',
-    customerName: 'XYZ Builders Sdn Bhd',
-    customerContact: '+60 13-456-7890',
-    customerAddress: 'Unit 12-3, Tower A, The Pinnacle, 50088 KL',
-    siteAddress: 'Site 45B, Taman Desa Development',
-    type: 'pickup',
-    items: [
-      {
-        id: 'ITM-003',
-        scaffoldingItemId: 'SCAF-003',
-        scaffoldingItemName: 'H-Frame Scaffolding (1.7m x 1.2m)',
-        quantity: 20,
-        unit: 'pcs',
-        availableStock: 80,
-        weight: '22kg/pc',
-        dimensions: '1.7m x 1.2m'
-      }
-    ],
-    status: 'pending',
-    scheduledDate: '2026-12-18',
-    scheduledTimeSlot: '14:00 - 17:00',
-    createdBy: 'Sales Staff',
-    createdAt: '2026-12-05T09:00:00',
-    updatedAt: '2026-12-05T09:00:00',
-  },
-  {
-    id: 'DEL-003',
-    doNumber: 'DO-2026-003',
-    orderId: 'ORD-2026-158',
-    agreementId: 'AGR-2026-091',
-    customerName: 'Prime Engineering Works',
-    customerContact: '+60 14-567-8901',
-    customerAddress: 'Level 5, Menara TH, Jalan Tun Razak',
-    siteAddress: 'Plaza Metro, Jalan Raja Chulan',
-    type: 'delivery',
-    items: [
-      {
-        id: 'ITM-004',
-        scaffoldingItemId: 'SCAF-004',
-        scaffoldingItemName: 'Ringlock System - Vertical (3m)',
-        quantity: 60,
-        unit: 'pcs',
-        availableStock: 120,
-        weight: '20kg/pc'
-      },
-      {
-        id: 'ITM-005',
-        scaffoldingItemId: 'SCAF-005',
-        scaffoldingItemName: 'Steel Ledger (2m)',
-        quantity: 40,
-        unit: 'pcs',
-        availableStock: 100,
-        weight: '12kg/pc'
-      }
-    ],
-    status: 'pending',
-    scheduledDate: '2026-12-20',
-    scheduledTimeSlot: '09:00 - 12:00',
-    createdBy: 'Sales Staff',
-    createdAt: '2026-12-08T09:00:00',
-    updatedAt: '2026-12-08T09:00:00',
-  },
-  {
-    id: 'DEL-004',
-    doNumber: 'DO-2026-004',
-    orderId: 'ORD-2026-159',
-    agreementId: 'AGR-2026-092',
-    customerName: 'Golden Projects Sdn Bhd',
-    customerContact: '+60 15-678-9012',
-    customerAddress: 'No. 88, Jalan Sultan Ismail, 50250 KL',
-    siteAddress: 'Summit Mall Development, Subang Jaya',
-    type: 'pickup',
-    items: [
-      {
-        id: 'ITM-006',
-        scaffoldingItemId: 'SCAF-006',
-        scaffoldingItemName: 'Steel Tube - Heavy Duty (4m)',
-        quantity: 100,
-        unit: 'pcs',
-        availableStock: 300,
-        weight: '18kg/pc',
-        dimensions: '48.3mm x 4m'
-      },
-      {
-        id: 'ITM-007',
-        scaffoldingItemId: 'SCAF-007',
-        scaffoldingItemName: 'Swivel Coupler',
-        quantity: 150,
-        unit: 'pcs',
-        availableStock: 500,
-        weight: '1.5kg/pc'
-      }
-    ],
-    status: 'pending',
-    scheduledDate: '2026-12-22',
-    scheduledTimeSlot: '14:00 - 17:00',
-    createdBy: 'Sales Staff',
-    createdAt: '2026-12-10T09:00:00',
-    updatedAt: '2026-12-10T09:00:00',
-  },
-];
 
 export function DeliveryManagement() {
   const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
@@ -278,17 +132,112 @@ export function DeliveryManagement() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'workflow' | 'details'>('list');
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Load from localStorage or use mock data
-    const saved = localStorage.getItem('deliveryOrders');
-    if (saved) {
-      setDeliveries(JSON.parse(saved));
-    } else {
-      setDeliveries(mockDeliveries);
-      localStorage.setItem('deliveryOrders', JSON.stringify(mockDeliveries));
+  // Fetch delivery orders from API (only those with DO Generated status)
+  const fetchDeliveryOrders = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/delivery');
+      const data = await response.json();
+      
+      if (data.success) {
+        // Transform API data to DeliveryOrder format
+        // Only include sets that have a DO generated (doNumber exists or status is DO Generated)
+        const deliveryOrders: DeliveryOrder[] = [];
+        
+        for (const req of data.deliveryRequests) {
+          for (const set of req.sets) {
+            // Only include sets that have a DO number (delivery order generated)
+            // A set with doNumber means it has passed through RFQ approval and DO generation
+            // Status can be any delivery workflow status: DO Generated, Packing List Issued, Stock Checked, etc.
+            const isDoGenerated = !!set.doNumber;
+            
+            // Valid statuses for delivery management (RFQ statuses that indicate DO was generated, plus all delivery workflow statuses)
+            const validStatuses = [
+              'Confirmed', 'DO Generated',  // RFQ statuses that allow DO
+              'Pending', 'Packing List Issued', 'Stock Checked', 'Packing & Loading',  // Delivery workflow statuses
+              'In Transit', 'Ready for Pickup', 'Completed'  // Delivery completion statuses
+            ];
+            const hasValidStatus = validStatuses.includes(set.status);
+            
+            if (hasValidStatus && isDoGenerated) {
+              deliveryOrders.push({
+                id: `${req.id}-${set.id}`,
+                doNumber: set.doNumber || `DO-${req.agreementNo}-${set.setName.replace('Set ', '')}`,
+                orderId: req.requestId,
+                agreementId: req.agreementNo,
+                customerName: req.customerName,
+                customerContact: req.customerPhone || '',
+                customerAddress: req.deliveryAddress,
+                siteAddress: req.deliveryAddress,
+                type: req.deliveryType as 'delivery' | 'pickup',
+                items: set.items.map((item: { id: string; name: string; quantity: number }) => ({
+                  id: item.id,
+                  scaffoldingItemId: item.id,
+                  scaffoldingItemName: item.name,
+                  quantity: item.quantity,
+                  unit: 'pcs',
+                  availableStock: item.quantity,
+                })),
+                status: (set.status || 'Pending') as DeliveryOrder['status'],
+                packingListNumber: set.packingListNumber,
+                packingListDate: set.packingListDate,
+                stockCheckDate: set.stockCheckDate,
+                stockCheckBy: set.stockCheckBy,
+                stockCheckNotes: set.stockCheckNotes,
+                allItemsAvailable: set.allItemsAvailable,
+                scheduledDate: set.deliveryDate,
+                scheduledTimeSlot: set.scheduledTimeSlot,
+                scheduleConfirmedAt: set.scheduleConfirmedAt,
+                scheduleConfirmedBy: set.scheduleConfirmedBy,
+                packingStartedAt: set.packingStartedAt,
+                packingStartedBy: set.packingStartedBy,
+                loadingCompletedAt: set.loadingCompletedAt,
+                loadingCompletedBy: set.loadingCompletedBy,
+                packingPhotos: set.packingPhotos as string[] | undefined,
+                driverName: set.driverName,
+                driverContact: set.driverContact,
+                vehicleNumber: set.vehicleNumber,
+                driverSignature: set.driverSignature,
+                driverAcknowledgedAt: set.driverAcknowledgedAt,
+                dispatchedAt: set.dispatchedAt,
+                doIssuedAt: set.doIssuedAt,
+                doIssuedBy: set.doIssuedBy,
+                deliveredAt: set.deliveredAt,
+                deliveryPhotos: set.deliveryPhotos as string[] | undefined,
+                customerAcknowledgedAt: set.customerAcknowledgedAt,
+                customerSignature: set.customerSignature,
+                customerSignedBy: set.customerSignedBy,
+                customerOTP: set.customerOTP,
+                verifiedOTP: set.verifiedOTP,
+                inventoryUpdatedAt: set.inventoryUpdatedAt,
+                inventoryStatus: set.inventoryStatus as 'HQ' | 'Rental' | undefined,
+                createdBy: set.createdBy || 'System',
+                createdAt: set.createdAt || new Date().toISOString(),
+                updatedAt: set.updatedAt || new Date().toISOString(),
+                notes: set.notes,
+              });
+            }
+          }
+        }
+        
+        setDeliveries(deliveryOrders);
+      } else {
+        console.error('Failed to fetch delivery orders:', data.message);
+        toast.error('Failed to load delivery orders');
+      }
+    } catch (error) {
+      console.error('Error fetching delivery orders:', error);
+      toast.error('Error loading delivery orders');
+    } finally {
+      setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    fetchDeliveryOrders();
+  }, [fetchDeliveryOrders]);
 
   useEffect(() => {
     let filtered = deliveries;
@@ -310,9 +259,67 @@ export function DeliveryManagement() {
     setFilteredDeliveries(filtered);
   }, [deliveries, searchQuery, statusFilter]);
 
-  const saveDeliveries = (updated: DeliveryOrder[]) => {
+  // Save delivery order to database via API
+  const saveDeliveryToApi = async (delivery: DeliveryOrder): Promise<boolean> => {
+    try {
+      // Extract setId from the composite id (requestId-setId)
+      const setId = delivery.id.split('-').slice(1).join('-');
+      
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId,
+          status: delivery.status,
+          doNumber: delivery.doNumber,
+          packingListNumber: delivery.packingListNumber,
+          packingListDate: delivery.packingListDate,
+          stockCheckDate: delivery.stockCheckDate,
+          stockCheckBy: delivery.stockCheckBy,
+          stockCheckNotes: delivery.stockCheckNotes,
+          allItemsAvailable: delivery.allItemsAvailable,
+          // Only send scheduledTimeSlot if it has a value (prevent null overwrites)
+          ...(delivery.scheduledTimeSlot && { scheduledTimeSlot: delivery.scheduledTimeSlot }),
+          deliveryDate: delivery.scheduledDate, // H2: Add deliveryDate for API schedule upsert
+          scheduleConfirmedAt: delivery.scheduleConfirmedAt,
+          scheduleConfirmedBy: delivery.scheduleConfirmedBy,
+          packingStartedAt: delivery.packingStartedAt,
+          packingStartedBy: delivery.packingStartedBy,
+          loadingCompletedAt: delivery.loadingCompletedAt,
+          loadingCompletedBy: delivery.loadingCompletedBy,
+          packingPhotos: delivery.packingPhotos,
+          driverName: delivery.driverName,
+          driverContact: delivery.driverContact,
+          vehicleNumber: delivery.vehicleNumber,
+          driverSignature: delivery.driverSignature,
+          driverAcknowledgedAt: delivery.driverAcknowledgedAt,
+          dispatchedAt: delivery.dispatchedAt,
+          doIssuedAt: delivery.doIssuedAt,
+          doIssuedBy: delivery.doIssuedBy,
+          deliveredAt: delivery.deliveredAt,
+          deliveryPhotos: delivery.deliveryPhotos,
+          customerAcknowledgedAt: delivery.customerAcknowledgedAt,
+          customerSignature: delivery.customerSignature,
+          customerSignedBy: delivery.customerSignedBy,
+          customerOTP: delivery.customerOTP,
+          verifiedOTP: delivery.verifiedOTP,
+          inventoryUpdatedAt: delivery.inventoryUpdatedAt,
+          inventoryStatus: delivery.inventoryStatus,
+          notes: delivery.notes,
+        }),
+      });
+      
+      const data = await response.json();
+      return data.success;
+    } catch (error) {
+      console.error('Error saving delivery to API:', error);
+      return false;
+    }
+  };
+
+  const saveDeliveries = async (updated: DeliveryOrder[]) => {
     setDeliveries(updated);
-    localStorage.setItem('deliveryOrders', JSON.stringify(updated));
+    // Note: Individual saves happen through saveDeliveryToApi
   };
 
   const handleCreateNew = () => {
@@ -326,39 +333,52 @@ export function DeliveryManagement() {
   };
 
   const handleProcessDelivery = (delivery: DeliveryOrder) => {
-    setSelectedDelivery(delivery);
+    // Get the latest data from state
+    const latestDelivery = deliveries.find(d => d.id === delivery.id);
+    if (latestDelivery) {
+      setSelectedDelivery(latestDelivery);
+    } else {
+      setSelectedDelivery(delivery);
+    }
     setViewMode('workflow');
   };
 
-  const handleSaveDelivery = (delivery: DeliveryOrder) => {
+  const handleSaveDelivery = async (delivery: DeliveryOrder) => {
     const isNew = !deliveries.find(d => d.id === delivery.id);
     
-    if (isNew) {
-      saveDeliveries([...deliveries, delivery]);
-      toast.success('Delivery order created successfully');
-    } else {
-      saveDeliveries(deliveries.map(d => d.id === delivery.id ? delivery : d));
-      toast.success('Delivery order updated successfully');
-    }
+    // Save to API
+    const success = await saveDeliveryToApi(delivery);
     
-    setViewMode('list');
-    setSelectedDelivery(null);
+    if (success) {
+      if (isNew) {
+        setDeliveries([...deliveries, delivery]);
+      } else {
+        setDeliveries(deliveries.map(d => d.id === delivery.id ? delivery : d));
+      }
+      // Update selected delivery with latest data
+      setSelectedDelivery(delivery);
+      return; // Success - don't navigate away, let workflow handle navigation
+    } else {
+      throw new Error('Failed to save delivery order to database');
+    }
   };
 
   const handleBack = () => {
+    // Refresh deliveries from API
+    fetchDeliveryOrders();
     setViewMode('list');
     setSelectedDelivery(null);
   };
 
   const getStatusBadge = (status: DeliveryOrder['status']) => {
-    const config = {
-      pending: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
-      packing_list_issued: { bg: 'bg-cyan-100', text: 'text-cyan-800', label: 'Packing List' },
-      stock_checked: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Stock Checked' },
-      packing_loading: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Packing & Loading' },
-      in_transit: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'In Transit' },
-      ready_for_pickup: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Ready for Pickup' },
-      completed: { bg: 'bg-green-100', text: 'text-green-800', label: 'Completed' },
+    const config: Record<string, { bg: string; text: string; label: string }> = {
+      'Pending': { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
+      'Packing List Issued': { bg: 'bg-cyan-100', text: 'text-cyan-800', label: 'Packing List' },
+      'Stock Checked': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Stock Checked' },
+      'Packing & Loading': { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Packing & Loading' },
+      'In Transit': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'In Transit' },
+      'Ready for Pickup': { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Ready for Pickup' },
+      'Completed': { bg: 'bg-green-100', text: 'text-green-800', label: 'Completed' },
     };
 
     const statusConfig = config[status];
@@ -475,13 +495,13 @@ export function DeliveryManagement() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="packing_list_issued">Packing List Issued</SelectItem>
-                <SelectItem value="stock_checked">Stock Checked</SelectItem>
-                <SelectItem value="packing_loading">Packing & Loading</SelectItem>
-                <SelectItem value="in_transit">In Transit</SelectItem>
-                <SelectItem value="ready_for_pickup">Ready for Pickup</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="Packing List Issued">Packing List Issued</SelectItem>
+                <SelectItem value="Stock Checked">Stock Checked</SelectItem>
+                <SelectItem value="Packing & Loading">Packing & Loading</SelectItem>
+                <SelectItem value="In Transit">In Transit</SelectItem>
+                <SelectItem value="Ready for Pickup">Ready for Pickup</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -563,7 +583,7 @@ export function DeliveryManagement() {
                             <Eye className="size-4 mr-2" />
                             View
                           </DropdownMenuItem>
-                          {delivery.status !== 'completed' && (
+                          {delivery.status !== 'Completed' && (
                             <DropdownMenuItem onClick={() => handleProcessDelivery(delivery)}>
                               <Edit className="size-4 mr-2" />
                               Process

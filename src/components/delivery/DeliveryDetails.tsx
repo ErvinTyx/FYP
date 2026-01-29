@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import {
   ArrowLeft, FileText, User, Calendar as CalendarIcon, MapPin,
   Phone, Package, Truck, CheckCircle2, Download, Clock,
-  FileSignature, Image as ImageIcon
+  FileSignature, Image as ImageIcon, Printer
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -15,6 +16,14 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import { format } from 'date-fns';
 
 interface DeliveryDetailsProps {
   delivery: DeliveryOrder;
@@ -23,23 +32,20 @@ interface DeliveryDetailsProps {
 }
 
 export function DeliveryDetails({ delivery, onProcess, onBack }: DeliveryDetailsProps) {
+  const [isDOViewerOpen, setIsDOViewerOpen] = useState(false);
+
   const getStatusBadge = (status: DeliveryOrder['status']) => {
-    const config = {
-      pending: { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
-      stock_checked: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Stock Checked' },
-      packing_list_issued: { bg: 'bg-cyan-100', text: 'text-cyan-800', label: 'Packing List Issued' },
-      schedule_confirmed: { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Scheduled' },
-      packing: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Packing' },
-      loaded: { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Loaded' },
-      do_issued: { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'DO Issued' },
-      driver_acknowledged: { bg: 'bg-violet-100', text: 'text-violet-800', label: 'Driver Acknowledged' },
-      in_transit: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'In Transit' },
-      delivered: { bg: 'bg-lime-100', text: 'text-lime-800', label: 'Delivered' },
-      customer_acknowledged: { bg: 'bg-teal-100', text: 'text-teal-800', label: 'Customer Acknowledged' },
-      completed: { bg: 'bg-green-100', text: 'text-green-800', label: 'Completed' },
+    const config: Record<string, { bg: string; text: string; label: string }> = {
+      'Pending': { bg: 'bg-gray-100', text: 'text-gray-800', label: 'Pending' },
+      'Packing List Issued': { bg: 'bg-cyan-100', text: 'text-cyan-800', label: 'Packing List Issued' },
+      'Stock Checked': { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Stock Checked' },
+      'Packing & Loading': { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Packing & Loading' },
+      'In Transit': { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'In Transit' },
+      'Ready for Pickup': { bg: 'bg-orange-100', text: 'text-orange-800', label: 'Ready for Pickup' },
+      'Completed': { bg: 'bg-green-100', text: 'text-green-800', label: 'Completed' },
     };
 
-    const statusConfig = config[status as keyof typeof config];
+    const statusConfig = config[status];
     if (!statusConfig) {
       return <Badge className="bg-gray-100 text-gray-800">{status || 'Unknown'}</Badge>;
     }
@@ -64,11 +70,17 @@ export function DeliveryDetails({ delivery, onProcess, onBack }: DeliveryDetails
             <p className="text-gray-600">Order ID: {delivery.orderId}</p>
           </div>
         </div>
-        {delivery.status !== 'completed' && (
-          <Button onClick={onProcess} className="bg-[#F15929] hover:bg-[#d94d1f]">
-            Continue Processing
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsDOViewerOpen(true)}>
+            <FileText className="size-4 mr-2" />
+            View DO
           </Button>
-        )}
+          {delivery.status !== 'Completed' && (
+            <Button onClick={onProcess} className="bg-[#F15929] hover:bg-[#d94d1f]">
+              Continue Processing
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Customer Information */}
@@ -464,6 +476,160 @@ export function DeliveryDetails({ delivery, onProcess, onBack }: DeliveryDetails
           </div>
         </CardContent>
       </Card>
+
+      {/* DO Viewer Dialog */}
+      <Dialog open={isDOViewerOpen} onOpenChange={setIsDOViewerOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Delivery Order - {delivery.doNumber}</DialogTitle>
+            <DialogDescription>
+              Delivery Order document
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 p-4 bg-white border rounded-lg">
+            {/* DO Header */}
+            <div className="flex justify-between items-start border-b pb-4">
+              <div>
+                <h2 className="text-xl font-bold text-[#231F20]">POWER METAL STEEL SDN BHD</h2>
+                <p className="text-sm text-gray-600">Scaffolding Equipment Rental</p>
+              </div>
+              <div className="text-right">
+                <h3 className="text-[#F15929] font-bold mb-2">DELIVERY ORDER</h3>
+                <div className="space-y-1 text-sm">
+                  <p><strong>DO Number:</strong> {delivery.doNumber}</p>
+                  <p><strong>Date:</strong> {delivery.packingListDate && format(new Date(delivery.packingListDate), 'PP')}</p>
+                  <p><strong>Order ID:</strong> {delivery.orderId}</p>
+                  <p><strong>Agreement ID:</strong> {delivery.agreementId}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Customer Details */}
+            <div className="grid grid-cols-2 gap-6 border-b pb-4">
+              <div>
+                <h4 className="font-semibold text-[#231F20] mb-2">Deliver To:</h4>
+                <p className="text-sm">{delivery.customerName}</p>
+                <p className="text-sm text-gray-600">{delivery.siteAddress}</p>
+                <p className="text-sm text-gray-600">{delivery.customerContact}</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-[#231F20] mb-2">Delivery Details:</h4>
+                <p className="text-sm"><strong>Type:</strong> {delivery.type === 'delivery' ? 'Delivery' : 'Customer Pickup'}</p>
+                {delivery.scheduledDate && (
+                  <p className="text-sm"><strong>Scheduled Date:</strong> {format(new Date(delivery.scheduledDate), 'PP')}</p>
+                )}
+                {delivery.scheduledTimeSlot && (
+                  <p className="text-sm"><strong>Time Slot:</strong> {delivery.scheduledTimeSlot}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Items Table */}
+            <div>
+              <h4 className="font-semibold text-[#231F20] mb-2">Items:</h4>
+              <table className="w-full text-sm border">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="border p-2 text-left">#</th>
+                    <th className="border p-2 text-left">Description</th>
+                    <th className="border p-2 text-right">Quantity</th>
+                    <th className="border p-2 text-right">Unit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {delivery.items.map((item, index) => (
+                    <tr key={item.id}>
+                      <td className="border p-2">{index + 1}</td>
+                      <td className="border p-2">{item.scaffoldingItemName}</td>
+                      <td className="border p-2 text-right">{item.quantity}</td>
+                      <td className="border p-2 text-right">{item.unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Driver Information */}
+            {delivery.driverName && (
+              <div className="border-t pt-4">
+                <h4 className="font-semibold text-[#231F20] mb-2">Driver Information:</h4>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <p><strong>Driver:</strong> {delivery.driverName}</p>
+                  <p><strong>Contact:</strong> {delivery.driverContact}</p>
+                  <p><strong>Vehicle:</strong> {delivery.vehicleNumber}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Signatures Section */}
+            {(delivery.driverSignature || delivery.customerSignature) && (
+              <div className="border-t pt-4">
+                <h4 className="font-semibold text-[#231F20] mb-4">Signatures:</h4>
+                <div className="grid grid-cols-2 gap-6">
+                  {delivery.driverSignature && (
+                    <div className="text-center">
+                      <p className="text-sm text-gray-500 mb-2">Driver Signature</p>
+                      <img
+                        src={delivery.driverSignature}
+                        alt="Driver signature"
+                        className="border rounded-lg p-2 bg-white mx-auto max-w-[200px]"
+                      />
+                      {delivery.driverAcknowledgedAt && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {format(new Date(delivery.driverAcknowledgedAt), 'PPp')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {delivery.customerSignature && (
+                    <div className="text-center">
+                      <p className="text-sm text-gray-500 mb-2">Customer Signature</p>
+                      <img
+                        src={delivery.customerSignature}
+                        alt="Customer signature"
+                        className="border rounded-lg p-2 bg-white mx-auto max-w-[200px]"
+                      />
+                      <p className="text-sm text-gray-600 mt-1">{delivery.customerSignedBy}</p>
+                      {delivery.customerAcknowledgedAt && (
+                        <p className="text-xs text-gray-500">
+                          {format(new Date(delivery.customerAcknowledgedAt), 'PPp')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* OTP Verification */}
+            {delivery.verifiedOTP && (
+              <div className="border-t pt-4 text-center">
+                <Badge className="bg-green-100 text-green-800">
+                  <CheckCircle2 className="size-4 mr-1" />
+                  OTP Verified - Delivery Confirmed
+                </Badge>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => window.print()}
+            >
+              <Printer className="size-4 mr-2" />
+              Print
+            </Button>
+            <Button
+              className="bg-[#F15929] hover:bg-[#d94d1f]"
+              onClick={() => setIsDOViewerOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

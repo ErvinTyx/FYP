@@ -60,6 +60,8 @@ export default function DeliveryReturnRequest() {
   const [selectedReturnRequest, setSelectedReturnRequest] = useState<ReturnRequest | null>(null);
   const [showAgreementModal, setShowAgreementModal] = useState(false);
   const [selectedAgreement, setSelectedAgreement] = useState<string>('');
+  const [showAddDeliveryModal, setShowAddDeliveryModal] = useState(false);
+  const [showAddReturnModal, setShowAddReturnModal] = useState(false);
 
   // Form states
   const [deliveryFee, setDeliveryFee] = useState('');
@@ -67,106 +69,40 @@ export default function DeliveryReturnRequest() {
   const [pickupTime, setPickupTime] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Mock data
-  const [deliveryRequests, setDeliveryRequests] = useState<DeliveryRequest[]>([
-    {
-      id: 'DR001',
-      requestId: 'DR-2025-001',
-      projectName: 'KL Tower Construction',
-      customerName: 'ABC Construction Sdn Bhd',
-      agreementNo: 'AGR-2025-001',
-      customerPhone: '+60123456789',
-      customerEmail: 'contact@abc.com',
-      deliveryAddress: 'Jalan Raja Laut, 50350 Kuala Lumpur',
-      requestType: 'delivery',
-      requestDate: '2025-12-01',
-      sets: [
-        {
-          id: 'SET-A',
-          setName: 'Set A - Initial Phase',
-          items: [
-            { name: 'Scaffolding Pipe 6m', quantity: 100 },
-            { name: 'Coupler Standard', quantity: 200 },
-            { name: 'Base Plate', quantity: 50 }
-          ],
-          scheduledPeriod: 'Month 1-3',
-          rentalAmount: 15000,
-          status: 'Sent to Delivery',
-          deliveryFee: 500,
-          totalAmount: 15500,
-          quotedDate: '2025-12-01',
-          acceptedDate: '2025-12-02'
-        },
-        {
-          id: 'SET-B',
-          setName: 'Set B - Extension Phase',
-          items: [
-            { name: 'Scaffolding Pipe 4m', quantity: 150 },
-            { name: 'Coupler Swivel', quantity: 180 },
-            { name: 'Ladder Beam', quantity: 30 }
-          ],
-          scheduledPeriod: 'Month 4-6',
-          rentalAmount: 18500,
-          status: 'Pending Quote'
-        }
-      ]
-    },
-    {
-      id: 'DR002',
-      requestId: 'DR-2025-002',
-      projectName: 'Ampang Mall Development',
-      customerName: 'XYZ Development',
-      agreementNo: 'AGR-2025-002',
-      customerPhone: '+60129876543',
-      customerEmail: 'info@xyz.com',
-      deliveryAddress: 'Jalan Ampang, 50450 Kuala Lumpur',
-      requestType: 'pickup',
-      requestDate: '2025-12-03',
-      sets: [
-        {
-          id: 'SET-C',
-          setName: 'Set C - Main Structure',
-          items: [
-            { name: 'H-Frame Scaffolding', quantity: 80 },
-            { name: 'Cross Brace', quantity: 120 },
-            { name: 'Walk Board', quantity: 60 }
-          ],
-          scheduledPeriod: 'Month 1-6',
-          rentalAmount: 25000,
-          status: 'Quoted',
-          quotedDate: '2025-12-03'
-        }
-      ]
-    }
-  ]);
+  // Add Delivery Request Form States
+  const [newDeliveryRequest, setNewDeliveryRequest] = useState({
+    projectName: '',
+    customerName: '',
+    agreementNo: '',
+    customerPhone: '',
+    customerEmail: '',
+    deliveryAddress: '',
+    requestType: 'delivery' as RequestType,
+    sets: [] as { setName: string; items: { name: string; quantity: number }[]; scheduledPeriod: string; rentalAmount: number }[]
+  });
 
-  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([
-    {
-      id: 'RR001',
-      requestId: 'RR-2025-001',
-      projectName: 'Sentul Heights Project',
-      customerName: 'DEF Builders',
-      agreementNo: 'AGR-2025-003',
-      setName: 'Set A',
-      requestDate: '2025-12-02',
-      scheduledDate: '2025-12-10',
-      status: 'Scheduled',
-      reason: 'Project completed',
-      customerPhone: '+60123334444'
-    },
-    {
-      id: 'RR002',
-      requestId: 'RR-2025-002',
-      projectName: 'Cheras Link Construction',
-      customerName: 'GHI Engineering',
-      agreementNo: 'AGR-2025-004',
-      setName: 'Set B',
-      requestDate: '2025-12-05',
-      status: 'Pending',
-      reason: 'Early completion',
-      customerPhone: '+60125556666'
-    }
-  ]);
+  // Add Return Request Form States
+  const [newReturnRequest, setNewReturnRequest] = useState({
+    projectName: '',
+    customerName: '',
+    agreementNo: '',
+    setName: '',
+    reason: '',
+    customerPhone: ''
+  });
+
+  // Temporary state for adding items to a set
+  const [currentSetName, setCurrentSetName] = useState('');
+  const [currentScheduledPeriod, setCurrentScheduledPeriod] = useState('');
+  const [currentRentalAmount, setCurrentRentalAmount] = useState('');
+  const [currentItems, setCurrentItems] = useState<{ name: string; quantity: number }[]>([]);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemQuantity, setNewItemQuantity] = useState('');
+
+  // Data state (empty by default)
+  const [deliveryRequests, setDeliveryRequests] = useState<DeliveryRequest[]>([]);
+
+  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
 
   const getStatusColor = (status: RequestStatus) => {
     switch (status) {
@@ -326,6 +262,141 @@ export default function DeliveryReturnRequest() {
     }
   };
 
+  // Add item to current set
+  const handleAddItemToSet = () => {
+    if (newItemName && newItemQuantity) {
+      setCurrentItems([...currentItems, { name: newItemName, quantity: parseInt(newItemQuantity) }]);
+      setNewItemName('');
+      setNewItemQuantity('');
+    }
+  };
+
+  // Remove item from current set
+  const handleRemoveItemFromSet = (index: number) => {
+    setCurrentItems(currentItems.filter((_, i) => i !== index));
+  };
+
+  // Add set to delivery request
+  const handleAddSetToRequest = () => {
+    if (currentSetName && currentScheduledPeriod && currentRentalAmount && currentItems.length > 0) {
+      const newSet = {
+        setName: currentSetName,
+        items: [...currentItems],
+        scheduledPeriod: currentScheduledPeriod,
+        rentalAmount: parseFloat(currentRentalAmount)
+      };
+      setNewDeliveryRequest(prev => ({
+        ...prev,
+        sets: [...prev.sets, newSet]
+      }));
+      // Reset set form
+      setCurrentSetName('');
+      setCurrentScheduledPeriod('');
+      setCurrentRentalAmount('');
+      setCurrentItems([]);
+    }
+  };
+
+  // Remove set from delivery request
+  const handleRemoveSetFromRequest = (index: number) => {
+    setNewDeliveryRequest(prev => ({
+      ...prev,
+      sets: prev.sets.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Submit new delivery request
+  const handleSubmitDeliveryRequest = () => {
+    if (newDeliveryRequest.projectName && newDeliveryRequest.customerName && 
+        newDeliveryRequest.agreementNo && newDeliveryRequest.deliveryAddress && 
+        newDeliveryRequest.sets.length > 0) {
+      const newRequest: DeliveryRequest = {
+        id: `DR${String(deliveryRequests.length + 1).padStart(3, '0')}`,
+        requestId: `DR-${new Date().getFullYear()}-${String(deliveryRequests.length + 1).padStart(3, '0')}`,
+        projectName: newDeliveryRequest.projectName,
+        customerName: newDeliveryRequest.customerName,
+        agreementNo: newDeliveryRequest.agreementNo,
+        customerPhone: newDeliveryRequest.customerPhone,
+        customerEmail: newDeliveryRequest.customerEmail,
+        deliveryAddress: newDeliveryRequest.deliveryAddress,
+        requestType: newDeliveryRequest.requestType,
+        requestDate: new Date().toISOString().split('T')[0],
+        sets: newDeliveryRequest.sets.map((set, index) => ({
+          id: `SET-${String.fromCharCode(65 + index)}`,
+          setName: set.setName,
+          items: set.items,
+          scheduledPeriod: set.scheduledPeriod,
+          rentalAmount: set.rentalAmount,
+          status: 'Pending Quote' as RequestStatus
+        }))
+      };
+      setDeliveryRequests([...deliveryRequests, newRequest]);
+      setShowAddDeliveryModal(false);
+      resetDeliveryForm();
+      alert('Delivery request added successfully!');
+    } else {
+      alert('Please fill in all required fields and add at least one set.');
+    }
+  };
+
+  // Submit new return request
+  const handleSubmitReturnRequest = () => {
+    if (newReturnRequest.projectName && newReturnRequest.customerName && 
+        newReturnRequest.agreementNo && newReturnRequest.setName && 
+        newReturnRequest.reason) {
+      const newRequest: ReturnRequest = {
+        id: `RR${String(returnRequests.length + 1).padStart(3, '0')}`,
+        requestId: `RR-${new Date().getFullYear()}-${String(returnRequests.length + 1).padStart(3, '0')}`,
+        projectName: newReturnRequest.projectName,
+        customerName: newReturnRequest.customerName,
+        agreementNo: newReturnRequest.agreementNo,
+        setName: newReturnRequest.setName,
+        requestDate: new Date().toISOString().split('T')[0],
+        status: 'Pending',
+        reason: newReturnRequest.reason,
+        customerPhone: newReturnRequest.customerPhone
+      };
+      setReturnRequests([...returnRequests, newRequest]);
+      setShowAddReturnModal(false);
+      resetReturnForm();
+      alert('Return request added successfully!');
+    } else {
+      alert('Please fill in all required fields.');
+    }
+  };
+
+  // Reset delivery form
+  const resetDeliveryForm = () => {
+    setNewDeliveryRequest({
+      projectName: '',
+      customerName: '',
+      agreementNo: '',
+      customerPhone: '',
+      customerEmail: '',
+      deliveryAddress: '',
+      requestType: 'delivery',
+      sets: []
+    });
+    setCurrentSetName('');
+    setCurrentScheduledPeriod('');
+    setCurrentRentalAmount('');
+    setCurrentItems([]);
+    setNewItemName('');
+    setNewItemQuantity('');
+  };
+
+  // Reset return form
+  const resetReturnForm = () => {
+    setNewReturnRequest({
+      projectName: '',
+      customerName: '',
+      agreementNo: '',
+      setName: '',
+      reason: '',
+      customerPhone: ''
+    });
+  };
+
   const filteredDeliveryRequests = deliveryRequests.filter(req =>
     req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     req.requestId.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -348,6 +419,13 @@ export default function DeliveryReturnRequest() {
           <h1 className="text-[#231F20]">Delivery & Return Requests</h1>
           <p className="text-gray-600">Handle customer requests and issue quotations</p>
         </div>
+        <button
+          onClick={() => activeTab === 'delivery' ? setShowAddDeliveryModal(true) : setShowAddReturnModal(true)}
+          className="px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg flex items-center gap-2"
+        >
+          <Plus className="size-5" />
+          Add {activeTab === 'delivery' ? 'Delivery' : 'Return'} Request
+        </button>
       </div>
 
       {/* Tabs */}
@@ -904,6 +982,352 @@ export default function DeliveryReturnRequest() {
                 className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Delivery Request Modal */}
+      {showAddDeliveryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-3xl my-8 space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl text-[#231F20]">Add Delivery Request</h3>
+              <button
+                onClick={() => {
+                  setShowAddDeliveryModal(false);
+                  resetDeliveryForm();
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="size-6" />
+              </button>
+            </div>
+
+            {/* Customer & Project Information */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium text-gray-700 border-b pb-2">Customer & Project Information</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Project Name *</label>
+                  <input
+                    type="text"
+                    value={newDeliveryRequest.projectName}
+                    onChange={(e) => setNewDeliveryRequest(prev => ({ ...prev, projectName: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="Enter project name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Customer Name *</label>
+                  <input
+                    type="text"
+                    value={newDeliveryRequest.customerName}
+                    onChange={(e) => setNewDeliveryRequest(prev => ({ ...prev, customerName: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="Enter customer name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Agreement No *</label>
+                  <input
+                    type="text"
+                    value={newDeliveryRequest.agreementNo}
+                    onChange={(e) => setNewDeliveryRequest(prev => ({ ...prev, agreementNo: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="e.g., AGR-2025-003"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Request Type *</label>
+                  <select
+                    value={newDeliveryRequest.requestType}
+                    onChange={(e) => setNewDeliveryRequest(prev => ({ ...prev, requestType: e.target.value as RequestType }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  >
+                    <option value="delivery">Delivery</option>
+                    <option value="pickup">Customer Pickup</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Customer Phone</label>
+                  <input
+                    type="text"
+                    value={newDeliveryRequest.customerPhone}
+                    onChange={(e) => setNewDeliveryRequest(prev => ({ ...prev, customerPhone: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="e.g., +60123456789"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Customer Email</label>
+                  <input
+                    type="email"
+                    value={newDeliveryRequest.customerEmail}
+                    onChange={(e) => setNewDeliveryRequest(prev => ({ ...prev, customerEmail: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="Enter customer email"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Delivery Address *</label>
+                <input
+                  type="text"
+                  value={newDeliveryRequest.deliveryAddress}
+                  onChange={(e) => setNewDeliveryRequest(prev => ({ ...prev, deliveryAddress: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  placeholder="Enter delivery address"
+                />
+              </div>
+            </div>
+
+            {/* Rental Sets Section */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium text-gray-700 border-b pb-2">Rental Sets *</h4>
+              
+              {/* Added Sets */}
+              {newDeliveryRequest.sets.length > 0 && (
+                <div className="space-y-2">
+                  {newDeliveryRequest.sets.map((set, index) => (
+                    <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-[#231F20]">{set.setName}</span>
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">Added</span>
+                        </div>
+                        <p className="text-sm text-gray-600">Period: {set.scheduledPeriod} | Amount: RM {set.rentalAmount.toLocaleString()}</p>
+                        <p className="text-xs text-gray-500">Items: {set.items.map(i => `${i.name} (${i.quantity})`).join(', ')}</p>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveSetFromRequest(index)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add New Set Form */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                <p className="text-sm font-medium text-blue-800">Add New Set</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-700 mb-1">Set Name</label>
+                    <input
+                      type="text"
+                      value={currentSetName}
+                      onChange={(e) => setCurrentSetName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                      placeholder="e.g., Set A - Phase 1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-700 mb-1">Scheduled Period</label>
+                    <input
+                      type="text"
+                      value={currentScheduledPeriod}
+                      onChange={(e) => setCurrentScheduledPeriod(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                      placeholder="e.g., Month 1-3"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-700 mb-1">Rental Amount (RM)</label>
+                    <input
+                      type="number"
+                      value={currentRentalAmount}
+                      onChange={(e) => setCurrentRentalAmount(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                      placeholder="Enter amount"
+                    />
+                  </div>
+                </div>
+
+                {/* Items in Set */}
+                <div className="space-y-2">
+                  <label className="block text-xs text-gray-700">Items in Set</label>
+                  {currentItems.length > 0 && (
+                    <div className="space-y-1">
+                      {currentItems.map((item, index) => (
+                        <div key={index} className="flex items-center justify-between bg-white px-3 py-1.5 rounded border text-sm">
+                          <span>{item.name} - Qty: {item.quantity}</span>
+                          <button
+                            onClick={() => handleRemoveItemFromSet(index)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                      placeholder="Item name"
+                    />
+                    <input
+                      type="number"
+                      value={newItemQuantity}
+                      onChange={(e) => setNewItemQuantity(e.target.value)}
+                      className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                      placeholder="Qty"
+                    />
+                    <button
+                      onClick={handleAddItemToSet}
+                      disabled={!newItemName || !newItemQuantity}
+                      className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="size-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleAddSetToRequest}
+                  disabled={!currentSetName || !currentScheduledPeriod || !currentRentalAmount || currentItems.length === 0}
+                  className="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Plus className="size-4" />
+                  Add Set to Request
+                </button>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setShowAddDeliveryModal(false);
+                  resetDeliveryForm();
+                }}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitDeliveryRequest}
+                disabled={!newDeliveryRequest.projectName || !newDeliveryRequest.customerName || 
+                          !newDeliveryRequest.agreementNo || !newDeliveryRequest.deliveryAddress || 
+                          newDeliveryRequest.sets.length === 0}
+                className="px-6 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Submit Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Return Request Modal */}
+      {showAddReturnModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl text-[#231F20]">Add Return Request</h3>
+              <button
+                onClick={() => {
+                  setShowAddReturnModal(false);
+                  resetReturnForm();
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="size-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Project Name *</label>
+                  <input
+                    type="text"
+                    value={newReturnRequest.projectName}
+                    onChange={(e) => setNewReturnRequest(prev => ({ ...prev, projectName: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="Enter project name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Customer Name *</label>
+                  <input
+                    type="text"
+                    value={newReturnRequest.customerName}
+                    onChange={(e) => setNewReturnRequest(prev => ({ ...prev, customerName: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="Enter customer name"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Agreement No *</label>
+                  <input
+                    type="text"
+                    value={newReturnRequest.agreementNo}
+                    onChange={(e) => setNewReturnRequest(prev => ({ ...prev, agreementNo: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="e.g., AGR-2025-003"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Set Name *</label>
+                  <input
+                    type="text"
+                    value={newReturnRequest.setName}
+                    onChange={(e) => setNewReturnRequest(prev => ({ ...prev, setName: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                    placeholder="e.g., Set A"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Customer Phone</label>
+                <input
+                  type="text"
+                  value={newReturnRequest.customerPhone}
+                  onChange={(e) => setNewReturnRequest(prev => ({ ...prev, customerPhone: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  placeholder="e.g., +60123456789"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">Reason for Return *</label>
+                <textarea
+                  value={newReturnRequest.reason}
+                  onChange={(e) => setNewReturnRequest(prev => ({ ...prev, reason: e.target.value }))}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  placeholder="Enter reason for return..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setShowAddReturnModal(false);
+                  resetReturnForm();
+                }}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitReturnRequest}
+                disabled={!newReturnRequest.projectName || !newReturnRequest.customerName || 
+                          !newReturnRequest.agreementNo || !newReturnRequest.setName || 
+                          !newReturnRequest.reason}
+                className="px-6 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Submit Request
               </button>
             </div>
           </div>

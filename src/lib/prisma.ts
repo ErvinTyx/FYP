@@ -1,52 +1,64 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
+// Declare global type for Prisma client singleton
+declare global {
+  // eslint-disable-next-line no-var
+  var __prisma: PrismaClient | undefined;
+  // eslint-disable-next-line no-var  
+  var __prismaAdapter: PrismaMariaDb | undefined;
+  // eslint-disable-next-line no-var
+  var __prismaInitialized: boolean | undefined;
+}
 
-function createPrismaClient() {
+function getPrismaClient(): PrismaClient {
+  // Strict singleton check - only create once per process
+  if (globalThis.__prisma && globalThis.__prismaInitialized) {
+    return globalThis.__prisma;
+  }
+
   const dbHost = process.env.DATABASE_HOST || "localhost";
   const dbPort = Number(process.env.DATABASE_PORT || 3306);
   const dbUser = process.env.DATABASE_USER || "root";
   const dbPassword = process.env.DATABASE_PASSWORD || "";
   const dbName = process.env.DATABASE_NAME || "power_metal_steel";
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'prisma.ts:createPrismaClient',message:'DB config values',data:{dbHost,dbPort,dbUser,dbName,hasPassword:!!dbPassword,envDbName:process.env.DATABASE_NAME,envDbHost:process.env.DATABASE_HOST},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-H2'})}).catch(()=>{});
-  // #endregion
+  console.log(`[Prisma] Initializing client for: ${dbUser}@${dbHost}:${dbPort}/${dbName}`);
 
-  // Log connection details (without password) for debugging
-  console.log(`[Prisma] Connecting to database: ${dbUser}@${dbHost}:${dbPort}/${dbName}`);
+  // Create adapter only once
+  if (!globalThis.__prismaAdapter) {
+    console.log(`[Prisma] Creating MariaDB adapter...`);
+    globalThis.__prismaAdapter = new PrismaMariaDb({
+      host: dbHost,
+      port: dbPort,
+      user: dbUser,
+      password: dbPassword,
+      database: dbName,
+      connectionLimit: 5,      // Reduced from 10 to be more conservative
+      connectTimeout: 60000,   // 60 seconds
+      acquireTimeout: 60000,   // 60 seconds
+      timeout: 60000,          // 60 seconds
+      idleTimeout: 60000,      // Close idle connections after 60s
+    });
+  }
 
-  const adapter = new PrismaMariaDb({
-    host: dbHost,
-    port: dbPort,
-    user: dbUser,
-    password: dbPassword,
-    database: dbName,
-    connectionLimit: 10, // Increased from 5 to handle more concurrent requests
-    connectTimeout: 10000, // 10 seconds connection timeout
-    acquireTimeout: 10000, // 10 seconds to acquire connection from pool
-    timeout: 10000, // 10 seconds query timeout
-  });
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'prisma.ts:adapterCreated',message:'MariaDB adapter created',data:{connectionLimit:10,connectTimeout:10000},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4-H5'})}).catch(()=>{});
-  // #endregion
-
+  console.log(`[Prisma] Creating PrismaClient...`);
   const client = new PrismaClient({ 
-    adapter,
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    adapter: globalThis.__prismaAdapter,
+    log: ["error", "warn"],
   });
+
+  // Cache globally
+  globalThis.__prisma = client;
+  globalThis.__prismaInitialized = true;
+
+  // Log available models
+  const modelKeys = Object.keys(client).filter(k => !k.startsWith('_') && !k.startsWith('$'));
+  console.log(`[Prisma] Ready. Models: ${modelKeys.length}`);
 
   return client;
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
-
+// Export singleton instance
+export const prisma = getPrismaClient();
 export default prisma;

@@ -3,8 +3,9 @@ import {
   ArrowLeft, Save, Check, PackageCheck, Calendar as CalendarIcon,
   ClipboardCheck, Truck, FileSignature, Upload, X, Image as ImageIcon,
   ArrowRight, User, Phone, MapPin, AlertCircle, Download, FileText, CheckCircle2,
-  Loader2, PackageX, Settings, Eye, AlertTriangle, Package
+  Loader2, PackageX, Eye, AlertTriangle, Package
 } from 'lucide-react';
+import { uploadReturnPhotos } from '@/lib/upload';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -25,6 +26,16 @@ import {
   DialogTitle,
   DialogDescription,
 } from '../ui/dialog';
+import { GRNViewer } from './GRNViewer';
+import { RCFViewer } from './RCFViewer';
+
+export type ItemConditionStatus = 'Good' | 'Damaged' | 'Replace';
+
+export interface StatusBreakdown {
+  Good: number;
+  Damaged: number;
+  Replace: number;
+}
 
 export interface ReturnItem {
   id: string;
@@ -32,7 +43,8 @@ export interface ReturnItem {
   category: string;
   quantity: number;
   quantityReturned: number;
-  status: 'Good' | 'Damaged' | 'Repairable' | 'To Retire' | 'Ready to Reuse';
+  status: ItemConditionStatus; // Primary/majority status for display
+  statusBreakdown?: StatusBreakdown; // Detailed breakdown by quantity
   notes?: string;
 }
 
@@ -45,11 +57,12 @@ interface ReturnPhoto {
 
 export interface Return {
   id: string;
+  orderId: string;
   grnNumber?: string;
   rcfNumber?: string;
   customer: string;
   customerContact?: string;
-  orderId: string;
+  pickupAddress?: string;
   returnType: 'Partial' | 'Full';
   transportationType: 'Self Return' | 'Transportation Needed';
   items: ReturnItem[];
@@ -90,7 +103,7 @@ export interface Return {
 
 interface ReturnWorkflowProps {
   returnOrder: Return | null;
-  onSave: (returnOrder: Return) => void;
+  onSave: (returnOrder: Return) => Promise<void>;
   onBack: () => void;
 }
 
@@ -108,6 +121,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     returnType: 'Full',
     transportationType: 'Self Return',
     requestDate: new Date().toISOString(),
+    orderId: '',
   });
 
   // Pickup scheduling
@@ -125,32 +139,63 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
   const [hasExternalGoods, setHasExternalGoods] = useState(false);
   const [externalGoodsNotes, setExternalGoodsNotes] = useState('');
   
-  // Item statuses for inspection
-  const [itemStatuses, setItemStatuses] = useState<Record<string, ReturnItem['status']>>({});
+  // Item statuses for inspection - now supports quantity breakdown
+  const [itemStatusBreakdowns, setItemStatusBreakdowns] = useState<Record<string, StatusBreakdown>>({});
   const [itemNotes, setItemNotes] = useState<Record<string, string>>({});
   
   // RCF Dialog
   const [isRCFDialogOpen, setIsRCFDialogOpen] = useState(false);
+  
+  // Document Viewers
+  const [showGRNViewer, setShowGRNViewer] = useState(false);
+  const [showRCFViewer, setShowRCFViewer] = useState(false);
+  
+  // Saving state for API persistence
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (returnOrder) {
       setFormData(returnOrder);
-      // Set current step based on status
+      // Set current step based on status and transportation type
+      // Transportation Needed has 8 steps, Self Return has 6 steps
+      const isTransportNeeded = returnOrder.transportationType === 'Transportation Needed';
+      
       const statusToStep: Record<Return['status'], number> = {
         'Requested': 1,
-        'Approved': formData.transportationType === 'Transportation Needed' ? 2 : 4,
+        'Approved': isTransportNeeded ? 2 : 2,
         'Pickup Scheduled': 2,
         'Pickup Confirmed': 3,
         'Driver Recording': 3,
-        'In Transit': 3,
-        'Received at Warehouse': 4,
-        'Under Inspection': 5,
-        'Sorting Complete': 6,
-        'Customer Notified': 7,
-        'Dispute Raised': 7,
-        'Completed': formData.transportationType === 'Transportation Needed' ? 8 : 6,
+        'In Transit': 4,  // After driver recording, items are in transit → step 4 (Receive at Warehouse)
+        'Received at Warehouse': isTransportNeeded ? 5 : 3,
+        'Under Inspection': isTransportNeeded ? 5 : 3,
+        'Sorting Complete': isTransportNeeded ? 6 : 4,
+        'Customer Notified': isTransportNeeded ? 7 : 5,
+        'Dispute Raised': isTransportNeeded ? 7 : 5,
+        'Completed': isTransportNeeded ? 8 : 6,
       };
-      setCurrentStep(statusToStep[returnOrder.status] || 1);
+      
+      // Determine the correct step based on status and document/action completion progress
+      // The status represents the current state, but we need to advance if the action for that state is complete
+      let mappedStep = statusToStep[returnOrder.status] || 1;
+      
+      // If GRN exists and status is 'Under Inspection', inspection is complete → advance to RCF step
+      if (returnOrder.status === 'Under Inspection' && returnOrder.grnNumber) {
+        mappedStep = isTransportNeeded ? 6 : 4;
+      }
+      
+      // If RCF exists and status is 'Sorting Complete', RCF is complete → advance to Customer Notification step
+      // Note: rcfNumber can be set OR rcfSkipped can be true (user can skip RCF)
+      if (returnOrder.status === 'Sorting Complete' && (returnOrder.rcfNumber || returnOrder.rcfSkipped)) {
+        mappedStep = isTransportNeeded ? 7 : 5;
+      }
+      
+      // If customer notification sent and status is 'Customer Notified' → advance to Complete step
+      if (returnOrder.status === 'Customer Notified' && returnOrder.customerNotificationSent) {
+        mappedStep = isTransportNeeded ? 8 : 6;
+      }
+      
+      setCurrentStep(mappedStep);
       
       // Pre-fill dates and time slot from existing data
       if (returnOrder.pickupDate) {
@@ -169,14 +214,24 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
         setPickupTimeSlot(TIME_SLOTS[0]);
       }
       
-      // Pre-fill item statuses
-      const statuses: Record<string, ReturnItem['status']> = {};
+      // Pre-fill item statuses with breakdown
+      const breakdowns: Record<string, StatusBreakdown> = {};
       const notes: Record<string, string> = {};
       returnOrder.items?.forEach(item => {
-        statuses[item.id] = item.status;
+        // If item has existing breakdown, use it; otherwise create from status
+        if (item.statusBreakdown) {
+          breakdowns[item.id] = item.statusBreakdown;
+        } else {
+          // Initialize with all quantity as the current status, or Good if pending
+          breakdowns[item.id] = {
+            'Good': item.status === 'Good' ? item.quantityReturned : 0,
+            'Damaged': item.status === 'Damaged' ? item.quantityReturned : 0,
+            'Replace': item.status === 'Replace' ? item.quantityReturned : 0,
+          };
+        }
         if (item.notes) notes[item.id] = item.notes;
       });
-      setItemStatuses(statuses);
+      setItemStatusBreakdowns(breakdowns);
       setItemNotes(notes);
       
       if (returnOrder.productionNotes) {
@@ -195,7 +250,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
   const getSteps = () => {
     if (formData.transportationType === 'Transportation Needed') {
       return [
-        { number: 1, title: 'Approve & Schedule' },
+        { number: 1, title: 'Schedule Date & Time' },
         { number: 2, title: 'Confirm Pickup' },
         { number: 3, title: 'Driver Recording' },
         { number: 4, title: 'Receive at Warehouse' },
@@ -218,46 +273,89 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
 
   const steps = getSteps();
 
-  const handleApproveAndSchedule = () => {
+  const handleApproveAndSchedule = async () => {
     if (formData.transportationType === 'Transportation Needed') {
-      if (!pickupDate || !pickupTimeSlot) {
-        toast.error('Please select pickup date and time slot');
+      // Validate date
+      if (!pickupDate) {
+        toast.error('Please select or enter a pickup date');
         return;
       }
       
-      setFormData({
+      // Validate time slot - check for custom time or selected slot
+      const isCustomTime = pickupTimeSlot.startsWith('custom:');
+      const customTimeValue = isCustomTime ? pickupTimeSlot.replace('custom:', '').trim() : '';
+      
+      if (!pickupTimeSlot || (isCustomTime && !customTimeValue)) {
+        toast.error('Please select a time slot or enter a custom time');
+        return;
+      }
+      
+      // Clean up the time slot value for storage
+      const finalTimeSlot = isCustomTime ? customTimeValue : pickupTimeSlot;
+      
+      const updatedData = {
         ...formData,
-        status: 'Pickup Scheduled',
+        status: 'Pickup Scheduled' as const,
         pickupDate: pickupDate.toISOString(),
-        pickupTimeSlot,
-      });
-      toast.success('Return approved and pickup scheduled');
-      setCurrentStep(2);
+        pickupTimeSlot: finalTimeSlot,
+      };
+      setFormData(updatedData);
+      
+      setIsSaving(true);
+      try {
+        await onSave(updatedData as Return); // Save to database
+        toast.success('Return approved and pickup scheduled');
+        setCurrentStep(2);
+      } catch {
+        toast.error('Failed to save. Please try again.');
+      } finally {
+        setIsSaving(false);
+      }
     } else {
-      setFormData({
+      const updatedData = {
         ...formData,
-        status: 'Approved',
-      });
-      toast.success('Return approved - awaiting customer self-return');
-      setCurrentStep(2);
+        status: 'Approved' as const,
+      };
+      setFormData(updatedData);
+      
+      setIsSaving(true);
+      try {
+        await onSave(updatedData as Return); // Save to database
+        toast.success('Return approved - awaiting customer self-return');
+        setCurrentStep(2);
+      } catch {
+        toast.error('Failed to save. Please try again.');
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
-  const handleConfirmPickup = () => {
+  const handleConfirmPickup = async () => {
     if (!formData.pickupDriver || !formData.driverContact) {
       toast.error('Please enter driver name and contact');
       return;
     }
     
-    setFormData({
+    const updatedData = {
       ...formData,
-      status: 'Pickup Confirmed',
-    });
-    toast.success('Pickup confirmed');
-    setCurrentStep(3);
+      status: 'Pickup Confirmed' as const,
+    };
+    setFormData(updatedData);
+    
+    setIsSaving(true);
+    try {
+      await onSave(updatedData as Return); // Save to database
+      toast.success('Pickup confirmed');
+      setCurrentStep(3);
+    } catch {
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDriverRecording = () => {
+  const handleDriverRecording = async () => {
     if (driverPhotos.length === 0) {
       toast.error('Please upload at least one photo of the goods');
       return;
@@ -270,16 +368,26 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       uploadedBy: formData.pickupDriver || 'Driver',
     }));
     
-    setFormData({
+    const updatedData = {
       ...formData,
       driverRecordPhotos: photos,
-      status: 'In Transit',
-    });
-    toast.success('Driver recording saved - items in transit');
-    setCurrentStep(4);
+      status: 'In Transit' as const,
+    };
+    setFormData(updatedData);
+    
+    setIsSaving(true);
+    try {
+      await onSave(updatedData as Return); // Save to database
+      toast.success('Driver recording saved - items in transit');
+      setCurrentStep(4);
+    } catch {
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleReceiveAtWarehouse = () => {
+  const handleReceiveAtWarehouse = async () => {
     if (warehousePhotos.length === 0) {
       toast.error('Please upload at least one photo of received goods');
       return;
@@ -292,184 +400,282 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       uploadedBy: 'Warehouse Staff',
     }));
     
-    setFormData({
+    const updatedData = {
       ...formData,
       warehousePhotos: photos,
-      status: 'Received at Warehouse',
-    });
+      status: 'Received at Warehouse' as const,
+    };
+    setFormData(updatedData);
     
-    toast.success('Goods received at warehouse');
-    
-    if (formData.transportationType === 'Transportation Needed') {
-      setCurrentStep(5);
-    } else {
-      setCurrentStep(3);
+    setIsSaving(true);
+    try {
+      await onSave(updatedData as Return); // Save to database
+      toast.success('Goods received at warehouse');
+      
+      if (formData.transportationType === 'Transportation Needed') {
+        setCurrentStep(5);
+      } else {
+        setCurrentStep(3);
+      }
+    } catch {
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleCompleteInspection = () => {
-    // Validate all items have status
-    const allItemsHaveStatus = formData.items?.every(item => itemStatuses[item.id]);
-    if (!allItemsHaveStatus) {
-      toast.error('Please set status for all items');
+  // Helper to get primary status from breakdown (highest quantity)
+  const getPrimaryStatus = (breakdown: StatusBreakdown): ItemConditionStatus => {
+    const entries = Object.entries(breakdown) as [ItemConditionStatus, number][];
+    const nonZero = entries.filter(([_, qty]) => qty > 0);
+    if (nonZero.length === 0) return 'Good';
+    // Return the status with highest quantity
+    return nonZero.reduce((a, b) => a[1] >= b[1] ? a : b)[0];
+  };
+
+  // Helper to validate breakdown totals match returned quantity
+  const validateBreakdown = (breakdown: StatusBreakdown, expectedTotal: number): boolean => {
+    const total = Object.values(breakdown).reduce((sum, qty) => sum + qty, 0);
+    return total === expectedTotal;
+  };
+
+  const handleCompleteInspection = async () => {
+    // Validate all items have breakdown that totals to quantityReturned
+    const validationErrors: string[] = [];
+    formData.items?.forEach(item => {
+      const breakdown = itemStatusBreakdowns[item.id];
+      if (!breakdown) {
+        validationErrors.push(`${item.name}: No status set`);
+      } else {
+        const total = Object.values(breakdown).reduce((sum, qty) => sum + qty, 0);
+        if (total !== item.quantityReturned) {
+          validationErrors.push(`${item.name}: Total (${total}) doesn't match returned quantity (${item.quantityReturned})`);
+        }
+      }
+    });
+
+    if (validationErrors.length > 0) {
+      toast.error(validationErrors[0]);
       return;
     }
     
     // Update items with statuses and notes
-    const updatedItems = formData.items?.map(item => ({
-      ...item,
-      status: itemStatuses[item.id],
-      notes: itemNotes[item.id] || undefined,
-    }));
+    const updatedItems = formData.items?.map(item => {
+      const breakdown = itemStatusBreakdowns[item.id];
+      return {
+        ...item,
+        status: getPrimaryStatus(breakdown),
+        statusBreakdown: breakdown,
+        notes: itemNotes[item.id] || undefined,
+      };
+    });
     
     // Generate GRN
     const grnNumber = `GRN-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
     
-    setFormData({
+    const updatedData = {
       ...formData,
       items: updatedItems,
       productionNotes: inspectionNotes,
       hasExternalGoods,
       externalGoodsNotes: hasExternalGoods ? externalGoodsNotes : undefined,
       grnNumber,
-      status: 'Under Inspection',
-    });
+      status: 'Under Inspection' as const,
+    };
+    setFormData(updatedData);
     
-    toast.success(`GRN ${grnNumber} generated`);
-    
-    if (formData.transportationType === 'Transportation Needed') {
-      setCurrentStep(6);
-    } else {
-      setCurrentStep(4);
+    setIsSaving(true);
+    try {
+      await onSave(updatedData as Return); // Save to database
+      toast.success(`GRN ${grnNumber} generated`);
+      
+      if (formData.transportationType === 'Transportation Needed') {
+        setCurrentStep(6);
+      } else {
+        setCurrentStep(4);
+      }
+    } catch {
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleGenerateRCF = () => {
+  const handleGenerateRCF = async () => {
     const rcfNumber = `RCF-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
     
-    setFormData({
+    const updatedData = {
       ...formData,
       rcfNumber,
-      status: 'Sorting Complete',
-    });
+      status: 'Sorting Complete' as const,
+    };
+    setFormData(updatedData);
     
-    toast.success(`RCF ${rcfNumber} generated`);
-    setIsRCFDialogOpen(false);
-    
-    if (formData.transportationType === 'Transportation Needed') {
-      setCurrentStep(7);
-    } else {
-      setCurrentStep(5);
+    setIsSaving(true);
+    try {
+      await onSave(updatedData as Return); // Save to database
+      toast.success(`RCF ${rcfNumber} generated`);
+      setIsRCFDialogOpen(false);
+      
+      if (formData.transportationType === 'Transportation Needed') {
+        setCurrentStep(7);
+      } else {
+        setCurrentStep(5);
+      }
+    } catch {
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleSkipRCF = () => {
-    setFormData({
+  const handleSkipRCF = async () => {
+    const updatedData = {
       ...formData,
-      status: 'Sorting Complete',
-    });
+      status: 'Sorting Complete' as const,
+    };
+    setFormData(updatedData);
     
-    toast.info('RCF skipped');
-    setIsRCFDialogOpen(false);
-    
-    if (formData.transportationType === 'Transportation Needed') {
-      setCurrentStep(7);
-    } else {
-      setCurrentStep(5);
+    setIsSaving(true);
+    try {
+      await onSave(updatedData as Return); // Save to database
+      toast.info('RCF skipped');
+      setIsRCFDialogOpen(false);
+      
+      if (formData.transportationType === 'Transportation Needed') {
+        setCurrentStep(7);
+      } else {
+        setCurrentStep(5);
+      }
+    } catch {
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleNotifyCustomer = () => {
-    setFormData({
+  const handleNotifyCustomer = async () => {
+    const updatedData = {
       ...formData,
       customerNotificationSent: true,
-      status: 'Customer Notified',
-    });
+      status: 'Customer Notified' as const,
+    };
+    setFormData(updatedData);
     
-    toast.success('Customer notification sent');
-    
-    if (formData.transportationType === 'Transportation Needed') {
-      setCurrentStep(8);
-    } else {
-      setCurrentStep(6);
+    setIsSaving(true);
+    try {
+      await onSave(updatedData as Return); // Save to database
+      toast.success('Customer notification sent');
+      
+      if (formData.transportationType === 'Transportation Needed') {
+        setCurrentStep(8);
+      } else {
+        setCurrentStep(6);
+      }
+    } catch {
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleComplete = () => {
-    setFormData({
+  const handleComplete = async () => {
+    const updatedData = {
       ...formData,
       inventoryUpdated: true,
       soaUpdated: true,
-      status: 'Completed',
-    });
+      status: 'Completed' as const,
+    };
+    setFormData(updatedData);
     
-    toast.success('Return process completed - inventory and SOA updated');
-    
-    // Save and go back
-    setTimeout(() => {
-      onSave(formData as Return);
-    }, 500);
+    setIsSaving(true);
+    try {
+      await onSave(updatedData as Return); // Save to database
+      toast.success('Return process completed - inventory and SOA updated');
+      // Navigation handled by onSave for completed status
+    } catch {
+      toast.error('Failed to complete. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  const [isUploading, setIsUploading] = useState(false);
 
   const handlePhotoUpload = () => {
     fileInputRef.current?.click();
   };
 
-  const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
-    let loadedCount = 0;
-    const newPhotos: string[] = [];
-
-    fileArray.forEach(file => {
+    
+    // Validate files before uploading
+    const validFiles = fileArray.filter(file => {
       if (!file.type.startsWith('image/')) {
         toast.error(`${file.name} is not an image file`);
-        return;
+        return false;
       }
-
       if (file.size > 5 * 1024 * 1024) {
         toast.error(`${file.name} is too large (max 5MB)`);
-        return;
+        return false;
       }
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const url = event.target?.result as string;
-        newPhotos.push(url);
-        loadedCount++;
-
-        if (loadedCount === fileArray.length) {
-          // Determine which photos array to update based on current step
-          const isTransportNeeded = formData.transportationType === 'Transportation Needed';
-          
-          if (isTransportNeeded) {
-            if (currentStep === 3) {
-              setDriverPhotos([...driverPhotos, ...newPhotos]);
-            } else if (currentStep === 4) {
-              setWarehousePhotos([...warehousePhotos, ...newPhotos]);
-            } else if (currentStep === 5) {
-              setDamagePhotos([...damagePhotos, ...newPhotos]);
-            }
-          } else {
-            if (currentStep === 2) {
-              setWarehousePhotos([...warehousePhotos, ...newPhotos]);
-            } else if (currentStep === 3) {
-              setDamagePhotos([...damagePhotos, ...newPhotos]);
-            }
-          }
-          
-          toast.success(`${newPhotos.length} photo(s) uploaded`);
-        }
-      };
-      reader.onerror = () => {
-        toast.error(`Failed to read ${file.name}`);
-      };
-      reader.readAsDataURL(file);
+      return true;
     });
 
-    e.target.value = '';
+    if (validFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
+
+    // Determine photo type based on current step
+    const isTransportNeeded = formData.transportationType === 'Transportation Needed';
+    let photoType: 'driver' | 'warehouse' | 'damage';
+    
+    if (isTransportNeeded) {
+      if (currentStep === 3) photoType = 'driver';
+      else if (currentStep === 4) photoType = 'warehouse';
+      else photoType = 'damage';
+    } else {
+      if (currentStep === 2) photoType = 'warehouse';
+      else photoType = 'damage';
+    }
+
+    setIsUploading(true);
+    try {
+      // Upload files to server
+      const results = await uploadReturnPhotos(validFiles, photoType);
+      
+      const successfulUploads = results.filter(r => r.success && r.url);
+      const failedCount = results.filter(r => !r.success).length;
+      
+      if (failedCount > 0) {
+        toast.error(`${failedCount} file(s) failed to upload`);
+      }
+      
+      if (successfulUploads.length > 0) {
+        const newPhotoUrls = successfulUploads.map(r => r.url!);
+        
+        // Update the appropriate photo array
+        if (photoType === 'driver') {
+          setDriverPhotos([...driverPhotos, ...newPhotoUrls]);
+        } else if (photoType === 'warehouse') {
+          setWarehousePhotos([...warehousePhotos, ...newPhotoUrls]);
+        } else {
+          setDamagePhotos([...damagePhotos, ...newPhotoUrls]);
+        }
+        
+        toast.success(`${successfulUploads.length} photo(s) uploaded to server`);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload photos');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
   };
 
   const removePhoto = (index: number, type: 'driver' | 'warehouse' | 'damage') => {
@@ -488,9 +694,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       'Pending': { color: 'bg-gray-100 text-gray-800', icon: Package },
       'Good': { color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
       'Damaged': { color: 'bg-red-100 text-red-800', icon: AlertCircle },
-      'Repairable': { color: 'bg-amber-100 text-amber-800', icon: Settings },
-      'To Retire': { color: 'bg-gray-100 text-gray-800', icon: PackageX },
-      'Ready to Reuse': { color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
+      'Replace': { color: 'bg-amber-100 text-amber-800', icon: PackageX },
     };
     const { color, icon: Icon } = config[status] || config['Pending'];
     return (
@@ -510,10 +714,10 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
         </Button>
         <div>
           <h1 className="text-[#231F20]">
-            {returnOrder ? `Process Return - ${returnOrder.id}` : 'New Return'}
+            {returnOrder ? `Process Return - ${returnOrder.orderId || returnOrder.id}` : 'New Return'}
           </h1>
           <p className="text-gray-600">
-            {formData.customer} - {formData.orderId} ({formData.transportationType})
+            {formData.customer} ({formData.transportationType})
           </p>
         </div>
       </div>
@@ -562,7 +766,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ClipboardCheck className="size-5 text-[#F15929]" />
-              Step 1: {formData.transportationType === 'Transportation Needed' ? 'Approve Return & Schedule Pickup' : 'Approve Return Request'}
+              Step 1: {formData.transportationType === 'Transportation Needed' ? 'Schedule Pickup Date & Time' : 'Approve Return Request'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -623,27 +827,40 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               <>
                 <div className="space-y-2">
                   <Label>Pickup Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start">
-                        <CalendarIcon className="mr-2 size-4" />
-                        {pickupDate ? format(pickupDate, 'PPP') : 'Select pickup date'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={pickupDate}
-                        onSelect={setPickupDate}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <div className="flex gap-2">
+                    <Input
+                      type="date"
+                      value={pickupDate ? format(pickupDate, 'yyyy-MM-dd') : ''}
+                      onChange={(e) => setPickupDate(e.target.value ? new Date(e.target.value) : undefined)}
+                      className="flex-1"
+                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="icon" type="button">
+                          <CalendarIcon className="size-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={pickupDate}
+                          onSelect={setPickupDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label>Pickup Time Slot</Label>
-                  <Select value={pickupTimeSlot} onValueChange={setPickupTimeSlot}>
+                  <Select value={pickupTimeSlot.startsWith('custom:') ? 'custom' : pickupTimeSlot} onValueChange={(value) => {
+                    if (value === 'custom') {
+                      setPickupTimeSlot('custom:');
+                    } else {
+                      setPickupTimeSlot(value);
+                    }
+                  }}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select time slot" />
                     </SelectTrigger>
@@ -651,8 +868,17 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                       {TIME_SLOTS.map(slot => (
                         <SelectItem key={slot} value={slot}>{slot}</SelectItem>
                       ))}
+                      <SelectItem value="custom">Custom Time</SelectItem>
                     </SelectContent>
                   </Select>
+                  {pickupTimeSlot.startsWith('custom:') && (
+                    <Input
+                      type="text"
+                      placeholder="e.g., 10:00 - 11:00 or 14:30"
+                      value={pickupTimeSlot.replace('custom:', '')}
+                      onChange={(e) => setPickupTimeSlot(`custom:${e.target.value}`)}
+                    />
+                  )}
                 </div>
               </>
             )}
@@ -662,7 +888,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
             >
               <Check className="size-4 mr-2" />
-              {formData.transportationType === 'Transportation Needed' ? 'Approve & Schedule Pickup' : 'Approve Return'}
+              {formData.transportationType === 'Transportation Needed' ? 'Confirm Schedule & Proceed' : 'Approve Return'}
             </Button>
           </CardContent>
         </Card>
@@ -685,7 +911,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-800">
                 <CalendarIcon className="size-4 inline mr-1" />
-                Scheduled Pickup: {pickupDate && format(pickupDate, 'PPP')} {pickupTimeSlot}
+                Scheduled Pickup: {pickupDate && format(pickupDate, 'PPP')} {formData.pickupTimeSlot || pickupTimeSlot.replace('custom:', '')}
               </p>
             </div>
 
@@ -746,9 +972,9 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
 
             <div className="space-y-2">
               <Label>Driver Photos (Required)</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full">
-                <Upload className="size-4 mr-2" />
-                Upload Photos
+              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+                {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
+                {isUploading ? 'Uploading...' : 'Upload Photos'}
               </Button>
               <input
                 ref={fileInputRef}
@@ -780,10 +1006,10 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             <Button
               onClick={handleDriverRecording}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
-              disabled={driverPhotos.length === 0}
+              disabled={driverPhotos.length === 0 || isSaving}
             >
-              <Check className="size-4 mr-2" />
-              Save Recording & Mark In Transit
+              {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
+              {isSaving ? 'Saving...' : 'Save Recording & Mark In Transit'}
             </Button>
           </CardContent>
         </Card>
@@ -806,9 +1032,9 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
 
             <div className="space-y-2">
               <Label>Warehouse Receipt Photos (Required)</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full">
-                <Upload className="size-4 mr-2" />
-                Upload Photos
+              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+                {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
+                {isUploading ? 'Uploading...' : 'Upload Photos'}
               </Button>
               <input
                 ref={fileInputRef}
@@ -865,49 +1091,159 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             </p>
 
             {/* Item Inspection */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               <Label>Item Condition Assessment</Label>
-              {formData.items?.map((item) => (
-                <div key={item.id} className="p-4 border rounded-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[#231F20]">{item.name}</p>
-                      <p className="text-sm text-gray-500">
-                        Qty: {item.quantityReturned} | Category: {item.category}
-                      </p>
+              {formData.items?.map((item) => {
+                const breakdown = itemStatusBreakdowns[item.id] || {
+                  'Good': 0,
+                  'Damaged': 0,
+                  'Replace': 0,
+                };
+                const totalAssigned = Object.values(breakdown).reduce((sum, qty) => sum + qty, 0);
+                const remaining = item.quantityReturned - totalAssigned;
+
+                const updateBreakdown = (status: ItemConditionStatus, value: number) => {
+                  const newValue = Math.max(0, Math.min(value, item.quantityReturned));
+                  setItemStatusBreakdowns({
+                    ...itemStatusBreakdowns,
+                    [item.id]: {
+                      ...breakdown,
+                      [status]: newValue,
+                    },
+                  });
+                };
+
+                const setAllToStatus = (status: ItemConditionStatus) => {
+                  setItemStatusBreakdowns({
+                    ...itemStatusBreakdowns,
+                    [item.id]: {
+                      'Good': status === 'Good' ? item.quantityReturned : 0,
+                      'Damaged': status === 'Damaged' ? item.quantityReturned : 0,
+                      'Replace': status === 'Replace' ? item.quantityReturned : 0,
+                    },
+                  });
+                };
+
+                return (
+                  <div key={item.id} className="p-4 border rounded-lg space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-[#231F20]">{item.name}</p>
+                        <p className="text-sm text-gray-500">Category: {item.category}</p>
+                      </div>
+                      <div className="text-right">
+                        <Badge className="bg-blue-100 text-blue-800">
+                          Total: {item.quantityReturned}
+                        </Badge>
+                        {remaining !== 0 && (
+                          <p className={`text-xs mt-1 ${remaining > 0 ? 'text-amber-600' : 'text-red-600'}`}>
+                            {remaining > 0 ? `${remaining} unassigned` : `${Math.abs(remaining)} over-assigned`}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="flex flex-wrap gap-2">
+                      <span className="text-xs text-gray-500 self-center">Quick set all:</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                        onClick={() => setAllToStatus('Good')}
+                      >
+                        All Good
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                        onClick={() => setAllToStatus('Damaged')}
+                      >
+                        All Damaged
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+                        onClick={() => setAllToStatus('Replace')}
+                      >
+                        All Replace
+                      </Button>
+                    </div>
+                    
+                    {/* Status Quantity Inputs */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs flex items-center gap-1">
+                          <CheckCircle2 className="size-3 text-green-600" />
+                          Good
+                        </Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={item.quantityReturned}
+                          value={breakdown['Good']}
+                          onChange={(e) => updateBreakdown('Good', parseInt(e.target.value) || 0)}
+                          className="h-9 text-center bg-green-50 border-green-200 focus:ring-green-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs flex items-center gap-1">
+                          <AlertCircle className="size-3 text-red-600" />
+                          Damaged
+                        </Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={item.quantityReturned}
+                          value={breakdown['Damaged']}
+                          onChange={(e) => updateBreakdown('Damaged', parseInt(e.target.value) || 0)}
+                          className="h-9 text-center bg-red-50 border-red-200 focus:ring-red-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs flex items-center gap-1">
+                          <PackageX className="size-3 text-amber-600" />
+                          Replace
+                        </Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={item.quantityReturned}
+                          value={breakdown['Replace']}
+                          onChange={(e) => updateBreakdown('Replace', parseInt(e.target.value) || 0)}
+                          className="h-9 text-center bg-amber-50 border-amber-200 focus:ring-amber-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Validation Status */}
+                    <div className={`text-xs p-2 rounded ${
+                      totalAssigned === item.quantityReturned 
+                        ? 'bg-green-50 text-green-700' 
+                        : 'bg-amber-50 text-amber-700'
+                    }`}>
+                      Assigned: {totalAssigned} / {item.quantityReturned}
+                      {totalAssigned === item.quantityReturned && ' ✓'}
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-xs">Notes (Optional)</Label>
+                      <Textarea
+                        value={itemNotes[item.id] || ''}
+                        onChange={(e) => setItemNotes({ ...itemNotes, [item.id]: e.target.value })}
+                        placeholder="Any specific notes about this item..."
+                        rows={2}
+                        className="text-sm"
+                      />
                     </div>
                   </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Condition Status</Label>
-                    <Select 
-                      value={itemStatuses[item.id] || ''} 
-                      onValueChange={(value) => setItemStatuses({ ...itemStatuses, [item.id]: value as ReturnItem['status'] })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select condition" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Good">Good</SelectItem>
-                        <SelectItem value="Damaged">Damaged</SelectItem>
-                        <SelectItem value="Repairable">Repairable</SelectItem>
-                        <SelectItem value="To Retire">To Retire</SelectItem>
-                        <SelectItem value="Ready to Reuse">Ready to Reuse</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Notes (Optional)</Label>
-                    <Textarea
-                      value={itemNotes[item.id] || ''}
-                      onChange={(e) => setItemNotes({ ...itemNotes, [item.id]: e.target.value })}
-                      placeholder="Any specific notes about this item..."
-                      rows={2}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="space-y-2">
@@ -946,10 +1282,18 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             {/* Damage Photos (Optional) */}
             <div className="space-y-2">
               <Label>Damage Photos (Optional)</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full">
-                <Upload className="size-4 mr-2" />
-                Upload Damage Photos
+              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+                {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
+                {isUploading ? 'Uploading...' : 'Upload Damage Photos'}
               </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={onFileSelect}
+                className="hidden"
+              />
               {damagePhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {damagePhotos.map((photo, index) => (
@@ -995,11 +1339,20 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               Review inspection results and generate RCF if needed for damaged/repairable items.
             </p>
 
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
               <p className="text-sm text-green-800">
                 <CheckCircle2 className="size-4 inline mr-1" />
                 GRN Generated: {formData.grnNumber}
               </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowGRNViewer(true)}
+                className="text-green-700 border-green-300 hover:bg-green-100"
+              >
+                <Eye className="size-4 mr-1" />
+                View GRN
+              </Button>
             </div>
 
             {/* Summary of Items by Status */}
@@ -1052,16 +1405,38 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               Send notification to customer about the return inspection results.
             </p>
 
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
-              <p className="text-sm text-blue-800">
-                <FileText className="size-4 inline mr-1" />
-                GRN: {formData.grnNumber}
-              </p>
-              {formData.rcfNumber && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
                 <p className="text-sm text-blue-800">
                   <FileText className="size-4 inline mr-1" />
-                  RCF: {formData.rcfNumber}
+                  GRN: {formData.grnNumber}
                 </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowGRNViewer(true)}
+                  className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                >
+                  <Eye className="size-4 mr-1" />
+                  View
+                </Button>
+              </div>
+              {formData.rcfNumber && (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-blue-800">
+                    <FileText className="size-4 inline mr-1" />
+                    RCF: {formData.rcfNumber}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowRCFViewer(true)}
+                    className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                  >
+                    <Eye className="size-4 mr-1" />
+                    View
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -1072,10 +1447,13 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                 <p>Order ID: {formData.orderId}</p>
                 <p>Items Returned: {formData.items?.length} items</p>
                 <p>
-                  Good Items: {formData.items?.filter(i => i.status === 'Good' || i.status === 'Ready to Reuse').length}
+                  Good Items: {formData.items?.filter(i => i.status === 'Good').length}
                 </p>
                 <p>
-                  Damaged/Repairable: {formData.items?.filter(i => i.status === 'Damaged' || i.status === 'Repairable').length}
+                  Damaged: {formData.items?.filter(i => i.status === 'Damaged').length}
+                </p>
+                <p>
+                  Replace: {formData.items?.filter(i => i.status === 'Replace').length}
                 </p>
               </div>
             </div>
@@ -1113,6 +1491,35 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                 {formData.rcfNumber && <li>✓ RCF generated</li>}
                 <li>✓ Customer notified</li>
               </ul>
+            </div>
+
+            {/* Document Review */}
+            <div className="p-4 border rounded-lg space-y-3">
+              <Label className="text-[#231F20]">Generated Documents</Label>
+              <div className="flex flex-wrap gap-2">
+                {formData.grnNumber && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowGRNViewer(true)}
+                    className="text-green-700 border-green-300 hover:bg-green-50"
+                  >
+                    <Eye className="size-4 mr-1" />
+                    View GRN ({formData.grnNumber})
+                  </Button>
+                )}
+                {formData.rcfNumber && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowRCFViewer(true)}
+                    className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                  >
+                    <Eye className="size-4 mr-1" />
+                    View RCF ({formData.rcfNumber})
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg space-y-2">
@@ -1193,6 +1600,47 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* GRN Viewer Modal */}
+      {showGRNViewer && formData.grnNumber && (
+        <GRNViewer
+          grnNumber={formData.grnNumber}
+          returnData={{
+            orderId: formData.orderId || '',
+            customer: formData.customer || '',
+            customerContact: formData.customerContact,
+            pickupAddress: formData.pickupAddress,
+            returnType: formData.returnType || 'Full',
+            transportationType: formData.transportationType || 'Self Return',
+            items: (formData.items || []) as ReturnItem[],
+            requestDate: formData.requestDate || new Date().toISOString(),
+            pickupDate: formData.pickupDate,
+            pickupTimeSlot: formData.pickupTimeSlot,
+            pickupDriver: formData.pickupDriver,
+            driverContact: formData.driverContact,
+            warehousePhotos: formData.warehousePhotos,
+          }}
+          onClose={() => setShowGRNViewer(false)}
+        />
+      )}
+
+      {/* RCF Viewer Modal */}
+      {showRCFViewer && formData.rcfNumber && (
+        <RCFViewer
+          rcfNumber={formData.rcfNumber}
+          grnNumber={formData.grnNumber}
+          returnData={{
+            orderId: formData.orderId || '',
+            customer: formData.customer || '',
+            items: (formData.items || []) as ReturnItem[],
+            productionNotes: formData.productionNotes,
+            hasExternalGoods: formData.hasExternalGoods,
+            externalGoodsNotes: formData.externalGoodsNotes,
+            damagePhotos: formData.damagePhotos,
+          }}
+          onClose={() => setShowRCFViewer(false)}
+        />
+      )}
     </div>
   );
 }

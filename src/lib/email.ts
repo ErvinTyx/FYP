@@ -469,3 +469,100 @@ If you have any questions, please contact our support team.
     return false;
   }
 }
+
+/**
+ * Send a delivery OTP verification email to customer
+ */
+export async function sendDeliveryOTPEmail(
+  email: string,
+  customerName: string,
+  otp: string,
+  doNumber: string
+): Promise<boolean> {
+  const fromAddress = process.env.SMTP_FROM || 'noreply@powermetalsteel.com';
+  
+  const mailOptions = {
+    from: `"Power Metal & Steel" <${fromAddress}>`,
+    to: email,
+    subject: `Delivery Verification Code - ${doNumber}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Delivery Verification</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f4f4f5;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="background: linear-gradient(135deg, #F15929 0%, #d94d1f 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 24px;">Power Metal & Steel</h1>
+              <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Delivery Verification</p>
+            </div>
+            <div style="background: white; padding: 40px 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="color: #111827; margin: 0 0 20px 0; font-size: 20px;">
+                Hello, ${customerName}!
+              </h2>
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 20px 0;">
+                Your scaffolding equipment delivery is ready for handover. Please provide the verification code below to the delivery personnel to confirm receipt of goods.
+              </p>
+              
+              <div style="background: #FFF7ED; border: 1px solid #FDBA74; border-radius: 8px; padding: 16px; margin: 0 0 20px 0;">
+                <p style="color: #9A3412; margin: 0; font-size: 14px;">
+                  <strong>Delivery Order:</strong> ${doNumber}
+                </p>
+              </div>
+              
+              <div style="background: #F3F4F6; border-radius: 8px; padding: 25px; text-align: center; margin: 0 0 25px 0;">
+                <p style="color: #6B7280; margin: 0 0 10px 0; font-size: 14px;">Your Verification Code</p>
+                <span style="font-size: 42px; font-weight: bold; letter-spacing: 8px; color: #F15929;">${otp}</span>
+              </div>
+              
+              <div style="background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 16px; margin: 0 0 25px 0;">
+                <p style="color: #92400E; margin: 0; font-size: 14px;">
+                  <strong>Important:</strong> This code is valid for 10 minutes. Do not share this code with anyone other than the delivery personnel.
+                </p>
+              </div>
+              
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 15px 0; font-size: 14px;">
+                By providing this code, you confirm that you have received the items in the delivery order and agree to the terms of the rental agreement.
+              </p>
+              
+              <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
+              <p style="color: #9CA3AF; font-size: 12px; margin: 0; text-align: center;">
+                This is an automated message from Power Metal & Steel. If you did not request this delivery, please contact us immediately.
+              </p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `,
+    text: `
+Power Metal & Steel - Delivery Verification
+
+Hello, ${customerName}!
+
+Your scaffolding equipment delivery is ready for handover.
+
+Delivery Order: ${doNumber}
+
+Your Verification Code: ${otp}
+
+Please provide this code to the delivery personnel to confirm receipt of goods.
+
+Important: This code is valid for 10 minutes. Do not share this code with anyone other than the delivery personnel.
+
+By providing this code, you confirm that you have received the items in the delivery order and agree to the terms of the rental agreement.
+
+If you did not request this delivery, please contact us immediately.
+    `.trim(),
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Failed to send delivery OTP email:', error);
+    return false;
+  }
+}
