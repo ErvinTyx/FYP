@@ -3,5 +3,6 @@
 
 # But keep the directory structure
 !.gitignore
-!identity-documents/
-!identity-documents/.gitkeep
+!.gitkeep
+!*/
+!**/.gitkeep

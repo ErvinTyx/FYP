@@ -38,63 +38,7 @@ export default function DeliveryManagement() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [customerOTP, setCustomerOTP] = useState('');
 
-  const [deliveries, setDeliveries] = useState<DeliveryItem[]>([
-    {
-      id: 'DM001',
-      projectName: 'KL Tower Construction',
-      customerName: 'ABC Construction Sdn Bhd',
-      setName: 'Set A - Initial Phase',
-      agreementNo: 'AGR-2025-001',
-      scheduledDate: '2025-12-08',
-      deliveryType: 'delivery',
-      status: 'Pending',
-      deliveryAddress: 'Jalan Raja Laut, 50350 Kuala Lumpur',
-      customerPhone: '+60123456789',
-      items: [
-        { name: 'Scaffolding Pipe 6m', quantity: 100 },
-        { name: 'Coupler Standard', quantity: 200 },
-        { name: 'Base Plate', quantity: 50 }
-      ]
-    },
-    {
-      id: 'DM002',
-      projectName: 'Ampang Mall Development',
-      customerName: 'XYZ Development',
-      setName: 'Set C - Main Structure',
-      agreementNo: 'AGR-2025-002',
-      scheduledDate: '2025-12-10',
-      deliveryType: 'pickup',
-      status: 'Packing List Issued',
-      deliveryAddress: 'HQ Pickup',
-      customerPhone: '+60129876543',
-      pickupTime: '10:00 AM',
-      packingListIssued: true,
-      items: [
-        { name: 'H-Frame Scaffolding', quantity: 80 },
-        { name: 'Cross Brace', quantity: 120 },
-        { name: 'Walk Board', quantity: 60 }
-      ]
-    },
-    {
-      id: 'DM003',
-      projectName: 'Sentul Heights Project',
-      customerName: 'GHI Builders',
-      setName: 'Set B - Phase 2',
-      agreementNo: 'AGR-2025-003',
-      scheduledDate: '2025-12-09',
-      deliveryType: 'delivery',
-      status: 'Driver Acknowledged',
-      deliveryAddress: 'Jalan Sentul, 51100 Kuala Lumpur',
-      customerPhone: '+60121234567',
-      packingListIssued: true,
-      driverName: 'Ahmad bin Ali',
-      vehicleNumber: 'WXY 1234',
-      items: [
-        { name: 'Scaffolding Pipe 4m', quantity: 150 },
-        { name: 'Coupler Swivel', quantity: 180 }
-      ]
-    }
-  ]);
+  const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
 
   const getStatusColor = (status: DeliveryStatus) => {
     switch (status) {

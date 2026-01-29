@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Upload, Check, AlertCircle } from 'lucide-react';
+import { Search, Upload, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../ui/textarea';
 import { OpenRepairSlip, RepairItem, InventoryAdjustment } from '../../types/inspection';
 import { toast } from 'sonner';
+import { uploadInspectionPhotos } from '@/lib/upload';
 
 interface MaintenanceDashboardProps {
   repairSlips: OpenRepairSlip[];
@@ -71,18 +72,38 @@ export function MaintenanceDashboard({ repairSlips, onUpdateRepairSlip, onCreate
     setShowUpdateDialog(true);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+  const [isUploading, setIsUploading] = useState(false);
 
-    // Simulate image upload (in real app, upload to server)
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setUploadedImages(prev => [...prev, reader.result as string]);
-      };
-      reader.readAsDataURL(file);
-    });
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    
+    setIsUploading(true);
+    try {
+      // Upload files to server
+      const results = await uploadInspectionPhotos(fileArray, 'after');
+      
+      const successfulUploads = results.filter(r => r.success && r.url);
+      const failedCount = results.filter(r => !r.success).length;
+      
+      if (failedCount > 0) {
+        toast.error(`${failedCount} file(s) failed to upload`);
+      }
+      
+      if (successfulUploads.length > 0) {
+        const newPhotoUrls = successfulUploads.map(r => r.url!);
+        setUploadedImages(prev => [...prev, ...newPhotoUrls]);
+        toast.success(`${successfulUploads.length} photo(s) uploaded to server`);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload photos');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
   };
 
   const handleRemoveImage = (index: number) => {
@@ -435,7 +456,7 @@ export function MaintenanceDashboard({ repairSlips, onUpdateRepairSlip, onCreate
               {/* Upload Photos */}
               <div className="space-y-2">
                 <Label>After Repair Photos</Label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <div className={`border-2 border-dashed rounded-lg p-6 text-center ${isUploading ? 'border-orange-300 bg-orange-50' : 'border-gray-300'}`}>
                   <Input
                     type="file"
                     accept="image/*"
@@ -443,10 +464,17 @@ export function MaintenanceDashboard({ repairSlips, onUpdateRepairSlip, onCreate
                     onChange={handleImageUpload}
                     className="hidden"
                     id="repair-images"
+                    disabled={isUploading}
                   />
-                  <label htmlFor="repair-images" className="cursor-pointer">
-                    <Upload className="size-8 mx-auto text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-600">Click to upload repair completion photos</p>
+                  <label htmlFor="repair-images" className={`cursor-pointer ${isUploading ? 'pointer-events-none' : ''}`}>
+                    {isUploading ? (
+                      <Loader2 className="size-8 mx-auto text-orange-500 mb-2 animate-spin" />
+                    ) : (
+                      <Upload className="size-8 mx-auto text-gray-400 mb-2" />
+                    )}
+                    <p className="text-sm text-gray-600">
+                      {isUploading ? 'Uploading photos...' : 'Click to upload repair completion photos'}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
                   </label>
                 </div>

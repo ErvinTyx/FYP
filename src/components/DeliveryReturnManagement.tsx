@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Plus, FileText, Truck, Package, CheckCircle, Clock, XCircle, Phone, Mail, MapPin, Calendar, User, ArrowRight, Download, Upload, Check, X, Loader } from 'lucide-react';
+import { Search, Plus, FileText, Truck, Package, CheckCircle, Clock, XCircle, Phone, Mail, MapPin, Calendar as CalendarIcon, User, ArrowRight, Download, Upload, Check, X, Loader } from 'lucide-react';
 import DeliveryOrderGeneration from './DeliveryOrderGeneration';
+import { Calendar } from './ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { format } from 'date-fns';
 
 type DeliveryType = 'delivery' | 'pickup';
 type DeliveryStatus = 'Pending' | 'Quoted' | 'DO Generated' | 'Confirmed' | 'Packing List Issued' | 'Packing & Loading' | 'Driver Acknowledged' | 'In Transit' | 'Delivered' | 'Customer Confirmed' | 'Cancelled';
@@ -18,6 +21,35 @@ interface RentalAgreement {
   status: string;
 }
 
+interface ScaffoldingItem {
+  id: string;
+  itemCode: string;
+  name: string;
+  category: string;
+  quantity: number;
+  available: number;
+}
+
+interface RFQItem {
+  id: string;
+  scaffoldingItemId: string;
+  scaffoldingItemName: string;
+  quantity: number;
+  unit: string;
+}
+
+interface RFQ {
+  id: string;
+  rfqNumber: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  projectName: string;
+  projectLocation: string;
+  status: string;
+  items: RFQItem[];
+}
+
 interface DeliverySet {
   id: string;
   setName: string;
@@ -32,6 +64,7 @@ interface DeliverySet {
   customerAcknowledged?: boolean;
   otp?: string;
   signedDO?: string;
+  doNumber?: string; // DO number for tracking when DO is generated
 }
 
 interface ReturnRequest {
@@ -69,7 +102,29 @@ interface DeliveryRequest {
   pickupTime?: string;
 }
 
-export default function DeliveryReturnManagement() {
+// Calculate scheduled date: 1 day before period start
+const calculateScheduledDateFromPeriod = (period: string): string | undefined => {
+  if (!period) return undefined;
+  try {
+    // Parse format like "1 Jan 2026 - 31 Mar 2026"
+    const startDateStr = period.split(' - ')[0].trim();
+    const startDate = new Date(startDateStr);
+    if (isNaN(startDate.getTime())) return undefined;
+    // Subtract 1 day
+    startDate.setDate(startDate.getDate() - 1);
+    return startDate.toISOString();
+  } catch {
+    return undefined;
+  }
+};
+
+interface DeliveryReturnManagementProps {
+  onNavigateToDeliveryManagement?: () => void;
+}
+
+export default function DeliveryReturnManagement({ 
+  onNavigateToDeliveryManagement 
+}: DeliveryReturnManagementProps) {
   const [activeTab, setActiveTab] = useState<'delivery' | 'return'>('delivery');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -110,7 +165,10 @@ export default function DeliveryReturnManagement() {
   const [showCreateDeliveryModal, setShowCreateDeliveryModal] = useState(false);
   const [showCreateReturnModal, setShowCreateReturnModal] = useState(false);
   const [rentalAgreements, setRentalAgreements] = useState<RentalAgreement[]>([]);
+  const [scaffoldingItems, setScaffoldingItems] = useState<ScaffoldingItem[]>([]);
+  const [rfqs, setRfqs] = useState<RFQ[]>([]);
   const [selectedAgreementId, setSelectedAgreementId] = useState<string>('');
+  const [selectedRfqId, setSelectedRfqId] = useState<string>('');
   const [isCreating, setIsCreating] = useState(false);
 
   // Create Delivery Form states
@@ -121,20 +179,22 @@ export default function DeliveryReturnManagement() {
   const [deliverySets, setDeliverySets] = useState<{
     setName: string;
     scheduledPeriod: string;
-    items: { name: string; quantity: number }[];
-  }[]>([{ setName: 'Set A', scheduledPeriod: '', items: [{ name: '', quantity: 1 }] }]);
+    startDate?: Date;
+    endDate?: Date;
+    items: { name: string; quantity: number; scaffoldingItemId: string }[];
+  }[]>([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
 
   // Create Return Form states
   const [newReturnForm, setNewReturnForm] = useState({
     setName: '',
     reason: '',
-    customerEmail: '',
     returnType: 'full' as ReturnType,
     collectionMethod: 'transport' as CollectionMethod,
   });
-  const [returnItems, setReturnItems] = useState<{ name: string; quantity: number }[]>([
-    { name: '', quantity: 1 },
+  const [returnItems, setReturnItems] = useState<{ name: string; quantity: number; scaffoldingItemId: string }[]>([
+    { name: '', quantity: 1, scaffoldingItemId: '' },
   ]);
+  const [selectedReturnRfqId, setSelectedReturnRfqId] = useState<string>('');
 
   // Fetch delivery requests from API
   const fetchDeliveryRequests = useCallback(async () => {
@@ -181,29 +241,65 @@ export default function DeliveryReturnManagement() {
     }
   }, []);
 
-  // Generate request ID based on agreement number
-  const generateDeliveryRequestId = (agreementNo: string) => {
+  // Fetch scaffolding items for dropdown
+  const fetchScaffoldingItems = useCallback(async () => {
+    try {
+      const response = await fetch('/api/scaffolding');
+      const data = await response.json();
+      if (data.success) {
+        setScaffoldingItems(data.data);
+      } else {
+        console.error('Failed to fetch scaffolding items:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching scaffolding items:', error);
+    }
+  }, []);
+
+  // Fetch RFQs for delivery creation (approved or quoted-for-delivery status)
+  const fetchRfqs = useCallback(async () => {
+    try {
+      const response = await fetch('/api/rfq');
+      const data = await response.json();
+      if (data.success) {
+        // Filter RFQs that are ready for delivery (approved or quoted-for-delivery)
+        const deliveryReadyRfqs = data.data.filter(
+          (rfq: RFQ) => rfq.status === 'approved' || rfq.status === 'quoted-for-delivery'
+        );
+        setRfqs(deliveryReadyRfqs);
+      } else {
+        console.error('Failed to fetch RFQs:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching RFQs:', error);
+    }
+  }, []);
+
+  // Generate request ID based on RFQ number
+  const generateDeliveryRequestId = (rfqNumber: string) => {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `DEL-${agreementNo}-${date}`;
+    return `DEL-${rfqNumber}-${date}`;
   };
 
   const generateReturnRequestId = (agreementNo: string) => {
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `RET-${agreementNo}-${date}`;
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+    return `RET-${agreementNo}-${date}-${time}`;
   };
 
   // Create Delivery Request handler
   const handleCreateDeliveryRequest = async () => {
-    const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-    if (!agreement) {
-      alert('Please select a rental agreement');
+    const rfq = rfqs.find(r => r.id === selectedRfqId);
+    if (!rfq) {
+      alert('Please select a quotation (RFQ)');
       return;
     }
 
     // Validate sets
     const validSets = deliverySets.filter(set => 
       set.scheduledPeriod.trim() && 
-      set.items.some(item => item.name.trim())
+      set.items.some(item => item.scaffoldingItemId?.trim())
     );
 
     if (validSets.length === 0) {
@@ -213,25 +309,27 @@ export default function DeliveryReturnManagement() {
 
     setIsCreating(true);
     try {
-      const requestId = generateDeliveryRequestId(agreement.agreementNumber);
+      const requestId = generateDeliveryRequestId(rfq.rfqNumber);
       
       const response = await fetch('/api/delivery', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestId,
-          customerName: agreement.hirer,
-          agreementNo: agreement.agreementNumber,
-          customerPhone: agreement.hirerPhone || '',
-          customerEmail: newDeliveryForm.customerEmail,
-          deliveryAddress: agreement.location || '',
+          customerName: rfq.customerName,
+          agreementNo: rfq.rfqNumber, // Using RFQ number as agreement reference
+          customerPhone: rfq.customerPhone || '',
+          customerEmail: rfq.customerEmail,
+          deliveryAddress: rfq.projectLocation || '',
           deliveryType: newDeliveryForm.deliveryType,
+          rfqId: rfq.id,
           sets: validSets.map(set => ({
             setName: set.setName,
             scheduledPeriod: set.scheduledPeriod,
-            items: set.items.filter(item => item.name.trim()).map(item => ({
+            items: set.items.filter(item => item.scaffoldingItemId?.trim()).map(item => ({
               name: item.name,
               quantity: item.quantity,
+              scaffoldingItemId: item.scaffoldingItemId,
             })),
           })),
         }),
@@ -241,9 +339,9 @@ export default function DeliveryReturnManagement() {
       if (data.success) {
         await fetchDeliveryRequests();
         setShowCreateDeliveryModal(false);
-        setSelectedAgreementId('');
+        setSelectedRfqId('');
         setNewDeliveryForm({ customerEmail: '', deliveryType: 'delivery' });
-        setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', items: [{ name: '', quantity: 1 }] }]);
+        setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
         alert('Delivery request created successfully!');
       } else {
         alert('Failed to create delivery request: ' + data.message);
@@ -258,14 +356,14 @@ export default function DeliveryReturnManagement() {
 
   // Create Return Request handler
   const handleCreateReturnRequest = async () => {
-    const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-    if (!agreement) {
-      alert('Please select a rental agreement');
+    const rfq = rfqs.find(r => r.id === selectedReturnRfqId);
+    if (!rfq) {
+      alert('Please select a quotation (RFQ)');
       return;
     }
 
     // Validate items
-    const validItems = returnItems.filter(item => item.name.trim());
+    const validItems = returnItems.filter(item => item.scaffoldingItemId?.trim());
     if (validItems.length === 0) {
       alert('Please add at least one item to return');
       return;
@@ -283,25 +381,27 @@ export default function DeliveryReturnManagement() {
 
     setIsCreating(true);
     try {
-      const requestId = generateReturnRequestId(agreement.agreementNumber);
+      const requestId = generateReturnRequestId(rfq.rfqNumber);
       
       const response = await fetch('/api/return', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestId,
-          customerName: agreement.hirer,
-          agreementNo: agreement.agreementNumber,
+          customerName: rfq.customerName,
+          agreementNo: rfq.rfqNumber,
           setName: newReturnForm.setName,
           reason: newReturnForm.reason,
-          pickupAddress: agreement.location || '',
-          customerPhone: agreement.hirerPhone || '',
-          customerEmail: newReturnForm.customerEmail,
+          pickupAddress: rfq.projectLocation || '',
+          customerPhone: rfq.customerPhone || '',
+          customerEmail: rfq.customerEmail,
           returnType: newReturnForm.returnType,
           collectionMethod: newReturnForm.collectionMethod,
+          rfqId: rfq.id,
           items: validItems.map(item => ({
             name: item.name,
             quantity: item.quantity,
+            scaffoldingItemId: item.scaffoldingItemId,
           })),
         }),
       });
@@ -310,9 +410,9 @@ export default function DeliveryReturnManagement() {
       if (data.success) {
         await fetchReturnRequests();
         setShowCreateReturnModal(false);
-        setSelectedAgreementId('');
-        setNewReturnForm({ setName: '', reason: '', customerEmail: '', returnType: 'full', collectionMethod: 'transport' });
-        setReturnItems([{ name: '', quantity: 1 }]);
+        setSelectedReturnRfqId('');
+        setNewReturnForm({ setName: '', reason: '', returnType: 'full', collectionMethod: 'transport' });
+        setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
         alert('Return request created successfully!');
       } else {
         alert('Failed to create return request: ' + data.message);
@@ -329,11 +429,11 @@ export default function DeliveryReturnManagement() {
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      await Promise.all([fetchDeliveryRequests(), fetchReturnRequests(), fetchRentalAgreements()]);
+      await Promise.all([fetchDeliveryRequests(), fetchReturnRequests(), fetchRentalAgreements(), fetchScaffoldingItems(), fetchRfqs()]);
       setIsLoading(false);
     };
     fetchData();
-  }, [fetchDeliveryRequests, fetchReturnRequests, fetchRentalAgreements]);
+  }, [fetchDeliveryRequests, fetchReturnRequests, fetchRentalAgreements, fetchScaffoldingItems, fetchRfqs]);
 
   const getStatusColor = (status: DeliveryStatus | ReturnStatus) => {
     switch (status) {
@@ -389,6 +489,53 @@ export default function DeliveryReturnManagement() {
         console.error('Error issuing quotation:', error);
         alert('An error occurred while issuing quotation');
       }
+    }
+  };
+
+  const handleAgreeDeliveryQuotation = async (request: DeliveryRequest, set: DeliverySet) => {
+    try {
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId: set.id,
+          status: 'Confirmed',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        alert('Customer agreed to quotation. You can now generate the Delivery Order.');
+      } else {
+        alert('Failed to update status: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error agreeing to quotation:', error);
+      alert('An error occurred while updating status');
+    }
+  };
+
+  const handleDisagreeDeliveryQuotation = async (request: DeliveryRequest, set: DeliverySet) => {
+    try {
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId: set.id,
+          status: 'Pending',
+          deliveryFee: null, // Clear the previous quote
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        alert('Customer disagreed with quotation. Please issue a new quotation.');
+      } else {
+        alert('Failed to update status: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error disagreeing quotation:', error);
+      alert('An error occurred');
     }
   };
 
@@ -474,6 +621,30 @@ export default function DeliveryReturnManagement() {
     } catch (error) {
       console.error('Error agreeing to quotation:', error);
       alert('An error occurred while updating status');
+    }
+  };
+
+  const handleDisagreeReturnQuotation = async (request: ReturnRequest) => {
+    try {
+      const response = await fetch('/api/return', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: request.id,
+          status: 'Requested',
+          pickupFee: null, // Clear the previous quote
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchReturnRequests();
+        alert('Customer disagreed with quotation. Please issue a new quotation.');
+      } else {
+        alert('Failed to update status: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error disagreeing quotation:', error);
+      alert('An error occurred');
     }
   };
 
@@ -656,54 +827,33 @@ export default function DeliveryReturnManagement() {
 
   const handleDOGenerated = async (request: DeliveryRequest, set: DeliverySet) => {
     try {
+      const doNumber = `DO-${request.agreementNo}-${set.setName.replace('Set ', '')}`;
+      // Calculate scheduled date from period (1 day before period start)
+      const calculatedScheduledDate = calculateScheduledDateFromPeriod(set.scheduledPeriod);
+      
+      // Save DO data to database via API
       const response = await fetch('/api/delivery', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           setId: set.id,
           status: 'DO Generated',
+          doNumber: doNumber,
+          doStatus: 'pending',
+          doIssuedAt: new Date().toISOString(),
+          doIssuedBy: 'System',
+          deliveryDate: calculatedScheduledDate || set.deliveryDate,
+          createdBy: 'System',
         }),
       });
       const data = await response.json();
       if (data.success) {
-        // Create entry in DeliveryManagement localStorage
-        const doNumber = `DO-${request.agreementNo}-${set.setName.replace('Set ', '')}`;
-        const deliveryOrder = {
-          id: `${request.id}-${set.id}`,
-          doNumber,
-          orderId: request.requestId,
-          agreementId: request.agreementNo,
-          customerName: request.customerName,
-          customerContact: request.customerPhone || '',
-          customerAddress: request.deliveryAddress,
-          siteAddress: request.deliveryAddress,
-          type: request.deliveryType,
-          items: set.items.map((item, idx) => ({
-            id: `item-${idx}`,
-            scaffoldingItemId: `item-${idx}`,
-            scaffoldingItemName: item.name,
-            quantity: item.quantity,
-            unit: 'pcs',
-            availableStock: item.quantity,
-          })),
-          status: 'pending',
-          scheduledDate: set.deliveryDate || undefined,
-          createdBy: 'System',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        // Save to localStorage for DeliveryManagement to pick up
-        const existingOrders = JSON.parse(localStorage.getItem('deliveryOrders') || '[]');
-        // Check if already exists (avoid duplicates)
-        if (!existingOrders.find((o: { id: string }) => o.id === deliveryOrder.id)) {
-          existingOrders.push(deliveryOrder);
-          localStorage.setItem('deliveryOrders', JSON.stringify(existingOrders));
-        }
-
         await fetchDeliveryRequests();
         setShowDOModal(false);
-        alert('Delivery Order generated successfully! It is now available in Delivery Management.');
+        // Navigate to Delivery Management page
+        if (onNavigateToDeliveryManagement) {
+          onNavigateToDeliveryManagement();
+        }
       } else {
         alert('Failed to generate DO: ' + data.message);
       }
@@ -756,7 +906,7 @@ export default function DeliveryReturnManagement() {
     const setIndex = request.sets.findIndex(s => s.id === set.id);
     if (setIndex === 0) return true;
     const previousSet = request.sets[setIndex - 1];
-    return previousSet.status === 'DO Generated' || previousSet.status === 'Customer Confirmed' || previousSet.status === 'Delivered';
+    return previousSet.status === 'Confirmed' || previousSet.status === 'DO Generated' || previousSet.status === 'Customer Confirmed' || previousSet.status === 'Delivered';
   };
 
   const getNextAction = (request: DeliveryRequest, set: DeliverySet) => {
@@ -767,12 +917,18 @@ export default function DeliveryReturnManagement() {
       return { label: 'Waiting for previous set', disabled: true, color: 'gray' };
     }
 
-    // Simplified workflow: Pending → Issue Quotation → Generate DO → DO Generated (View DO)
+    // Workflow: Pending → Issue Quotation → Quoted (Agree/Disagree) → Confirmed → Generate DO → DO Generated (View DO)
     if (request.deliveryType === 'delivery' || request.deliveryType === 'pickup') {
       switch (set.status) {
         case 'Pending':
           return { label: 'Issue Quotation', action: () => handleIssueQuotation(request, set), color: 'blue' };
         case 'Quoted':
+          // Return both agree and disagree actions
+          return {
+            agree: { label: 'Agree', action: () => handleAgreeDeliveryQuotation(request, set), color: 'green' },
+            disagree: { label: 'Disagree', action: () => handleDisagreeDeliveryQuotation(request, set), color: 'red' },
+          };
+        case 'Confirmed':
           return { label: 'Generate DO', action: () => handleGenerateDO(request, set), color: 'green' };
         case 'DO Generated':
           return { label: 'View DO', action: () => handleViewDO(request, set), color: 'green', disabled: false };
@@ -787,7 +943,11 @@ export default function DeliveryReturnManagement() {
       case 'Requested':
         return { label: 'Issue Quotation', action: () => handleIssueReturnQuotation(request), color: 'blue' };
       case 'Quoted':
-        return { label: 'Agree', action: () => handleAgreeReturnQuotation(request), color: 'green' };
+        // Return both agree and disagree actions
+        return {
+          agree: { label: 'Agree', action: () => handleAgreeReturnQuotation(request), color: 'green' },
+          disagree: { label: 'Disagree', action: () => handleDisagreeReturnQuotation(request), color: 'red' },
+        };
       case 'Agreed':
         return { label: 'Agreed', disabled: true, color: 'gray' };
       case 'Cancelled':
@@ -797,11 +957,32 @@ export default function DeliveryReturnManagement() {
     }
   };
 
-  const filteredDeliveryRequests = deliveryRequests.filter(req =>
-    req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.requestId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.agreementNo.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Helper function to check if a set meets all three conditions (Quoted + Agreed + DO Generated)
+  const isSetReadyForDelivery = (set: DeliverySet) => {
+    const isQuoted = set.quotedAmount !== null && set.quotedAmount !== undefined;
+    const isAgreed = set.status === 'Confirmed' || set.status === 'DO Generated';
+    const isDoGenerated = !!set.doNumber;
+    return isQuoted && isAgreed && isDoGenerated;
+  };
+
+  const filteredDeliveryRequests = deliveryRequests.filter(req => {
+    // Search filter
+    const matchesSearch = 
+      req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.requestId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.agreementNo.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (!matchesSearch) return false;
+    
+    // Status filter
+    if (filterStatus === 'all') return true;
+    if (filterStatus === 'ready') {
+      // Only show requests where at least one set is ready for delivery (quoted + agreed + DO generated)
+      return req.sets.some(set => isSetReadyForDelivery(set));
+    }
+    // Filter by specific set status
+    return req.sets.some(set => set.status === filterStatus);
+  });
 
   const filteredReturnRequests = returnRequests.filter(req =>
     req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -862,7 +1043,7 @@ export default function DeliveryReturnManagement() {
         </button>
       </div>
 
-      {/* Search */}
+      {/* Search and Filter */}
       <div className="flex items-center space-x-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 size-5" />
@@ -874,6 +1055,20 @@ export default function DeliveryReturnManagement() {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
           />
         </div>
+        {activeTab === 'delivery' && (
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] bg-white"
+          >
+            <option value="all">All Status</option>
+            <option value="ready">Ready for Delivery (Quoted + Agreed + DO)</option>
+            <option value="Pending">Pending</option>
+            <option value="Quoted">Quoted</option>
+            <option value="Confirmed">Confirmed (Agreed)</option>
+            <option value="DO Generated">DO Generated</option>
+          </select>
+        )}
       </div>
 
       {/* Delivery Requests Tab */}
@@ -967,11 +1162,34 @@ export default function DeliveryReturnManagement() {
                       </div>
 
                       {/* Action Button */}
-                      <div>
+                      <div className="flex items-center space-x-2">
                         {(() => {
                           const nextAction = getNextAction(request, set);
                           if (!nextAction) return null;
                           
+                          // Check if it's the quoted state with agree/disagree options
+                          if ('agree' in nextAction && 'disagree' in nextAction) {
+                            return (
+                              <>
+                                <button
+                                  onClick={nextAction.agree.action}
+                                  className="px-4 py-2 rounded-lg text-sm text-white"
+                                  style={{ backgroundColor: '#10b981' }}
+                                >
+                                  {nextAction.agree.label}
+                                </button>
+                                <button
+                                  onClick={nextAction.disagree.action}
+                                  className="px-4 py-2 rounded-lg text-sm text-white"
+                                  style={{ backgroundColor: '#ef4444' }}
+                                >
+                                  {nextAction.disagree.label}
+                                </button>
+                              </>
+                            );
+                          }
+                          
+                          // Single action button (existing logic)
                           return (
                             <button
                               onClick={nextAction.action}
@@ -1081,6 +1299,29 @@ export default function DeliveryReturnManagement() {
                     const nextAction = getReturnNextAction(request);
                     if (!nextAction) return null;
                     
+                    // Check if it's the quoted state with agree/disagree options
+                    if ('agree' in nextAction && 'disagree' in nextAction) {
+                      return (
+                        <>
+                          <button
+                            onClick={nextAction.agree.action}
+                            className="px-4 py-2 rounded-lg text-sm text-white"
+                            style={{ backgroundColor: '#10b981' }}
+                          >
+                            {nextAction.agree.label}
+                          </button>
+                          <button
+                            onClick={nextAction.disagree.action}
+                            className="px-4 py-2 rounded-lg text-sm text-white"
+                            style={{ backgroundColor: '#ef4444' }}
+                          >
+                            {nextAction.disagree.label}
+                          </button>
+                        </>
+                      );
+                    }
+                    
+                    // Single action button (existing logic)
                     return (
                       <button
                         onClick={nextAction.action}
@@ -1287,6 +1528,7 @@ export default function DeliveryReturnManagement() {
           }}
           deliveryAddress={selectedDORequest.deliveryAddress}
           deliveryDate={new Date().toISOString().split('T')[0]}
+          scheduledPeriod={selectedSet.scheduledPeriod}
           customerPhone={selectedDORequest.customerPhone}
           customerEmail={selectedDORequest.customerEmail}
           onClose={() => {
@@ -1307,6 +1549,7 @@ export default function DeliveryReturnManagement() {
           }}
           deliveryAddress={selectedViewDO.request.deliveryAddress}
           deliveryDate={selectedViewDO.set.deliveryDate || new Date().toISOString().split('T')[0]}
+          scheduledPeriod={selectedViewDO.set.scheduledPeriod}
           customerPhone={selectedViewDO.request.customerPhone}
           customerEmail={selectedViewDO.request.customerEmail}
           onClose={() => setShowViewDOModal(false)}
@@ -1358,65 +1601,81 @@ export default function DeliveryReturnManagement() {
             <h3 className="text-xl font-semibold text-[#231F20]">Create Delivery Request</h3>
             
             <div className="space-y-4">
-              {/* Agreement Selection */}
+              {/* RFQ Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Rental Agreement *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Quotation (RFQ) *</label>
                 <select
-                  value={selectedAgreementId}
-                  onChange={(e) => setSelectedAgreementId(e.target.value)}
+                  value={selectedRfqId}
+                  onChange={(e) => {
+                    setSelectedRfqId(e.target.value);
+                    // Reset delivery sets when RFQ changes
+                    setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
                 >
-                  <option value="">-- Select Agreement --</option>
-                  {rentalAgreements.map((agreement) => (
-                    <option key={agreement.id} value={agreement.id}>
-                      {agreement.agreementNumber} - {agreement.hirer} ({agreement.projectName})
+                  <option value="">-- Select Quotation --</option>
+                  {rfqs.map((rfq) => (
+                    <option key={rfq.id} value={rfq.id}>
+                      {rfq.rfqNumber} - {rfq.customerName} ({rfq.projectName})
                     </option>
                   ))}
                 </select>
+                {rfqs.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    No approved quotations available. Please approve a quotation first.
+                  </p>
+                )}
               </div>
 
               {/* Auto-populated fields (read-only display) */}
-              {selectedAgreementId && (() => {
-                const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-                if (!agreement) return null;
+              {selectedRfqId && (() => {
+                const rfq = rfqs.find(r => r.id === selectedRfqId);
+                if (!rfq) return null;
                 return (
                   <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Agreement:</p>
+                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Quotation:</p>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <span className="text-gray-500">Customer Name:</span>
-                        <span className="ml-2 text-gray-900">{agreement.hirer}</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerName}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Email:</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerEmail}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Phone:</span>
-                        <span className="ml-2 text-gray-900">{agreement.hirerPhone || 'N/A'}</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerPhone || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Project:</span>
+                        <span className="ml-2 text-gray-900">{rfq.projectName}</span>
                       </div>
                       <div className="col-span-2">
                         <span className="text-gray-500">Delivery Address:</span>
-                        <span className="ml-2 text-gray-900">{agreement.location || 'N/A'}</span>
+                        <span className="ml-2 text-gray-900">{rfq.projectLocation || 'N/A'}</span>
                       </div>
                       <div className="col-span-2">
                         <span className="text-gray-500">Request ID:</span>
                         <span className="ml-2 text-gray-900 font-mono">
-                          DEL-{agreement.agreementNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
+                          DEL-{rfq.rfqNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
                         </span>
+                      </div>
+                    </div>
+                    {/* Show available items from RFQ */}
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-sm text-gray-500 font-medium mb-2">Available Items from Quotation:</p>
+                      <div className="space-y-1">
+                        {rfq.items.map((item, idx) => (
+                          <p key={idx} className="text-sm text-gray-700">
+                            • {item.scaffoldingItemName} - Qty: {item.quantity} {item.unit}
+                          </p>
+                        ))}
                       </div>
                     </div>
                   </div>
                 );
               })()}
-
-              {/* Customer Email */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Customer Email</label>
-                <input
-                  type="email"
-                  value={newDeliveryForm.customerEmail}
-                  onChange={(e) => setNewDeliveryForm({ ...newDeliveryForm, customerEmail: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
-                  placeholder="customer@email.com"
-                />
-              </div>
 
               {/* Delivery Type */}
               <div>
@@ -1441,10 +1700,11 @@ export default function DeliveryReturnManagement() {
                       const nextSetLetter = String.fromCharCode(65 + deliverySets.length);
                       setDeliverySets([
                         ...deliverySets,
-                        { setName: `Set ${nextSetLetter}`, scheduledPeriod: '', items: [{ name: '', quantity: 1 }] },
+                        { setName: `Set ${nextSetLetter}`, scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] },
                       ]);
                     }}
                     className="text-sm text-[#F15929] hover:text-[#d94d1f] flex items-center space-x-1"
+                    disabled={!selectedRfqId}
                   >
                     <Plus className="size-4" />
                     <span>Add Set</span>
@@ -1458,7 +1718,15 @@ export default function DeliveryReturnManagement() {
                       {deliverySets.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => setDeliverySets(deliverySets.filter((_, i) => i !== setIndex))}
+                          onClick={() => {
+                            const filtered = deliverySets.filter((_, i) => i !== setIndex);
+                            // Rename sets to maintain sequential naming
+                            const renamed = filtered.map((s, i) => ({
+                              ...s,
+                              setName: `Set ${String.fromCharCode(65 + i)}`
+                            }));
+                            setDeliverySets(renamed);
+                          }}
                           className="text-red-500 hover:text-red-700"
                         >
                           <X className="size-4" />
@@ -1466,77 +1734,160 @@ export default function DeliveryReturnManagement() {
                       )}
                     </div>
 
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Scheduled Period *</label>
-                      <input
-                        type="text"
-                        value={set.scheduledPeriod}
-                        onChange={(e) => {
-                          const updated = [...deliverySets];
-                          updated[setIndex].scheduledPeriod = e.target.value;
-                          setDeliverySets(updated);
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
-                        placeholder="e.g., 1 Jan 2026 - 31 Mar 2026"
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Start Date */}
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Start Date *</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-left flex items-center justify-between bg-white hover:bg-gray-50"
+                            >
+                              <span className={set.startDate ? 'text-gray-900' : 'text-gray-400'}>
+                                {set.startDate ? format(set.startDate, 'd MMM yyyy') : 'Select start date'}
+                              </span>
+                              <CalendarIcon className="size-4 text-gray-400" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={set.startDate}
+                              onSelect={(date) => {
+                                const updated = [...deliverySets];
+                                updated[setIndex].startDate = date;
+                                // Update scheduledPeriod string for backward compatibility
+                                if (date && updated[setIndex].endDate) {
+                                  updated[setIndex].scheduledPeriod = `${format(date, 'd MMM yyyy')} - ${format(updated[setIndex].endDate!, 'd MMM yyyy')}`;
+                                } else if (date) {
+                                  updated[setIndex].scheduledPeriod = format(date, 'd MMM yyyy');
+                                } else {
+                                  updated[setIndex].scheduledPeriod = '';
+                                }
+                                setDeliverySets(updated);
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      {/* End Date */}
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">End Date *</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-left flex items-center justify-between bg-white hover:bg-gray-50"
+                            >
+                              <span className={set.endDate ? 'text-gray-900' : 'text-gray-400'}>
+                                {set.endDate ? format(set.endDate, 'd MMM yyyy') : 'Select end date'}
+                              </span>
+                              <CalendarIcon className="size-4 text-gray-400" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={set.endDate}
+                              onSelect={(date) => {
+                                const updated = [...deliverySets];
+                                updated[setIndex].endDate = date;
+                                // Update scheduledPeriod string for backward compatibility
+                                if (updated[setIndex].startDate && date) {
+                                  updated[setIndex].scheduledPeriod = `${format(updated[setIndex].startDate!, 'd MMM yyyy')} - ${format(date, 'd MMM yyyy')}`;
+                                } else if (date) {
+                                  updated[setIndex].scheduledPeriod = format(date, 'd MMM yyyy');
+                                }
+                                setDeliverySets(updated);
+                              }}
+                              disabled={(date) => set.startDate ? date < set.startDate : false}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                     </div>
 
-                    {/* Items in Set */}
+                    {/* Items in Set - only show items from selected RFQ */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <label className="block text-xs text-gray-500">Items *</label>
+                        <label className="block text-xs text-gray-500">Items from Quotation *</label>
                         <button
                           type="button"
                           onClick={() => {
                             const updated = [...deliverySets];
-                            updated[setIndex].items.push({ name: '', quantity: 1 });
+                            updated[setIndex].items.push({ name: '', quantity: 1, scaffoldingItemId: '' });
                             setDeliverySets(updated);
                           }}
                           className="text-xs text-[#F15929] hover:text-[#d94d1f]"
+                          disabled={!selectedRfqId}
                         >
                           + Add Item
                         </button>
                       </div>
-                      {set.items.map((item, itemIndex) => (
-                        <div key={itemIndex} className="flex items-center space-x-2">
-                          <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => {
-                              const updated = [...deliverySets];
-                              updated[setIndex].items[itemIndex].name = e.target.value;
-                              setDeliverySets(updated);
-                            }}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
-                            placeholder="Item name"
-                          />
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const updated = [...deliverySets];
-                              updated[setIndex].items[itemIndex].quantity = parseInt(e.target.value) || 1;
-                              setDeliverySets(updated);
-                            }}
-                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
-                            placeholder="Qty"
-                          />
-                          {set.items.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
+                      {set.items.map((item, itemIndex) => {
+                        const selectedRfq = rfqs.find(r => r.id === selectedRfqId);
+                        const rfqItems = selectedRfq?.items || [];
+                        
+                        return (
+                          <div key={itemIndex} className="flex items-center space-x-2">
+                            <select
+                              value={item.scaffoldingItemId}
+                              onChange={(e) => {
                                 const updated = [...deliverySets];
-                                updated[setIndex].items = updated[setIndex].items.filter((_, i) => i !== itemIndex);
+                                const selectedItem = rfqItems.find(ri => ri.scaffoldingItemId === e.target.value);
+                                updated[setIndex].items[itemIndex].scaffoldingItemId = e.target.value;
+                                updated[setIndex].items[itemIndex].name = selectedItem?.scaffoldingItemName || '';
                                 setDeliverySets(updated);
                               }}
-                              className="text-red-500 hover:text-red-700"
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm bg-white disabled:bg-gray-100"
+                              disabled={!selectedRfqId}
                             >
-                              <X className="size-4" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                              <option value="">-- Select Item from Quotation --</option>
+                              {rfqItems.map((rfqItem) => (
+                                <option key={rfqItem.scaffoldingItemId} value={rfqItem.scaffoldingItemId}>
+                                  {rfqItem.scaffoldingItemName} (Quoted: {rfqItem.quantity} {rfqItem.unit})
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min="1"
+                              max={rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.quantity || 9999}
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const updated = [...deliverySets];
+                                updated[setIndex].items[itemIndex].quantity = parseInt(e.target.value) || 1;
+                                setDeliverySets(updated);
+                              }}
+                              className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-center disabled:bg-gray-100"
+                              placeholder="Qty"
+                              disabled={!selectedRfqId}
+                            />
+                            {set.items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...deliverySets];
+                                  updated[setIndex].items = updated[setIndex].items.filter((_, i) => i !== itemIndex);
+                                  setDeliverySets(updated);
+                                }}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <X className="size-4" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {!selectedRfqId && (
+                        <p className="text-xs text-gray-500 italic">
+                          Please select a quotation first to see available items
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1547,9 +1898,9 @@ export default function DeliveryReturnManagement() {
               <button
                 onClick={() => {
                   setShowCreateDeliveryModal(false);
-                  setSelectedAgreementId('');
+                  setSelectedRfqId('');
                   setNewDeliveryForm({ customerEmail: '', deliveryType: 'delivery' });
-                  setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', items: [{ name: '', quantity: 1 }] }]);
+                  setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
                 }}
                 className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                 disabled={isCreating}
@@ -1558,7 +1909,7 @@ export default function DeliveryReturnManagement() {
               </button>
               <button
                 onClick={handleCreateDeliveryRequest}
-                disabled={isCreating || !selectedAgreementId}
+                disabled={isCreating || !selectedRfqId}
                 className="px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
                 {isCreating && <Loader className="size-4 animate-spin" />}
@@ -1576,48 +1927,76 @@ export default function DeliveryReturnManagement() {
             <h3 className="text-xl font-semibold text-[#231F20]">Create Return Request</h3>
             
             <div className="space-y-4">
-              {/* Agreement Selection */}
+              {/* RFQ Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Rental Agreement *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Quotation (RFQ) *</label>
                 <select
-                  value={selectedAgreementId}
-                  onChange={(e) => setSelectedAgreementId(e.target.value)}
+                  value={selectedReturnRfqId}
+                  onChange={(e) => {
+                    setSelectedReturnRfqId(e.target.value);
+                    // Reset return items when RFQ changes
+                    setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
                 >
-                  <option value="">-- Select Agreement --</option>
-                  {rentalAgreements.map((agreement) => (
-                    <option key={agreement.id} value={agreement.id}>
-                      {agreement.agreementNumber} - {agreement.hirer} ({agreement.projectName})
+                  <option value="">-- Select Quotation --</option>
+                  {rfqs.map((rfq) => (
+                    <option key={rfq.id} value={rfq.id}>
+                      {rfq.rfqNumber} - {rfq.customerName} ({rfq.projectName})
                     </option>
                   ))}
                 </select>
+                {rfqs.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    No approved quotations available. Please approve a quotation first.
+                  </p>
+                )}
               </div>
 
               {/* Auto-populated fields (read-only display) */}
-              {selectedAgreementId && (() => {
-                const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-                if (!agreement) return null;
+              {selectedReturnRfqId && (() => {
+                const rfq = rfqs.find(r => r.id === selectedReturnRfqId);
+                if (!rfq) return null;
                 return (
                   <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Agreement:</p>
+                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Quotation:</p>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <span className="text-gray-500">Customer Name:</span>
-                        <span className="ml-2 text-gray-900">{agreement.hirer}</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerName}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Email:</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerEmail}</span>
                       </div>
                       <div>
                         <span className="text-gray-500">Phone:</span>
-                        <span className="ml-2 text-gray-900">{agreement.hirerPhone || 'N/A'}</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerPhone || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Project:</span>
+                        <span className="ml-2 text-gray-900">{rfq.projectName}</span>
                       </div>
                       <div className="col-span-2">
                         <span className="text-gray-500">Pickup Address:</span>
-                        <span className="ml-2 text-gray-900">{agreement.location || 'N/A'}</span>
+                        <span className="ml-2 text-gray-900">{rfq.projectLocation || 'N/A'}</span>
                       </div>
                       <div className="col-span-2">
                         <span className="text-gray-500">Request ID:</span>
                         <span className="ml-2 text-gray-900 font-mono">
-                          RET-{agreement.agreementNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
+                          RET-{rfq.rfqNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
                         </span>
+                      </div>
+                    </div>
+                    {/* Show available items from RFQ */}
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-sm text-gray-500 font-medium mb-2">Available Items from Quotation:</p>
+                      <div className="space-y-1">
+                        {rfq.items.map((item, idx) => (
+                          <p key={idx} className="text-sm text-gray-700">
+                            • {item.scaffoldingItemName} - Qty: {item.quantity} {item.unit}
+                          </p>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -1662,18 +2041,6 @@ export default function DeliveryReturnManagement() {
                 </select>
               </div>
 
-              {/* Customer Email */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Customer Email</label>
-                <input
-                  type="email"
-                  value={newReturnForm.customerEmail}
-                  onChange={(e) => setNewReturnForm({ ...newReturnForm, customerEmail: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
-                  placeholder="customer@email.com"
-                />
-              </div>
-
               {/* Reason */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Reason for Return *</label>
@@ -1686,55 +2053,76 @@ export default function DeliveryReturnManagement() {
                 />
               </div>
 
-              {/* Items Section */}
+              {/* Items Section - only show items from selected RFQ */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="block text-sm font-medium text-gray-700">Items to Return *</label>
+                  <label className="block text-sm font-medium text-gray-700">Items to Return from Quotation *</label>
                   <button
                     type="button"
-                    onClick={() => setReturnItems([...returnItems, { name: '', quantity: 1 }])}
+                    onClick={() => setReturnItems([...returnItems, { name: '', quantity: 1, scaffoldingItemId: '' }])}
                     className="text-sm text-[#F15929] hover:text-[#d94d1f] flex items-center space-x-1"
+                    disabled={!selectedReturnRfqId}
                   >
                     <Plus className="size-4" />
                     <span>Add Item</span>
                   </button>
                 </div>
-                {returnItems.map((item, index) => (
-                  <div key={index} className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value={item.name}
-                      onChange={(e) => {
-                        const updated = [...returnItems];
-                        updated[index].name = e.target.value;
-                        setReturnItems(updated);
-                      }}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
-                      placeholder="Item name"
-                    />
-                    <input
-                      type="number"
-                      min="1"
-                      value={item.quantity}
-                      onChange={(e) => {
-                        const updated = [...returnItems];
-                        updated[index].quantity = parseInt(e.target.value) || 1;
-                        setReturnItems(updated);
-                      }}
-                      className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm"
-                      placeholder="Qty"
-                    />
-                    {returnItems.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setReturnItems(returnItems.filter((_, i) => i !== index))}
-                        className="text-red-500 hover:text-red-700"
+                {returnItems.map((item, index) => {
+                  const selectedRfq = rfqs.find(r => r.id === selectedReturnRfqId);
+                  const rfqItems = selectedRfq?.items || [];
+                  
+                  return (
+                    <div key={index} className="flex items-center space-x-2">
+                      <select
+                        value={item.scaffoldingItemId}
+                        onChange={(e) => {
+                          const updated = [...returnItems];
+                          const selectedItem = rfqItems.find(ri => ri.scaffoldingItemId === e.target.value);
+                          updated[index].scaffoldingItemId = e.target.value;
+                          updated[index].name = selectedItem?.scaffoldingItemName || '';
+                          setReturnItems(updated);
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm bg-white disabled:bg-gray-100"
+                        disabled={!selectedReturnRfqId}
                       >
-                        <X className="size-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                        <option value="">-- Select Item from Quotation --</option>
+                        {rfqItems.map((rfqItem) => (
+                          <option key={rfqItem.scaffoldingItemId} value={rfqItem.scaffoldingItemId}>
+                            {rfqItem.scaffoldingItemName} (Quoted: {rfqItem.quantity} {rfqItem.unit})
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="1"
+                        max={rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.quantity || 9999}
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const updated = [...returnItems];
+                          updated[index].quantity = parseInt(e.target.value) || 1;
+                          setReturnItems(updated);
+                        }}
+                        className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-center disabled:bg-gray-100"
+                        placeholder="Qty"
+                        disabled={!selectedReturnRfqId}
+                      />
+                      {returnItems.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setReturnItems(returnItems.filter((_, i) => i !== index))}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {!selectedReturnRfqId && (
+                  <p className="text-xs text-gray-500 italic">
+                    Please select a quotation first to see available items
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1742,9 +2130,9 @@ export default function DeliveryReturnManagement() {
               <button
                 onClick={() => {
                   setShowCreateReturnModal(false);
-                  setSelectedAgreementId('');
-                  setNewReturnForm({ setName: '', reason: '', customerEmail: '', returnType: 'full', collectionMethod: 'transport' });
-                  setReturnItems([{ name: '', quantity: 1 }]);
+                  setSelectedReturnRfqId('');
+                  setNewReturnForm({ setName: '', reason: '', returnType: 'full', collectionMethod: 'transport' });
+                  setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
                 }}
                 className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                 disabled={isCreating}
@@ -1753,7 +2141,7 @@ export default function DeliveryReturnManagement() {
               </button>
               <button
                 onClick={handleCreateReturnRequest}
-                disabled={isCreating || !selectedAgreementId || !newReturnForm.setName || !newReturnForm.reason}
+                disabled={isCreating || !selectedReturnRfqId || !newReturnForm.setName || !newReturnForm.reason}
                 className="px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
                 {isCreating && <Loader className="size-4 animate-spin" />}

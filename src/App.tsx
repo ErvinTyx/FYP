@@ -272,28 +272,8 @@ export default function App() {
     }
   }, [status, session]);
 
-  // Sync session with local state
-  useEffect(() => {
-    if (status === "authenticated" && session?.user) {
-      const roles = session.user.roles || [];
-      // Get primary role (first role or default)
-      const primaryRole = roles[0] || "admin";
-      setUserRole(primaryRole);
-      
-      // Customer goes to CRM portal
-      if (primaryRole === "customer") {
-        setSystemMode("CRM");
-        setCurrentPage("customer-portal");
-      } else {
-        // All other roles go to ERP portal
-        setSystemMode("ERP");
-        setCurrentPage("billing-dashboard");
-      }
-      
-      // Go directly to dashboard
-      setAuthScreen("dashboard");
-    }
-  }, [status, session]);
+  // BUG FIX: Removed duplicate useEffect that was resetting page state on every session refresh.
+  // The first useEffect (lines 240-273) already handles session sync with hasInitializedPageRef guard.
 
   // Unified login handler - determines portal based on role
   const handleUnifiedLogin = (role: string) => {
@@ -651,7 +631,9 @@ export default function App() {
           />
         );
       case "delivery-return-requests":
-        return <DeliveryReturnManagement />;
+        return <DeliveryReturnManagement 
+          onNavigateToDeliveryManagement={() => setCurrentPage("delivery-management")} 
+        />;
       default:
         return <BillingDashboard />;
     }

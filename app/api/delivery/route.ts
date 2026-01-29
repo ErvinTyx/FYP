@@ -10,14 +10,8 @@ const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
  * List all delivery requests with their sets and items
  */
 export async function GET(request: NextRequest) {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:GET:entry',message:'GET delivery started',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-H5'})}).catch(()=>{});
-  // #endregion
   try {
     const session = await auth();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:GET:auth',message:'Auth result',data:{hasSession:!!session,hasUser:!!session?.user,userRoles:session?.user?.roles},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3-H4'})}).catch(()=>{});
-    // #endregion
     
     if (!session?.user) {
       return NextResponse.json(
@@ -54,29 +48,64 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:GET:before-query',message:'About to query',data:{hasDeliveryRequest:!!prisma.deliveryRequest,modelType:typeof prisma.deliveryRequest},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
-    const deliveryRequests = await prisma.deliveryRequest.findMany({
-      where,
-      include: {
-        sets: {
-          where: Object.keys(setsWhere).length > 0 ? setsWhere : undefined,
-          include: {
-            items: true,
+    // Try to include rfq relation and step tables, fall back to basic query if relation doesn't exist yet
+    let deliveryRequests;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      deliveryRequests = await (prisma.deliveryRequest.findMany as any)({
+        where,
+        include: {
+          sets: {
+            where: Object.keys(setsWhere).length > 0 ? setsWhere : undefined,
+            include: {
+              items: true,
+              packingList: true,
+              stockCheck: true,
+              schedule: true,
+              packingLoading: true,
+              dispatch: true,
+              doIssued: true,
+              completion: true,
+              customerAck: true,
+            },
+            orderBy: {
+              createdAt: 'asc',
+            },
           },
-          orderBy: {
-            createdAt: 'asc',
+          rfq: {
+            include: {
+              items: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    } catch {
+      // Fallback: rfq relation might not exist yet (migration not run)
+      deliveryRequests = await prisma.deliveryRequest.findMany({
+        where,
+        include: {
+          sets: {
+            where: Object.keys(setsWhere).length > 0 ? setsWhere : undefined,
+            include: {
+              items: true,
+            },
+            orderBy: {
+              createdAt: 'asc',
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    }
 
     // Transform the data for the frontend
-    const transformedRequests = deliveryRequests.map(req => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const transformedRequests = deliveryRequests.map((req: any) => ({
       id: req.id,
       requestId: req.requestId,
       customerName: req.customerName,
@@ -89,24 +118,89 @@ export async function GET(request: NextRequest) {
       totalSets: req.totalSets,
       deliveredSets: req.deliveredSets,
       pickupTime: req.pickupTime,
+      rfqId: req.rfqId || null,
+      rfq: req.rfq ? {
+        id: req.rfq.id,
+        rfqNumber: req.rfq.rfqNumber,
+        customerName: req.rfq.customerName,
+        customerEmail: req.rfq.customerEmail,
+        customerPhone: req.rfq.customerPhone,
+        projectName: req.rfq.projectName,
+        projectLocation: req.rfq.projectLocation,
+        status: req.rfq.status,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        items: req.rfq.items.map((item: any) => ({
+          id: item.id,
+          scaffoldingItemId: item.scaffoldingItemId,
+          scaffoldingItemName: item.scaffoldingItemName,
+          quantity: item.quantity,
+          unit: item.unit,
+        })),
+      } : null,
       createdAt: req.createdAt.toISOString(),
       updatedAt: req.updatedAt.toISOString(),
-      sets: req.sets.map(set => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sets: req.sets.map((set: any) => ({
         id: set.id,
         setName: set.setName,
         scheduledPeriod: set.scheduledPeriod,
         status: set.status,
         quotedAmount: set.quotedAmount ? Number(set.quotedAmount) : undefined,
         deliveryFee: set.deliveryFee ? Number(set.deliveryFee) : undefined,
-        deliveryDate: set.deliveryDate?.toISOString().split('T')[0],
-        packingListIssued: set.packingListIssued,
-        driverAcknowledged: set.driverAcknowledged,
-        customerAcknowledged: set.customerAcknowledged,
-        otp: set.otp,
-        signedDO: set.signedDO,
-        items: set.items.map(item => ({
+        createdBy: set.createdBy,
+        notes: set.notes,
+        // Flatten step data for backward compatibility
+        // Packing List step
+        packingListNumber: set.packingList?.packingListNumber,
+        packingListDate: set.packingList?.packingListDate?.toISOString(),
+        packingListIssued: !!set.packingList?.packingListNumber,
+        // Stock Check step
+        stockCheckDate: set.stockCheck?.checkDate?.toISOString(),
+        stockCheckBy: set.stockCheck?.checkedBy,
+        stockCheckNotes: set.stockCheck?.notes,
+        allItemsAvailable: set.stockCheck?.allItemsAvailable,
+        // Schedule step
+        scheduledTimeSlot: set.schedule?.scheduledTimeSlot,
+        scheduleConfirmedAt: set.schedule?.confirmedAt?.toISOString(),
+        scheduleConfirmedBy: set.schedule?.confirmedBy,
+        deliveryDate: set.schedule?.scheduledDate?.toISOString().split('T')[0],
+        // Packing & Loading step
+        packingStartedAt: set.packingLoading?.packingStartedAt?.toISOString(),
+        packingStartedBy: set.packingLoading?.packingStartedBy,
+        loadingCompletedAt: set.packingLoading?.loadingCompletedAt?.toISOString(),
+        loadingCompletedBy: set.packingLoading?.loadingCompletedBy,
+        packingPhotos: set.packingLoading?.packingPhotos,
+        // Dispatch step
+        driverName: set.dispatch?.driverName,
+        driverContact: set.dispatch?.driverContact,
+        vehicleNumber: set.dispatch?.vehicleNumber,
+        driverSignature: set.dispatch?.driverSignature,
+        driverAcknowledgedAt: set.dispatch?.driverAcknowledgedAt?.toISOString(),
+        driverAcknowledged: !!set.dispatch?.driverAcknowledgedAt,
+        dispatchedAt: set.dispatch?.dispatchedAt?.toISOString(),
+        // DO Issued step
+        doNumber: set.doIssued?.doNumber,
+        doIssuedAt: set.doIssued?.doIssuedAt?.toISOString(),
+        doIssuedBy: set.doIssued?.doIssuedBy,
+        signedDO: set.doIssued?.signedDO,
+        // Completion step
+        deliveredAt: set.completion?.deliveredAt?.toISOString(),
+        deliveryPhotos: set.completion?.deliveryPhotos,
+        // Customer Acknowledgement step
+        customerAcknowledgedAt: set.customerAck?.customerAcknowledgedAt?.toISOString(),
+        customerAcknowledged: !!set.customerAck?.customerAcknowledgedAt,
+        customerSignature: set.customerAck?.customerSignature,
+        customerSignedBy: set.customerAck?.customerSignedBy,
+        customerOTP: set.customerAck?.customerOTP,
+        verifiedOTP: set.customerAck?.verifiedOTP,
+        inventoryUpdatedAt: set.customerAck?.inventoryUpdatedAt?.toISOString(),
+        inventoryStatus: set.customerAck?.inventoryStatus,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        items: set.items.map((item: any) => ({
+          id: item.id,
           name: item.name,
           quantity: item.quantity,
+          scaffoldingItemId: item.scaffoldingItemId,
         })),
       })),
     }));
@@ -116,9 +210,6 @@ export async function GET(request: NextRequest) {
       deliveryRequests: transformedRequests,
     });
   } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:GET:error',message:'Caught error',data:{errorMessage:error instanceof Error ? error.message : String(error),errorName:error instanceof Error ? error.name : undefined},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1-H2-H5'})}).catch(()=>{});
-    // #endregion
     console.error('Get delivery requests error:', error);
     return NextResponse.json(
       { success: false, message: 'An error occurred while fetching delivery requests' },
@@ -161,6 +252,7 @@ export async function POST(request: NextRequest) {
       deliveryAddress,
       deliveryType,
       sets,
+      rfqId,
     } = body;
 
     // Validate required fields
@@ -184,39 +276,86 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the delivery request with sets and items
-    const newRequest = await prisma.deliveryRequest.create({
-      data: {
-        requestId,
-        customerName,
-        agreementNo,
-        customerPhone: customerPhone || null,
-        customerEmail: customerEmail || null,
-        deliveryAddress,
-        deliveryType,
-        totalSets: sets?.length || 0,
-        deliveredSets: 0,
-        sets: sets ? {
-          create: sets.map((set: { setName: string; scheduledPeriod: string; items?: { name: string; quantity: number }[] }) => ({
-            setName: set.setName,
-            scheduledPeriod: set.scheduledPeriod,
-            status: 'Pending',
-            items: set.items ? {
-              create: set.items.map((item: { name: string; quantity: number }) => ({
-                name: item.name,
-                quantity: item.quantity,
-              })),
-            } : undefined,
-          })),
-        } : undefined,
-      },
-      include: {
-        sets: {
-          include: {
-            items: true,
+    // Try with rfq fields first, fall back if migration not run
+    let newRequest;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      newRequest = await (prisma.deliveryRequest.create as any)({
+        data: {
+          requestId,
+          customerName,
+          agreementNo,
+          customerPhone: customerPhone || null,
+          customerEmail: customerEmail || null,
+          deliveryAddress,
+          deliveryType,
+          totalSets: sets?.length || 0,
+          deliveredSets: 0,
+          rfqId: rfqId || null,
+          sets: sets ? {
+            create: sets.map((set: { setName: string; scheduledPeriod: string; items?: { name: string; quantity: number; scaffoldingItemId?: string }[] }) => ({
+              setName: set.setName,
+              scheduledPeriod: set.scheduledPeriod,
+              status: 'Pending',
+              items: set.items ? {
+                create: set.items.map((item: { name: string; quantity: number; scaffoldingItemId?: string }) => ({
+                  name: item.name,
+                  quantity: item.quantity,
+                  scaffoldingItemId: item.scaffoldingItemId || null,
+                })),
+              } : undefined,
+            })),
+          } : undefined,
+        },
+        include: {
+          sets: {
+            include: {
+              items: true,
+            },
+          },
+          rfq: {
+            include: {
+              items: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch {
+      // Fallback: rfqId/scaffoldingItemId fields might not exist yet (migration not run)
+      newRequest = await prisma.deliveryRequest.create({
+        data: {
+          requestId,
+          customerName,
+          agreementNo,
+          customerPhone: customerPhone || null,
+          customerEmail: customerEmail || null,
+          deliveryAddress,
+          deliveryType,
+          totalSets: sets?.length || 0,
+          deliveredSets: 0,
+          sets: sets ? {
+            create: sets.map((set: { setName: string; scheduledPeriod: string; items?: { name: string; quantity: number }[] }) => ({
+              setName: set.setName,
+              scheduledPeriod: set.scheduledPeriod,
+              status: 'Pending',
+              items: set.items ? {
+                create: set.items.map((item: { name: string; quantity: number }) => ({
+                  name: item.name,
+                  quantity: item.quantity,
+                })),
+              } : undefined,
+            })),
+          } : undefined,
+        },
+        include: {
+          sets: {
+            include: {
+              items: true,
+            },
+          },
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -263,6 +402,16 @@ export async function PUT(request: NextRequest) {
     if (setId) {
       const existingSet = await prisma.deliverySet.findUnique({
         where: { id: setId },
+        include: {
+          packingList: true,
+          stockCheck: true,
+          schedule: true,
+          packingLoading: true,
+          dispatch: true,
+          doIssued: true,
+          completion: true,
+          customerAck: true,
+        },
       });
 
       if (!existingSet) {
@@ -272,26 +421,214 @@ export async function PUT(request: NextRequest) {
         );
       }
 
-      const updatedSet = await prisma.deliverySet.update({
+      // Update main set fields
+      const setUpdateData: Record<string, unknown> = {};
+      if (updateData.status !== undefined) setUpdateData.status = updateData.status;
+      if (updateData.quotedAmount !== undefined) setUpdateData.quotedAmount = updateData.quotedAmount;
+      if (updateData.deliveryFee !== undefined) setUpdateData.deliveryFee = updateData.deliveryFee;
+      if (updateData.createdBy !== undefined) setUpdateData.createdBy = updateData.createdBy;
+      if (updateData.notes !== undefined) setUpdateData.notes = updateData.notes;
+
+      // Update main set
+      await prisma.deliverySet.update({
         where: { id: setId },
-        data: {
-          status: updateData.status,
-          quotedAmount: updateData.quotedAmount,
-          deliveryFee: updateData.deliveryFee,
-          deliveryDate: updateData.deliveryDate ? new Date(updateData.deliveryDate) : undefined,
-          packingListIssued: updateData.packingListIssued,
-          driverAcknowledged: updateData.driverAcknowledged,
-          customerAcknowledged: updateData.customerAcknowledged,
-          otp: updateData.otp,
-          signedDO: updateData.signedDO,
-        },
+        data: setUpdateData,
+      });
+
+      // Upsert Packing List step
+      if (updateData.packingListNumber !== undefined || updateData.packingListDate !== undefined) {
+        await prisma.deliveryPackingList.upsert({
+          where: { deliverySetId: setId },
+          create: {
+            deliverySetId: setId,
+            packingListNumber: updateData.packingListNumber,
+            packingListDate: updateData.packingListDate ? new Date(updateData.packingListDate) : null,
+            issuedAt: new Date(),
+          },
+          update: {
+            packingListNumber: updateData.packingListNumber,
+            packingListDate: updateData.packingListDate ? new Date(updateData.packingListDate) : undefined,
+          },
+        });
+      }
+
+      // Upsert Stock Check step
+      if (updateData.stockCheckDate !== undefined || updateData.stockCheckBy !== undefined || 
+          updateData.stockCheckNotes !== undefined || updateData.allItemsAvailable !== undefined) {
+        await prisma.deliveryStockCheck.upsert({
+          where: { deliverySetId: setId },
+          create: {
+            deliverySetId: setId,
+            checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : new Date(),
+            checkedBy: updateData.stockCheckBy,
+            notes: updateData.stockCheckNotes,
+            allItemsAvailable: updateData.allItemsAvailable,
+          },
+          update: {
+            checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : undefined,
+            checkedBy: updateData.stockCheckBy,
+            notes: updateData.stockCheckNotes,
+            allItemsAvailable: updateData.allItemsAvailable,
+          },
+        });
+      }
+
+      // Upsert Schedule step
+      if (updateData.scheduledTimeSlot !== undefined || updateData.scheduleConfirmedAt !== undefined || 
+          updateData.scheduleConfirmedBy !== undefined || updateData.deliveryDate !== undefined) {
+        await prisma.deliverySchedule.upsert({
+          where: { deliverySetId: setId },
+          create: {
+            deliverySetId: setId,
+            scheduledDate: updateData.deliveryDate ? new Date(updateData.deliveryDate) : null,
+            scheduledTimeSlot: updateData.scheduledTimeSlot || null,
+            confirmedAt: updateData.scheduleConfirmedAt ? new Date(updateData.scheduleConfirmedAt) : null,
+            confirmedBy: updateData.scheduleConfirmedBy,
+          },
+          update: {
+            scheduledDate: updateData.deliveryDate ? new Date(updateData.deliveryDate) : undefined,
+            // Only update scheduledTimeSlot if a non-null value is provided (don't overwrite with null)
+            ...(updateData.scheduledTimeSlot && { scheduledTimeSlot: updateData.scheduledTimeSlot }),
+            confirmedAt: updateData.scheduleConfirmedAt ? new Date(updateData.scheduleConfirmedAt) : undefined,
+            confirmedBy: updateData.scheduleConfirmedBy,
+          },
+        });
+      }
+
+      // Upsert Packing & Loading step
+      if (updateData.packingStartedAt !== undefined || updateData.packingStartedBy !== undefined ||
+          updateData.loadingCompletedAt !== undefined || updateData.loadingCompletedBy !== undefined ||
+          updateData.packingPhotos !== undefined) {
+        await prisma.deliveryPackingLoading.upsert({
+          where: { deliverySetId: setId },
+          create: {
+            deliverySetId: setId,
+            packingStartedAt: updateData.packingStartedAt ? new Date(updateData.packingStartedAt) : null,
+            packingStartedBy: updateData.packingStartedBy,
+            loadingCompletedAt: updateData.loadingCompletedAt ? new Date(updateData.loadingCompletedAt) : null,
+            loadingCompletedBy: updateData.loadingCompletedBy,
+            packingPhotos: updateData.packingPhotos,
+          },
+          update: {
+            packingStartedAt: updateData.packingStartedAt ? new Date(updateData.packingStartedAt) : undefined,
+            packingStartedBy: updateData.packingStartedBy,
+            loadingCompletedAt: updateData.loadingCompletedAt ? new Date(updateData.loadingCompletedAt) : undefined,
+            loadingCompletedBy: updateData.loadingCompletedBy,
+            packingPhotos: updateData.packingPhotos,
+          },
+        });
+      }
+
+      // Upsert Dispatch step
+      if (updateData.driverName !== undefined || updateData.driverContact !== undefined ||
+          updateData.vehicleNumber !== undefined || updateData.driverSignature !== undefined ||
+          updateData.driverAcknowledgedAt !== undefined || updateData.dispatchedAt !== undefined) {
+        await prisma.deliveryDispatch.upsert({
+          where: { deliverySetId: setId },
+          create: {
+            deliverySetId: setId,
+            driverName: updateData.driverName,
+            driverContact: updateData.driverContact,
+            vehicleNumber: updateData.vehicleNumber,
+            driverSignature: updateData.driverSignature,
+            driverAcknowledgedAt: updateData.driverAcknowledgedAt ? new Date(updateData.driverAcknowledgedAt) : null,
+            dispatchedAt: updateData.dispatchedAt ? new Date(updateData.dispatchedAt) : null,
+          },
+          update: {
+            driverName: updateData.driverName,
+            driverContact: updateData.driverContact,
+            vehicleNumber: updateData.vehicleNumber,
+            driverSignature: updateData.driverSignature,
+            driverAcknowledgedAt: updateData.driverAcknowledgedAt ? new Date(updateData.driverAcknowledgedAt) : undefined,
+            dispatchedAt: updateData.dispatchedAt ? new Date(updateData.dispatchedAt) : undefined,
+          },
+        });
+      }
+
+      // Upsert DO Issued step
+      if (updateData.doNumber !== undefined || updateData.doIssuedAt !== undefined ||
+          updateData.doIssuedBy !== undefined || updateData.signedDO !== undefined) {
+        await prisma.deliveryDOIssued.upsert({
+          where: { deliverySetId: setId },
+          create: {
+            deliverySetId: setId,
+            doNumber: updateData.doNumber,
+            doIssuedAt: updateData.doIssuedAt ? new Date(updateData.doIssuedAt) : null,
+            doIssuedBy: updateData.doIssuedBy,
+            signedDO: updateData.signedDO,
+          },
+          update: {
+            doNumber: updateData.doNumber,
+            doIssuedAt: updateData.doIssuedAt ? new Date(updateData.doIssuedAt) : undefined,
+            doIssuedBy: updateData.doIssuedBy,
+            signedDO: updateData.signedDO,
+          },
+        });
+      }
+
+      // Upsert Completion step
+      if (updateData.deliveredAt !== undefined || updateData.deliveryPhotos !== undefined) {
+        await prisma.deliveryCompletion.upsert({
+          where: { deliverySetId: setId },
+          create: {
+            deliverySetId: setId,
+            deliveredAt: updateData.deliveredAt ? new Date(updateData.deliveredAt) : null,
+            deliveryPhotos: updateData.deliveryPhotos,
+          },
+          update: {
+            deliveredAt: updateData.deliveredAt ? new Date(updateData.deliveredAt) : undefined,
+            deliveryPhotos: updateData.deliveryPhotos,
+          },
+        });
+      }
+
+      // Upsert Customer Acknowledgement step
+      if (updateData.customerAcknowledgedAt !== undefined || updateData.customerSignature !== undefined ||
+          updateData.customerSignedBy !== undefined || updateData.customerOTP !== undefined ||
+          updateData.verifiedOTP !== undefined || updateData.inventoryUpdatedAt !== undefined ||
+          updateData.inventoryStatus !== undefined) {
+        await prisma.deliveryCustomerAck.upsert({
+          where: { deliverySetId: setId },
+          create: {
+            deliverySetId: setId,
+            customerAcknowledgedAt: updateData.customerAcknowledgedAt ? new Date(updateData.customerAcknowledgedAt) : null,
+            customerSignature: updateData.customerSignature,
+            customerSignedBy: updateData.customerSignedBy,
+            customerOTP: updateData.customerOTP,
+            verifiedOTP: updateData.verifiedOTP,
+            inventoryUpdatedAt: updateData.inventoryUpdatedAt ? new Date(updateData.inventoryUpdatedAt) : null,
+            inventoryStatus: updateData.inventoryStatus,
+          },
+          update: {
+            customerAcknowledgedAt: updateData.customerAcknowledgedAt ? new Date(updateData.customerAcknowledgedAt) : undefined,
+            customerSignature: updateData.customerSignature,
+            customerSignedBy: updateData.customerSignedBy,
+            customerOTP: updateData.customerOTP,
+            verifiedOTP: updateData.verifiedOTP,
+            inventoryUpdatedAt: updateData.inventoryUpdatedAt ? new Date(updateData.inventoryUpdatedAt) : undefined,
+            inventoryStatus: updateData.inventoryStatus,
+          },
+        });
+      }
+
+      // Fetch the updated set with all relations
+      const updatedSet = await prisma.deliverySet.findUnique({
+        where: { id: setId },
         include: {
           items: true,
+          packingList: true,
+          stockCheck: true,
+          schedule: true,
+          packingLoading: true,
+          dispatch: true,
+          doIssued: true,
+          completion: true,
+          customerAck: true,
         },
       });
 
-      // Update deliveredSets count if status is Customer Confirmed
-      if (updateData.status === 'Customer Confirmed') {
+      // Update deliveredSets count if status is Customer Confirmed or Completed
+      if (updateData.status === 'Customer Confirmed' || updateData.status === 'Completed') {
         await prisma.deliveryRequest.update({
           where: { id: existingSet.deliveryRequestId },
           data: {
