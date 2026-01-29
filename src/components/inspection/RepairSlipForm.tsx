@@ -36,24 +36,27 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
 
   // Initialize repair items from condition report
   useEffect(() => {
-    if (conditionReport && !repairSlip) {
-      const damagedItems = conditionReport.items.filter(item => item.repairRequired);
+    if (conditionReport && !repairSlip && conditionReport.items) {
+      const damagedItems = (conditionReport.items || []).filter(item => item.repairRequired);
       const initialItems: RepairItem[] = damagedItems.map(item => {
         // Auto-populate cost from condition report
-        const damageQty = (item.quantityRepair || 0) + (item.quantityWriteOff || 0);
-        const costPerUnit = damageQty > 0 ? item.estimatedRepairCost / damageQty : item.estimatedRepairCost;
+        const estimatedRepairCost = Number(item.estimatedRepairCost || 0);
+        const damageQty = Number(item.quantityRepair || 0) + Number(item.quantityWriteOff || 0);
+        const costPerUnit = damageQty > 0 ? estimatedRepairCost / damageQty : estimatedRepairCost;
         return {
           id: `repair-item-${Date.now()}-${Math.random()}`,
           inspectionItemId: item.id,
           scaffoldingItemId: item.scaffoldingItemId,
           scaffoldingItemName: item.scaffoldingItemName,
           quantity: damageQty, // Only damaged/repair needed items
+          quantityRepaired: 0,
+          quantityRemaining: damageQty,
           damageType: 'other',
           damageDescription: item.damageDescription || '',
           repairActions: [],
           repairStatus: 'pending',
-          costPerUnit: costPerUnit,
-          totalCost: item.estimatedRepairCost,
+          costPerUnit: Number.isFinite(costPerUnit) ? costPerUnit : 0,
+          totalCost: Number.isFinite(estimatedRepairCost) ? estimatedRepairCost : 0,
           beforeImages: item.images.map(img => img.url),
           afterImages: [],
         };
@@ -64,9 +67,24 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
 
   // Recalculate estimated cost when items change
   useEffect(() => {
-    const total = repairItems.reduce((sum, item) => sum + item.totalCost, 0);
-    setFormData(prev => ({ ...prev, estimatedCost: total }));
+    const total = repairItems.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
+    setFormData(prev => ({ ...prev, estimatedCost: Number.isFinite(total) ? total : 0 }));
   }, [repairItems]);
+
+  // Get available items from condition report for dropdown, excluding already selected items
+  const getAvailableConditionReportItems = (currentRepairItemId: string) => {
+    if (!conditionReport || !conditionReport.items) return [];
+    
+    // Get IDs of items already selected in other repair items (not the current one)
+    const selectedInspectionItemIds = repairItems
+      .filter(ri => ri.id !== currentRepairItemId && ri.inspectionItemId)
+      .map(ri => ri.inspectionItemId);
+    
+    // Return items that require repair and are not already selected
+    return conditionReport.items.filter(item => 
+      item.repairRequired && !selectedInspectionItemIds.includes(item.id)
+    );
+  };
 
   const handleAddItem = () => {
     const newItem: RepairItem = {
@@ -75,6 +93,8 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
       scaffoldingItemId: '',
       scaffoldingItemName: '',
       quantity: 1,
+      quantityRepaired: 0,
+      quantityRemaining: 1,
       damageType: 'other',
       damageDescription: '',
       repairActions: [],
@@ -85,6 +105,36 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
       afterImages: [],
     };
     setRepairItems([...repairItems, newItem]);
+  };
+
+  // Handle selecting a scaffolding item from condition report dropdown
+  const handleSelectConditionReportItem = (repairItemId: string, inspectionItemId: string) => {
+    if (!conditionReport || !conditionReport.items) return;
+    
+    const selectedItem = conditionReport.items.find(item => item.id === inspectionItemId);
+    if (!selectedItem) return;
+
+    const estimatedRepairCost = Number(selectedItem.estimatedRepairCost || 0);
+    const damageQty = Number(selectedItem.quantityRepair || 0) + Number(selectedItem.quantityWriteOff || 0);
+    const costPerUnit = damageQty > 0 ? estimatedRepairCost / damageQty : estimatedRepairCost;
+
+    setRepairItems(repairItems.map(item => {
+      if (item.id === repairItemId) {
+        return {
+          ...item,
+          inspectionItemId: selectedItem.id,
+          scaffoldingItemId: selectedItem.scaffoldingItemId,
+          scaffoldingItemName: selectedItem.scaffoldingItemName,
+          quantity: damageQty,
+          quantityRemaining: damageQty,
+          damageDescription: selectedItem.damageDescription || '',
+          costPerUnit: Number.isFinite(costPerUnit) ? costPerUnit : 0,
+          totalCost: Number.isFinite(estimatedRepairCost) ? estimatedRepairCost : 0,
+          beforeImages: selectedItem.images.map(img => img.url),
+        };
+      }
+      return item;
+    }));
   };
 
   const handleRemoveItem = (itemId: string) => {
@@ -98,7 +148,9 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
         
         // Auto-calculate total cost
         if (field === 'costPerUnit' || field === 'quantity') {
-          updated.totalCost = updated.costPerUnit * updated.quantity;
+          const costPerUnit = Number((updated as any).costPerUnit || 0);
+          const quantity = Number((updated as any).quantity || 0);
+          updated.totalCost = Number.isFinite(costPerUnit * quantity) ? costPerUnit * quantity : 0;
         }
         
         return updated;
@@ -298,16 +350,32 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>Scaffolding Item Name</Label>
-                    <Input
-                      value={item.scaffoldingItemName}
-                      onChange={(e) => handleUpdateItem(item.id, 'scaffoldingItemName', e.target.value)}
-                      placeholder="e.g., Standard Frame"
-                      disabled={!!conditionReport}
-                      className={conditionReport ? "bg-gray-200" : ""}
-                    />
-                    {conditionReport && (
-                      <p className="text-xs text-gray-500">From condition report</p>
+                    <Label>Scaffolding Item</Label>
+                    {conditionReport ? (
+                      <>
+                        <Select
+                          value={item.inspectionItemId || ''}
+                          onValueChange={(value) => handleSelectConditionReportItem(item.id, value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select from condition report" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {getAvailableConditionReportItems(item.id).map((crItem) => (
+                              <SelectItem key={crItem.id} value={crItem.id}>
+                                {crItem.scaffoldingItemName} (Qty: {(crItem.quantityRepair || 0) + (crItem.quantityWriteOff || 0)})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-gray-500">Select from condition report items</p>
+                      </>
+                    ) : (
+                      <Input
+                        value={item.scaffoldingItemName}
+                        onChange={(e) => handleUpdateItem(item.id, 'scaffoldingItemName', e.target.value)}
+                        placeholder="e.g., Standard Frame"
+                      />
                     )}
                   </div>
                   <div className="space-y-2">
@@ -317,11 +385,11 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
                       value={item.quantity}
                       onChange={(e) => handleUpdateItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
                       min="1"
-                      disabled={!!conditionReport}
-                      className={conditionReport ? "bg-gray-200" : ""}
+                      disabled={!!conditionReport && !!item.inspectionItemId}
+                      className={conditionReport && item.inspectionItemId ? "bg-gray-200" : ""}
                     />
-                    {conditionReport && (
-                      <p className="text-xs text-gray-500">From condition report</p>
+                    {conditionReport && item.inspectionItemId && (
+                      <p className="text-xs text-gray-500">Auto-filled from condition report</p>
                     )}
                   </div>
                   <div className="space-y-2">
@@ -334,7 +402,7 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {DAMAGE_TYPES.map(type => (
+                        {DAMAGE_TYPES.map((type) => (
                           <SelectItem key={type.value} value={type.value}>
                             {type.label}
                           </SelectItem>
@@ -398,7 +466,7 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
                     <Label>Total Cost (RM)</Label>
                     <Input
                       type="number"
-                      value={item.totalCost.toFixed(2)}
+                      value={Number(item.totalCost || 0).toFixed(2)}
                       disabled
                       className="bg-gray-200"
                     />
@@ -415,7 +483,7 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
             <div className="pt-4 border-t">
               <div className="flex justify-between items-center">
                 <span className="text-[#231F20]">Estimated Total Cost:</span>
-                <span className="text-[#231F20]">RM {formData.estimatedCost?.toFixed(2)}</span>
+                <span className="text-[#231F20]">RM {Number(formData.estimatedCost || 0).toFixed(2)}</span>
               </div>
             </div>
           )}

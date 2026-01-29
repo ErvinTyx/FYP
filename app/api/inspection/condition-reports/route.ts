@@ -117,14 +117,34 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      return conditionReport;
+      // Fetch the complete report with items
+      const completeReport = await tx.conditionReport.findUnique({
+        where: { id: conditionReport.id },
+        include: { items: true },
+      });
+
+      return completeReport;
     });
+
+    // Transform items to parse JSON fields
+    const transformedResult = {
+      ...result,
+      items: result?.items?.map((item: any) => ({
+        ...item,
+        inspectionChecklist: typeof item.inspectionChecklist === 'string' 
+          ? JSON.parse(item.inspectionChecklist) 
+          : item.inspectionChecklist,
+        images: typeof item.images === 'string' 
+          ? JSON.parse(item.images) 
+          : item.images,
+      })) || [],
+    };
 
     return NextResponse.json(
       {
         success: true,
         message: 'Condition report created successfully',
-        data: result,
+        data: transformedResult,
       },
       { status: 201 }
     );
@@ -173,10 +193,24 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Transform items to parse JSON fields
+    const transformedReports = conditionReports.map(report => ({
+      ...report,
+      items: report.items.map((item: any) => ({
+        ...item,
+        inspectionChecklist: typeof item.inspectionChecklist === 'string' 
+          ? JSON.parse(item.inspectionChecklist) 
+          : item.inspectionChecklist,
+        images: typeof item.images === 'string' 
+          ? JSON.parse(item.images) 
+          : item.images,
+      })),
+    }));
+
     return NextResponse.json(
       {
         success: true,
-        data: conditionReports,
+        data: transformedReports,
       },
       { status: 200 }
     );

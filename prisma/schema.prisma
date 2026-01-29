@@ -230,25 +230,27 @@ model rFQItem {
 
 // Inspection & Maintenance Module - Condition Report
 model ConditionReport {
-  id                    String           @id @default(cuid())
-  rcfNumber             String           @unique
+  id                    String                @id @default(cuid())
+  rcfNumber             String                @unique
   deliveryOrderNumber   String
   customerName          String
   returnedBy            String?
   returnDate            String
   inspectionDate        String
   inspectedBy           String
-  status                String           @default("pending")
-  totalItemsInspected   Int              @default(0)
-  totalGood             Int              @default(0)
-  totalRepair           Int              @default(0)
-  totalWriteOff         Int              @default(0)
-  totalDamaged          Int              @default(0)
-  totalRepairCost       Decimal          @default(0) @db.Decimal(15, 2)
-  notes                 String?          @db.LongText
+  status                String                @default("pending")
+  totalItemsInspected   Int                   @default(0)
+  totalGood             Int                   @default(0)
+  totalRepair           Int                   @default(0)
+  totalWriteOff         Int                   @default(0)
+  totalDamaged          Int                   @default(0)
+  totalRepairCost       Decimal               @default(0) @db.Decimal(15, 2)
+  notes                 String?               @db.LongText
   items                 InspectionItem[]
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  inventoryAdjustments  InventoryAdjustment[]
+  openRepairSlips       OpenRepairSlip[]
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 }
 
 model InspectionItem {
@@ -272,6 +274,57 @@ model InspectionItem {
   updatedAt             DateTime         @updatedAt
 }
 
+// Inspection & Maintenance Module - Open Repair Slip
+model OpenRepairSlip {
+  id                    String               @id @default(cuid())
+  orpNumber             String               @unique
+  conditionReportId     String
+  conditionReport       ConditionReport      @relation(fields: [conditionReportId], references: [id], onDelete: Cascade)
+  rcfNumber             String
+  status                String               @default("open") // open, in-repair, completed, cancelled
+  priority              String               @default("medium") // low, medium, high, urgent
+  assignedTo            String?
+  startDate             String?
+  completionDate        String?
+  estimatedCost         Decimal              @default(0) @db.Decimal(15, 2)
+  actualCost            Decimal              @default(0) @db.Decimal(15, 2)
+  repairNotes           String?              @db.LongText
+  invoiceNumber         String?
+  damageInvoiceId       String?
+  createdBy             String
+  inventoryLevel        String?              // very-low, low, normal, high
+  items                 RepairItem[]
+  inventoryAdjustments  InventoryAdjustment[]
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model RepairItem {
+  id                    String               @id @default(cuid())
+  openRepairSlipId      String
+  openRepairSlip        OpenRepairSlip       @relation(fields: [openRepairSlipId], references: [id], onDelete: Cascade)
+  inspectionItemId      String?
+  scaffoldingItemId     String
+  scaffoldingItemName   String
+  quantity              Int
+  quantityRepaired      Int                  @default(0)
+  quantityRemaining     Int                  @default(0)
+  damageType            String               // bent, cracked, corroded, missing-parts, welding-required, other
+  damageDescription     String?              @db.Text
+  repairActions         String?              @db.LongText // JSON array of repair actions
+  repairDescription     String?              @db.Text
+  repairStatus          String               @default("pending") // pending, in-progress, completed
+  costPerUnit           Decimal              @default(0) @db.Decimal(15, 2)
+  totalCost             Decimal              @default(0) @db.Decimal(15, 2)
+  estimatedCostFromRFQ  Decimal              @default(0) @db.Decimal(15, 2)
+  finalCost             Decimal              @default(0) @db.Decimal(15, 2)
+  beforeImages          String?              @db.LongText // JSON array of image URLs
+  afterImages           String?              @db.LongText // JSON array of image URLs
+  completedDate         String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
 // Inspection & Maintenance Module - Damage Invoice
 model DamageInvoice {
   id              String        @id @default(cuid())
@@ -292,16 +345,6 @@ model DamageInvoice {
 }
 
 model InvoiceItem {
-  id              String        @id @default(cuid())
-  damageInvoiceId String
-  damageInvoice   DamageInvoice @relation(fields: [damageInvoiceId], references: [id], onDelete: Cascade)
-  description     String
-  quantity        Int
-  unitPrice       Decimal       @db.Decimal(15, 2)
-  total           Decimal       @db.Decimal(15, 2)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-}
   id                    String               @id @default(cuid())
   damageInvoiceId       String
   damageInvoice         DamageInvoice        @relation(fields: [damageInvoiceId], references: [id], onDelete: Cascade)
@@ -333,6 +376,8 @@ model InventoryAdjustment {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 }
+
+//Rental Agreements
 model RentalAgreement {
   id                       String    @id @default(cuid())
   agreementNumber          String    @unique

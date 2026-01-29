@@ -17,11 +17,32 @@ function getPrismaClient(): PrismaClient {
     return globalThis.__prisma;
   }
 
-  const dbHost = process.env.DATABASE_HOST || "localhost";
-  const dbPort = Number(process.env.DATABASE_PORT || 3306);
-  const dbUser = process.env.DATABASE_USER || "root";
-  const dbPassword = process.env.DATABASE_PASSWORD || "";
-  const dbName = process.env.DATABASE_NAME || "power_metal_steel";
+  // Prefer DATABASE_URL (as documented in README) if present.
+  // Fallback to individual env vars otherwise.
+  const databaseUrl = process.env.DATABASE_URL;
+
+  let dbHost = process.env.DATABASE_HOST || "localhost";
+  let dbPort = Number(process.env.DATABASE_PORT || 3306);
+  let dbUser = process.env.DATABASE_USER || "root";
+  let dbPassword = process.env.DATABASE_PASSWORD || "";
+  let dbName = process.env.DATABASE_NAME || "power_metal_steel";
+
+  if (databaseUrl) {
+    try {
+      const url = new URL(databaseUrl);
+      // Expected formats:
+      //  - mysql://USER:PASSWORD@HOST:PORT/DATABASE
+      //  - mariadb://USER:PASSWORD@HOST:PORT/DATABASE
+      dbHost = url.hostname || dbHost;
+      dbPort = url.port ? Number(url.port) : dbPort;
+      dbUser = decodeURIComponent(url.username || dbUser);
+      dbPassword = decodeURIComponent(url.password || dbPassword);
+      const pathname = url.pathname?.replace(/^\//, "");
+      dbName = pathname || dbName;
+    } catch (e) {
+      console.warn('[Prisma] Failed to parse DATABASE_URL, falling back to DATABASE_HOST/...');
+    }
+  }
 
   console.log(`[Prisma] Initializing client for: ${dbUser}@${dbHost}:${dbPort}/${dbName}`);
 
@@ -37,7 +58,6 @@ function getPrismaClient(): PrismaClient {
       connectionLimit: 5,      // Reduced from 10 to be more conservative
       connectTimeout: 60000,   // 60 seconds
       acquireTimeout: 60000,   // 60 seconds
-      timeout: 60000,          // 60 seconds
       idleTimeout: 60000,      // Close idle connections after 60s
     });
   }

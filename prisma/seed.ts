@@ -56,6 +56,7 @@ async function main() {
       password: hashedPassword,
       firstName: "Super",
       lastName: "Admin",
+      status: "active",
     },
     create: {
       email: "superadmin@powermetalsteel.com",

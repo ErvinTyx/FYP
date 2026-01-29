@@ -1,4 +1,4 @@
-import { Eye, Edit, Wrench, Calendar, User, Package, FileText } from 'lucide-react';
+import { Eye, Edit, Wrench, Calendar, User, Package, FileText, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -8,11 +8,12 @@ interface ConditionReportListProps {
   reports: ConditionReport[];
   searchQuery: string;
   onEdit: (report: ConditionReport) => void;
+  onDelete: (reportId: string) => void;
   onCreateRepairSlip: (reportId: string) => void;
-  existingRepairSlips?: Array<{ conditionReportId: string }>; // Add this prop
+  existingRepairSlips?: Array<{ conditionReportId: string }>; 
 }
 
-export function ConditionReportList({ reports, searchQuery, onEdit, onCreateRepairSlip, existingRepairSlips = [] }: ConditionReportListProps) {
+export function ConditionReportList({ reports, searchQuery, onEdit, onDelete, onCreateRepairSlip, existingRepairSlips = [] }: ConditionReportListProps) {
   const filteredReports = reports.filter(report =>
     report.rcfNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
     report.deliveryOrderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -97,31 +98,39 @@ export function ConditionReportList({ reports, searchQuery, onEdit, onCreateRepa
                     <Wrench className="size-4 text-gray-400" />
                     <div>
                       <p className="text-gray-500">Repair Cost</p>
-                      <p className="text-[#231F20]">RM {parseFloat(report.totalRepairCost.toString()).toFixed(2)}</p>
+                      <p className="text-[#231F20]">RM {Number(report.totalRepairCost || 0).toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="flex lg:flex-col items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onEdit(report)}
-                >
-                  <Edit className="size-4" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onEdit(report)}
+                  >
+                    <Edit className="size-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onDelete(report.id)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
                 {report.totalDamaged > 0 && !existingRepairSlips.some(slip => slip.conditionReportId === report.id) && (
-                  <>
-                    <Button
-                      size="sm"
-                      onClick={() => onCreateRepairSlip(report.id)}
-                      className="bg-[#F15929] hover:bg-[#d94d1f]"
-                    >
-                      <Wrench className="size-4 mr-2" />
-                      Create Repair Slip
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    onClick={() => onCreateRepairSlip(report.id)}
+                    className="bg-[#F15929] hover:bg-[#d94d1f]"
+                  >
+                    <Wrench className="size-4 mr-2" />
+                    Create Repair Slip
+                  </Button>
                 )}
               </div>
             </div>

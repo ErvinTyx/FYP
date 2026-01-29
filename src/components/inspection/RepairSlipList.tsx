@@ -107,7 +107,7 @@ export function RepairSlipList({ repairSlips, searchQuery, onView, onUpdateStatu
                     <CheckCircle className="size-4 text-gray-400" />
                     <div>
                       <p className="text-gray-500">Est. Cost</p>
-                      <p className="text-[#231F20]">RM {slip.estimatedCost.toFixed(2)}</p>
+                      <p className="text-[#231F20]">RM {Number(slip.estimatedCost || 0).toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
