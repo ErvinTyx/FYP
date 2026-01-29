@@ -105,19 +105,10 @@ export function RentalAgreement() {
 
   // Fetch agreements from API
   const fetchAgreements = useCallback(async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RentalAgreement.tsx:fetchAgreements:start',message:'Starting fetch',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
-    // #endregion
     try {
       setIsLoading(true);
       const response = await fetch('/api/rental-agreement');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RentalAgreement.tsx:fetchAgreements:response',message:'Fetch response received',data:{status:response.status,ok:response.ok,statusText:response.statusText},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4-H5'})}).catch(()=>{});
-      // #endregion
       const data = await response.json();
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RentalAgreement.tsx:fetchAgreements:parsed',message:'JSON parsed',data:{success:data.success,message:data.message,agreementCount:data.agreements?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
       
       if (data.success) {
         setAgreements(data.agreements);
@@ -125,9 +116,6 @@ export function RentalAgreement() {
         toast.error(data.message || 'Failed to fetch agreements');
       }
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'RentalAgreement.tsx:fetchAgreements:error',message:'Fetch error caught',data:{errorMessage:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4-H5'})}).catch(()=>{});
-      // #endregion
       console.error('Error fetching agreements:', error);
       toast.error('Failed to connect to server');
     } finally {

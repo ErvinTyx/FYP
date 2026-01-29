@@ -3,6 +3,7 @@ import { MonthlyRentalInvoiceList } from './MonthlyRentalInvoiceList';
 import { MonthlyRentalInvoiceDetails } from './MonthlyRentalInvoiceDetails';
 import { MonthlyRentalInvoice, RentalContract, BillingCycleLog, MonthlyRentalItem } from '../../types/monthly-rental';
 import { toast } from 'sonner';
+import { uploadPaymentProof } from '@/lib/upload';
 
 type View = 'list' | 'details';
 
@@ -482,13 +483,22 @@ export function MonthlyRentalBilling({ userRole = 'Admin' }: MonthlyRentalBillin
     setSelectedInvoiceId(null);
   };
 
-  const handleSubmitPayment = (invoiceId: string, file: File) => {
+  const handleSubmitPayment = async (invoiceId: string, file: File) => {
     const now = new Date().toISOString();
+    
+    // Upload file to server
+    toast.info('Uploading payment proof...');
+    const result = await uploadPaymentProof(file);
+    
+    if (!result.success || !result.url) {
+      toast.error(result.error || 'Failed to upload payment proof');
+      return;
+    }
     
     const paymentProof = {
       id: `proof-${Date.now()}`,
       fileName: file.name,
-      fileUrl: URL.createObjectURL(file),
+      fileUrl: result.url, // Use server URL instead of blob URL
       fileSize: file.size,
       fileType: file.type,
       uploadedAt: now,

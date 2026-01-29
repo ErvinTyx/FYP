@@ -86,18 +86,8 @@ async function main() {
   // Create sample rental agreements
   console.log("Creating sample rental agreements...");
 
-  // Delete existing agreements to avoid duplicates (for fresh seed)
-  const existingAgreements = [
-    "RA-2026-001", "RA-2026-002", "RA-2026-003", "RA-2026-004",
-    "RA-2026-005", "RA-2026-006", "RA-2026-007", "RA-2026-008",
-    "RA-2024-001", "RA-2024-002", "RA-2023-015"
-  ];
-  
-  for (const agr of existingAgreements) {
-    await prisma.rentalAgreement.deleteMany({
-      where: { agreementNumber: agr },
-    });
-  }
+  // Delete all existing agreements for a fresh seed
+  await prisma.rentalAgreement.deleteMany({});
 
   // Agreement 1 - Active (High-Rise Construction)
   const agreement1 = await prisma.rentalAgreement.create({
@@ -251,173 +241,114 @@ async function main() {
   });
   console.log(`  - Agreement: ${agreement4.agreementNumber} (${agreement4.projectName})`);
 
-  // Agreement 5 - Draft (Pending Approval)
-  const agreement5 = await prisma.rentalAgreement.create({
+  // Create sample RFQs (Quotations)
+  console.log("Creating sample RFQs (Quotations)...");
+
+  // Delete all existing RFQs for a fresh seed
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).rFQItem.deleteMany({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).rFQ.deleteMany({});
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq1 = await (prisma as any).rFQ.create({
     data: {
-      agreementNumber: "RA-2026-005",
-      poNumber: "PO-2026-005",
-      projectName: "KLCC Park Renovation",
-      owner: "Power Metal & Steel Sdn Bhd",
-      ownerPhone: "+60 3-2727 8888",
-      hirer: "Green Build Solutions Sdn Bhd",
-      hirerPhone: "+60 17-888 9999",
-      location: "KLCC Park, Jalan Ampang, 50088 Kuala Lumpur",
-      termOfHire: "4 months (01 Mar 2026 - 30 Jun 2026)",
-      transportation: "Included - Delivery & Collection",
-      monthlyRental: 12000,
-      securityDeposit: 2,
-      minimumCharges: 2,
-      defaultInterest: 1.5,
-      ownerSignatoryName: "Ahmad bin Abdullah",
-      ownerNRIC: "720101-01-5678",
-      hirerSignatoryName: "Wong Siew Ching",
-      hirerNRIC: "880615-14-2468",
-      status: "Draft",
-      currentVersion: 1,
-      createdBy: "superadmin@powermetalsteel.com",
-      versions: {
-        create: {
-          versionNumber: 1,
-          changes: "Initial draft created - Pending customer approval",
-          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales"]),
-          createdBy: "superadmin@powermetalsteel.com",
-        },
+      rfqNumber: 'RFQ-20260115-00001',
+      customerName: 'ABC Construction Sdn Bhd',
+      customerEmail: 'project@abcconstruction.com.my',
+      customerPhone: '+60 12-345 6789',
+      projectName: 'Menara KL Sentral Phase 2',
+      projectLocation: 'Jalan Stesen Sentral 5, KL Sentral, 50470 Kuala Lumpur',
+      requestedDate: new Date('2026-01-15'),
+      requiredDate: new Date('2026-01-25'),
+      status: 'approved',
+      totalAmount: 25000,
+      notes: 'High-rise scaffolding for KL Sentral project',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-001', scaffoldingItemName: 'CRAB BASIC STANDARD C60', quantity: 100, unit: 'pcs', unitPrice: 0.59, totalPrice: 59 },
+          { scaffoldingItemId: 'SC-006', scaffoldingItemName: 'CRAB STANDARD 2.00M C60', quantity: 200, unit: 'pcs', unitPrice: 2.59, totalPrice: 518 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantity: 50, unit: 'pcs', unitPrice: 1.30, totalPrice: 65 },
+        ],
       },
     },
   });
-  console.log(`  - Agreement: ${agreement5.agreementNumber} (${agreement5.projectName})`);
+  console.log(`  - RFQ: ${rfq1.rfqNumber} (${rfq1.customerName})`);
 
-  // Agreement 6 - Draft (New Project)
-  const agreement6 = await prisma.rentalAgreement.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq2 = await (prisma as any).rFQ.create({
     data: {
-      agreementNumber: "RA-2026-006",
-      poNumber: "PO-2026-006",
-      projectName: "Bangsar South Corporate Tower",
-      owner: "Power Metal & Steel Sdn Bhd",
-      ownerPhone: "+60 3-2727 8888",
-      hirer: "Prestige Contractors Sdn Bhd",
-      hirerPhone: "+60 19-555 6666",
-      location: "Jalan Kerinchi, Bangsar South, 59200 Kuala Lumpur",
-      termOfHire: "8 months (01 Apr 2026 - 30 Nov 2026)",
-      transportation: "Included - Delivery Only",
-      monthlyRental: 32000,
-      securityDeposit: 3,
-      minimumCharges: 3,
-      defaultInterest: 2.0,
-      ownerSignatoryName: "Ahmad bin Abdullah",
-      ownerNRIC: "720101-01-5678",
-      hirerSignatoryName: "Kumar a/l Ramasamy",
-      hirerNRIC: "750922-10-5432",
-      status: "Draft",
-      currentVersion: 1,
-      createdBy: "superadmin@powermetalsteel.com",
-      versions: {
-        create: {
-          versionNumber: 1,
-          changes: "Initial draft created",
-          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales"]),
-          createdBy: "superadmin@powermetalsteel.com",
-        },
+      rfqNumber: 'RFQ-20260120-00002',
+      customerName: 'XYZ Development Sdn Bhd',
+      customerEmail: 'ops@xyzdevelopment.com.my',
+      customerPhone: '+60 11-222 3333',
+      projectName: 'Pavilion Damansara Heights Extension',
+      projectLocation: 'Jalan Damansara, Damansara Heights, 50490 Kuala Lumpur',
+      requestedDate: new Date('2026-01-20'),
+      requiredDate: new Date('2026-02-01'),
+      status: 'approved',
+      totalAmount: 38000,
+      notes: 'Commercial building scaffolding',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-011', scaffoldingItemName: 'CRAB STANDARD 0.75M C60', quantity: 200, unit: 'pcs', unitPrice: 1.21, totalPrice: 242 },
+          { scaffoldingItemId: 'SC-007', scaffoldingItemName: 'CRAB LEDGER 0.70M', quantity: 150, unit: 'pcs', unitPrice: 0.56, totalPrice: 84 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantity: 80, unit: 'pcs', unitPrice: 1.30, totalPrice: 104 },
+          { scaffoldingItemId: 'SC-009', scaffoldingItemName: 'CRAB BRACE H2 X L0.70M', quantity: 40, unit: 'pcs', unitPrice: 1.31, totalPrice: 52.4 },
+        ],
       },
     },
   });
-  console.log(`  - Agreement: ${agreement6.agreementNumber} (${agreement6.projectName})`);
+  console.log(`  - RFQ: ${rfq2.rfqNumber} (${rfq2.customerName})`);
 
-  // Agreement 7 - Active (Bridge Project)
-  const agreement7 = await prisma.rentalAgreement.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq3 = await (prisma as any).rFQ.create({
     data: {
-      agreementNumber: "RA-2026-007",
-      poNumber: "PO-2026-007",
-      projectName: "Penang Second Bridge Maintenance",
-      owner: "Power Metal & Steel Sdn Bhd",
-      ownerPhone: "+60 3-2727 8888",
-      hirer: "Sunrise Development Sdn Bhd",
-      hirerPhone: "+60 17-222 3333",
-      location: "Penang Second Bridge, Batu Maung, 11960 Penang",
-      termOfHire: "3 months (15 Jan 2026 - 14 Apr 2026)",
-      transportation: "Included - Delivery & Collection",
-      monthlyRental: 22000,
-      securityDeposit: 2,
-      minimumCharges: 2,
-      defaultInterest: 1.5,
-      ownerSignatoryName: "Ahmad bin Abdullah",
-      ownerNRIC: "720101-01-5678",
-      hirerSignatoryName: "Ong Beng Huat",
-      hirerNRIC: "830710-07-1357",
-      status: "Active",
-      currentVersion: 1,
-      createdBy: "superadmin@powermetalsteel.com",
-      versions: {
-        create: {
-          versionNumber: 1,
-          changes: "Initial agreement created",
-          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales", "Finance"]),
-          createdBy: "superadmin@powermetalsteel.com",
-        },
+      rfqNumber: 'RFQ-20260110-00003',
+      customerName: 'DEF Builders Sdn Bhd',
+      customerEmail: 'project@defbuilders.com.my',
+      customerPhone: '+60 13-456 7890',
+      projectName: 'MRT3 Circle Line - Station C7',
+      projectLocation: 'Jalan Ipoh, Batu, 51200 Kuala Lumpur',
+      requestedDate: new Date('2026-01-10'),
+      requiredDate: new Date('2026-01-20'),
+      status: 'approved',
+      totalAmount: 45000,
+      notes: 'Infrastructure project - MRT station scaffolding',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-003', scaffoldingItemName: 'CRAB STANDARD 1.00M C60', quantity: 150, unit: 'pcs', unitPrice: 1.46, totalPrice: 219 },
+          { scaffoldingItemId: 'SC-004', scaffoldingItemName: 'CRAB LEDGER 1.50M', quantity: 180, unit: 'pcs', unitPrice: 1.12, totalPrice: 201.6 },
+          { scaffoldingItemId: 'SC-005', scaffoldingItemName: 'CRAB BRACE H2 X L1.50M', quantity: 30, unit: 'pcs', unitPrice: 1.50, totalPrice: 45 },
+          { scaffoldingItemId: 'SC-012', scaffoldingItemName: 'CRAB TRIANGLE 1.5M', quantity: 80, unit: 'pcs', unitPrice: 2.78, totalPrice: 222.4 },
+        ],
       },
     },
   });
-  console.log(`  - Agreement: ${agreement7.agreementNumber} (${agreement7.projectName})`);
+  console.log(`  - RFQ: ${rfq3.rfqNumber} (${rfq3.customerName})`);
 
-  // Agreement 8 - Expired (Completed Project)
-  const agreement8 = await prisma.rentalAgreement.create({
-    data: {
-      agreementNumber: "RA-2026-008",
-      poNumber: "PO-2025-098",
-      projectName: "The Exchange TRX Finishing Works",
-      owner: "Power Metal & Steel Sdn Bhd",
-      ownerPhone: "+60 3-2727 8888",
-      hirer: "Elite Scaffolding Services Sdn Bhd",
-      hirerPhone: "+60 14-333 4444",
-      location: "Jalan Tun Razak, TRX, 55188 Kuala Lumpur",
-      termOfHire: "5 months (01 Aug 2025 - 31 Dec 2025)",
-      transportation: "Included - Delivery & Collection",
-      monthlyRental: 28500,
-      securityDeposit: 2,
-      minimumCharges: 3,
-      defaultInterest: 1.5,
-      ownerSignatoryName: "Ahmad bin Abdullah",
-      ownerNRIC: "720101-01-5678",
-      hirerSignatoryName: "Yusof bin Ismail",
-      hirerNRIC: "790225-03-6789",
-      status: "Expired",
-      currentVersion: 1,
-      createdBy: "superadmin@powermetalsteel.com",
-      versions: {
-        create: {
-          versionNumber: 1,
-          changes: "Initial agreement created",
-          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales", "Finance"]),
-          createdBy: "superadmin@powermetalsteel.com",
-        },
-      },
-    },
-  });
-  console.log(`  - Agreement: ${agreement8.agreementNumber} (${agreement8.projectName})`);
-
-  // Create sample delivery requests
+  // Create sample delivery requests linked to RFQs
   console.log("Creating sample delivery requests...");
 
-  // Delete existing delivery requests to avoid duplicates
-  await prisma.deliveryRequest.deleteMany({
-    where: {
-      requestId: {
-        in: ['DR-2026-001', 'DR-2026-002', 'DR-2026-003', 'DR-2026-004'],
-      },
-    },
-  });
+  // Delete all existing delivery requests for a fresh seed
+  await prisma.deliveryRequest.deleteMany({});
 
-  const delivery1 = await prisma.deliveryRequest.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const delivery1 = await (prisma.deliveryRequest.create as any)({
     data: {
-      requestId: 'DR-2026-001',
+      requestId: 'DEL-2026-0001',
       customerName: 'ABC Construction Sdn Bhd',
-      agreementNo: 'RA-2026-001',
+      agreementNo: 'RFQ-20260115-00001',
       customerPhone: '+60 12-345 6789',
       customerEmail: 'project@abcconstruction.com.my',
       deliveryAddress: 'Jalan Stesen Sentral 5, KL Sentral, 50470 Kuala Lumpur',
       deliveryType: 'delivery',
       totalSets: 3,
       deliveredSets: 0,
+      rfqId: rfq1.id,
       sets: {
         create: [
           {
@@ -426,9 +357,9 @@ async function main() {
             status: 'Pending',
             items: {
               create: [
-                { name: 'Scaffolding Pipe 6m', quantity: 100 },
-                { name: 'Coupler Standard', quantity: 200 },
-                { name: 'Base Plate', quantity: 50 },
+                { name: 'CRAB BASIC STANDARD C60', quantity: 100, scaffoldingItemId: 'SC-001' },
+                { name: 'CRAB STANDARD 2.00M C60', quantity: 200, scaffoldingItemId: 'SC-006' },
+                { name: 'CRAB JACK BASE C60 / 600', quantity: 50, scaffoldingItemId: 'SC-014' },
               ],
             },
           },
@@ -438,9 +369,10 @@ async function main() {
             status: 'Pending',
             items: {
               create: [
-                { name: 'Scaffolding Pipe 4m', quantity: 150 },
-                { name: 'Coupler Swivel', quantity: 180 },
-                { name: 'Ladder Beam', quantity: 30 },
+                { name: 'CRAB STANDARD 1.00M C60', quantity: 150, scaffoldingItemId: 'SC-003' },
+                { name: 'CRAB LEDGER 1.50M', quantity: 180, scaffoldingItemId: 'SC-004' },
+                { name: 'CRAB BRACE H2 X L1.50M', quantity: 60, scaffoldingItemId: 'SC-005' },
+                { name: 'CRAB TRIANGLE 1.5M', quantity: 80, scaffoldingItemId: 'SC-012' },
               ],
             },
           },
@@ -450,9 +382,9 @@ async function main() {
             status: 'Pending',
             items: {
               create: [
-                { name: 'H-Frame Scaffolding', quantity: 80 },
-                { name: 'Cross Brace', quantity: 120 },
-                { name: 'Walk Board', quantity: 60 },
+                { name: 'CRAB STANDARD 0.75M C60', quantity: 120, scaffoldingItemId: 'SC-011' },
+                { name: 'CRAB LEDGER 0.70M', quantity: 100, scaffoldingItemId: 'SC-007' },
+                { name: 'CRAB U-HEAD C60 / 600', quantity: 40, scaffoldingItemId: 'SC-015' },
               ],
             },
           },
@@ -460,19 +392,21 @@ async function main() {
       },
     },
   });
-  console.log(`  - Delivery Request: ${delivery1.requestId}`);
+  console.log(`  - Delivery Request: ${delivery1.requestId} (linked to ${rfq1.rfqNumber}) - 3 sets`);
 
-  const delivery2 = await prisma.deliveryRequest.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const delivery2 = await (prisma.deliveryRequest.create as any)({
     data: {
-      requestId: 'DR-2026-002',
+      requestId: 'DEL-2026-0002',
       customerName: 'XYZ Development Sdn Bhd',
-      agreementNo: 'RA-2026-002',
+      agreementNo: 'RFQ-20260120-00002',
       customerPhone: '+60 11-222 3333',
       customerEmail: 'ops@xyzdevelopment.com.my',
       deliveryAddress: 'Jalan Damansara, Damansara Heights, 50490 Kuala Lumpur',
       deliveryType: 'delivery',
-      totalSets: 2,
+      totalSets: 1,
       deliveredSets: 0,
+      rfqId: rfq2.id,
       sets: {
         create: [
           {
@@ -481,22 +415,10 @@ async function main() {
             status: 'Pending',
             items: {
               create: [
-                { name: 'Steel Tube 4m', quantity: 200 },
-                { name: 'Joint Pin', quantity: 150 },
-                { name: 'Base Jack', quantity: 80 },
-                { name: 'Safety Net', quantity: 40 },
-              ],
-            },
-          },
-          {
-            setName: 'Set B - Tower Level',
-            scheduledPeriod: '01 Aug 2026 - 31 Jan 2027',
-            status: 'Pending',
-            items: {
-              create: [
-                { name: 'Heavy Duty Tube 6m', quantity: 180 },
-                { name: 'Beam Clamp', quantity: 120 },
-                { name: 'Toe Board', quantity: 90 },
+                { name: 'CRAB STANDARD 0.75M C60', quantity: 200, scaffoldingItemId: 'SC-011' },
+                { name: 'CRAB LEDGER 0.70M', quantity: 150, scaffoldingItemId: 'SC-007' },
+                { name: 'CRAB JACK BASE C60 / 600', quantity: 80, scaffoldingItemId: 'SC-014' },
+                { name: 'CRAB BRACE H2 X L0.70M', quantity: 40, scaffoldingItemId: 'SC-009' },
               ],
             },
           },
@@ -504,191 +426,345 @@ async function main() {
       },
     },
   });
-  console.log(`  - Delivery Request: ${delivery2.requestId}`);
-
-  const delivery3 = await prisma.deliveryRequest.create({
-    data: {
-      requestId: 'DR-2026-003',
-      customerName: 'DEF Builders Sdn Bhd',
-      agreementNo: 'RA-2026-003',
-      customerPhone: '+60 13-456 7890',
-      customerEmail: 'site@defbuilders.com.my',
-      deliveryAddress: 'Jalan Ipoh, Batu, 51200 Kuala Lumpur',
-      deliveryType: 'delivery',
-      totalSets: 2,
-      deliveredSets: 0,
-      sets: {
-        create: [
-          {
-            setName: 'Set A - Station Platform',
-            scheduledPeriod: '01 Dec 2025 - 31 Aug 2026',
-            status: 'Pending',
-            items: {
-              create: [
-                { name: 'Aluminum Scaffolding 3m', quantity: 250 },
-                { name: 'Platform Deck', quantity: 100 },
-                { name: 'Guard Rail', quantity: 80 },
-              ],
-            },
-          },
-          {
-            setName: 'Set B - Tunnel Works',
-            scheduledPeriod: '01 Sep 2026 - 31 May 2027',
-            status: 'Pending',
-            items: {
-              create: [
-                { name: 'Heavy Duty Frame', quantity: 150 },
-                { name: 'Support Bracket', quantity: 200 },
-                { name: 'Safety Mesh', quantity: 60 },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  });
-  console.log(`  - Delivery Request: ${delivery3.requestId}`);
-
-  const delivery4 = await prisma.deliveryRequest.create({
-    data: {
-      requestId: 'DR-2026-004',
-      customerName: 'Megah Engineering Sdn Bhd',
-      agreementNo: 'RA-2026-004',
-      customerPhone: '+60 16-765 4321',
-      customerEmail: 'megah.project@megah.com.my',
-      deliveryAddress: 'Jalan Sultan Ismail, 50250 Kuala Lumpur',
-      deliveryType: 'pickup',
-      totalSets: 1,
-      deliveredSets: 0,
-      sets: {
-        create: [
-          {
-            setName: 'Set A - Facade Works',
-            scheduledPeriod: '15 Jan 2026 - 14 Jul 2026',
-            status: 'Pending',
-            items: {
-              create: [
-                { name: 'Hanging Scaffold', quantity: 50 },
-                { name: 'Work Platform', quantity: 40 },
-                { name: 'Safety Harness Point', quantity: 30 },
-                { name: 'Edge Protection', quantity: 60 },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  });
-  console.log(`  - Delivery Request: ${delivery4.requestId}`);
+  console.log(`  - Delivery Request: ${delivery2.requestId} (linked to ${rfq2.rfqNumber})`);
 
   // Create sample return requests
   console.log("Creating sample return requests...");
 
-  // Delete existing return requests to avoid duplicates
-  await prisma.returnRequest.deleteMany({
-    where: {
-      requestId: {
-        in: ['RR-2026-001', 'RR-2026-002', 'RR-2026-003', 'RR-2026-004'],
-      },
-    },
-  });
+  // Delete all existing return requests for a fresh seed
+  await prisma.returnRequest.deleteMany({});
 
-  const return1 = await prisma.returnRequest.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const return1 = await (prisma.returnRequest.create as any)({
     data: {
-      requestId: 'RR-2026-001',
-      customerName: 'Elite Scaffolding Services Sdn Bhd',
-      agreementNo: 'RA-2026-008',
-      setName: 'Set A - TRX Finishing',
-      reason: 'Project completed - All equipment to be returned',
-      pickupAddress: 'Jalan Tun Razak, TRX, 55188 Kuala Lumpur',
-      customerPhone: '+60 14-333 4444',
-      customerEmail: 'returns@elitescaffolding.com.my',
-      returnType: 'full',
-      collectionMethod: 'transport',
-      status: 'Requested',
-      items: {
-        create: [
-          { name: 'Scaffolding Pipe 6m', quantity: 80 },
-          { name: 'Coupler Standard', quantity: 160 },
-          { name: 'Base Plate', quantity: 40 },
-          { name: 'Walk Board', quantity: 50 },
-        ],
-      },
-    },
-  });
-  console.log(`  - Return Request: ${return1.requestId}`);
-
-  const return2 = await prisma.returnRequest.create({
-    data: {
-      requestId: 'RR-2026-002',
-      customerName: 'Megah Engineering Sdn Bhd',
-      agreementNo: 'RA-2026-004',
-      setName: 'Set A - Facade Works (Partial)',
-      reason: 'Partial return - Facade work on lower floors completed',
-      pickupAddress: 'Jalan Sultan Ismail, 50250 Kuala Lumpur',
-      customerPhone: '+60 16-765 4321',
-      customerEmail: 'megah.project@megah.com.my',
-      returnType: 'partial',
-      collectionMethod: 'self-return',
-      status: 'Requested',
-      items: {
-        create: [
-          { name: 'Hanging Scaffold', quantity: 20 },
-          { name: 'Work Platform', quantity: 15 },
-        ],
-      },
-    },
-  });
-  console.log(`  - Return Request: ${return2.requestId}`);
-
-  const return3 = await prisma.returnRequest.create({
-    data: {
-      requestId: 'RR-2026-003',
-      customerName: 'Sunrise Development Sdn Bhd',
-      agreementNo: 'RA-2026-007',
-      setName: 'Set A - Bridge Maintenance',
-      reason: 'Maintenance work completed ahead of schedule',
-      pickupAddress: 'Penang Second Bridge, Batu Maung, 11960 Penang',
-      customerPhone: '+60 17-222 3333',
-      customerEmail: 'project@sunrisedevelopment.com.my',
-      returnType: 'full',
-      collectionMethod: 'transport',
-      status: 'Requested',
-      items: {
-        create: [
-          { name: 'Heavy Duty Tube 6m', quantity: 100 },
-          { name: 'Beam Clamp', quantity: 80 },
-          { name: 'Support Frame', quantity: 40 },
-          { name: 'Safety Net', quantity: 30 },
-        ],
-      },
-    },
-  });
-  console.log(`  - Return Request: ${return3.requestId}`);
-
-  const return4 = await prisma.returnRequest.create({
-    data: {
-      requestId: 'RR-2026-004',
+      requestId: 'RET-2026-0001',
       customerName: 'ABC Construction Sdn Bhd',
-      agreementNo: 'RA-2026-001',
-      setName: 'Set A - Foundation Phase (Partial)',
-      reason: 'Partial return - Foundation work completed, reducing equipment',
+      agreementNo: 'RFQ-20260115-00001',
+      setName: 'Set A - Foundation Phase',
+      reason: 'Foundation phase completed - All scaffolding to be returned',
       pickupAddress: 'Jalan Stesen Sentral 5, KL Sentral, 50470 Kuala Lumpur',
       customerPhone: '+60 12-345 6789',
       customerEmail: 'project@abcconstruction.com.my',
+      returnType: 'full',
+      collectionMethod: 'transport',
+      status: 'Requested',
+      rfqId: rfq1.id,
+      items: {
+        create: [
+          { name: 'CRAB BASIC STANDARD C60', quantity: 100, scaffoldingItemId: 'SC-001' },
+          { name: 'CRAB STANDARD 2.00M C60', quantity: 200, scaffoldingItemId: 'SC-006' },
+          { name: 'CRAB JACK BASE C60 / 600', quantity: 50, scaffoldingItemId: 'SC-014' },
+        ],
+      },
+    },
+  });
+  console.log(`  - Return Request: ${return1.requestId} (linked to ${rfq1.rfqNumber})`);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const return2 = await (prisma.returnRequest.create as any)({
+    data: {
+      requestId: 'RET-2026-0002',
+      customerName: 'XYZ Development Sdn Bhd',
+      agreementNo: 'RFQ-20260120-00002',
+      setName: 'Set A - Podium Level (Partial)',
+      reason: 'Partial return - Excess scaffolding not needed',
+      pickupAddress: 'Jalan Damansara, Damansara Heights, 50490 Kuala Lumpur',
+      customerPhone: '+60 11-222 3333',
+      customerEmail: 'ops@xyzdevelopment.com.my',
       returnType: 'partial',
       collectionMethod: 'self-return',
       status: 'Requested',
+      rfqId: rfq2.id,
       items: {
         create: [
-          { name: 'Scaffolding Pipe 6m', quantity: 30 },
-          { name: 'Coupler Standard', quantity: 60 },
-          { name: 'Base Plate', quantity: 15 },
+          { name: 'CRAB STANDARD 0.75M C60', quantity: 50, scaffoldingItemId: 'SC-011' },
+          { name: 'CRAB LEDGER 0.70M', quantity: 30, scaffoldingItemId: 'SC-007' },
+        ],
+      },
+    },
+  });
+  console.log(`  - Return Request: ${return2.requestId} (linked to ${rfq2.rfqNumber})`);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const return3 = await (prisma.returnRequest.create as any)({
+    data: {
+      requestId: 'RET-2026-0003',
+      customerName: 'DEF Builders Sdn Bhd',
+      agreementNo: 'RFQ-20260110-00003',
+      setName: 'Set A - MRT Station Phase 1',
+      reason: 'MRT station phase 1 completed ahead of schedule',
+      pickupAddress: 'Jalan Ipoh, Batu, 51200 Kuala Lumpur',
+      customerPhone: '+60 13-456 7890',
+      customerEmail: 'project@defbuilders.com.my',
+      returnType: 'full',
+      collectionMethod: 'transport',
+      status: 'Requested',
+      rfqId: rfq3.id,
+      items: {
+        create: [
+          { name: 'CRAB STANDARD 1.00M C60', quantity: 150, scaffoldingItemId: 'SC-003' },
+          { name: 'CRAB LEDGER 1.50M', quantity: 180, scaffoldingItemId: 'SC-004' },
+          { name: 'CRAB BRACE H2 X L1.50M', quantity: 30, scaffoldingItemId: 'SC-005' },
+          { name: 'CRAB TRIANGLE 1.5M', quantity: 80, scaffoldingItemId: 'SC-012' },
+        ],
+      },
+    },
+  });
+  console.log(`  - Return Request: ${return3.requestId} (linked to ${rfq3.rfqNumber})`);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const return4 = await (prisma.returnRequest.create as any)({
+    data: {
+      requestId: 'RET-2026-0004',
+      customerName: 'Premium Projects Sdn Bhd',
+      agreementNo: 'RFQ-20251220-00004',
+      setName: 'Set A - Main Structure',
+      reason: 'Project completed - Full return with inspection',
+      pickupAddress: 'No. 55, Jalan Bukit Bintang, 55100 Kuala Lumpur',
+      customerPhone: '+60 16-345 6789',
+      customerEmail: 'premium@projects.com',
+      returnType: 'full',
+      collectionMethod: 'transport',
+      status: 'Requested',
+      items: {
+        create: [
+          { name: 'CRAB STANDARD 1.00M C60', quantity: 60, scaffoldingItemId: 'SC-003' },
+          { name: 'CRAB BRACE H2 X L1.50M', quantity: 120, scaffoldingItemId: 'SC-005' },
+          { name: 'CRAB TRIANGLE 1.5M', quantity: 40, scaffoldingItemId: 'SC-012' },
         ],
       },
     },
   });
   console.log(`  - Return Request: ${return4.requestId}`);
+
+  // Create scaffolding items
+  console.log("Creating scaffolding items...");
+
+  // Delete existing scaffolding items to avoid duplicates
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).scaffoldingItem.deleteMany({});
+
+  const scaffoldingItems = [
+    // CLUSTER (4.7M) items
+    {
+      itemCode: 'SC-001',
+      name: 'CRAB BASIC STANDARD C60',
+      category: 'CLUSTER (4.7M)',
+      quantity: 406,
+      available: 380,
+      price: 0.59,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-002',
+      name: 'CRAB STANDARD 0.30M C60',
+      category: 'CLUSTER (4.7M)',
+      quantity: 170,
+      available: 150,
+      price: 0.75,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-003',
+      name: 'CRAB STANDARD 1.00M C60',
+      category: 'CLUSTER (4.7M)',
+      quantity: 388,
+      available: 350,
+      price: 1.46,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-004',
+      name: 'CRAB LEDGER 1.50M',
+      category: 'CLUSTER (4.7M)',
+      quantity: 918,
+      available: 850,
+      price: 1.12,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-005',
+      name: 'CRAB BRACE H2 X L1.50M',
+      category: 'CLUSTER (4.7M)',
+      quantity: 238,
+      available: 200,
+      price: 1.50,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    // CLUSTER (3.5M) items
+    {
+      itemCode: 'SC-006',
+      name: 'CRAB STANDARD 2.00M C60',
+      category: 'CLUSTER (3.5M)',
+      quantity: 362,
+      available: 320,
+      price: 2.59,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-007',
+      name: 'CRAB LEDGER 0.70M',
+      category: 'CLUSTER (3.5M)',
+      quantity: 360,
+      available: 330,
+      price: 0.56,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-008',
+      name: 'CRAB LEDGER 1.00M',
+      category: 'CLUSTER (3.5M)',
+      quantity: 118,
+      available: 100,
+      price: 0.77,
+      status: 'Available',
+      location: 'Warehouse B',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-009',
+      name: 'CRAB BRACE H2 X L0.70M',
+      category: 'CLUSTER (3.5M)',
+      quantity: 138,
+      available: 120,
+      price: 1.31,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-010',
+      name: 'CRAB BRACE H2 X L1.00M',
+      category: 'CLUSTER (3.5M)',
+      quantity: 34,
+      available: 30,
+      price: 1.37,
+      status: 'Low Stock',
+      location: 'Warehouse B',
+      itemStatus: 'Available',
+    },
+    // BUNGALOW (5.5M) items
+    {
+      itemCode: 'SC-011',
+      name: 'CRAB STANDARD 0.75M C60',
+      category: 'BUNGALOW (5.5M)',
+      quantity: 206,
+      available: 180,
+      price: 1.21,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-012',
+      name: 'CRAB TRIANGLE 1.5M',
+      category: 'BUNGALOW (5.5M)',
+      quantity: 545,
+      available: 500,
+      price: 2.78,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-013',
+      name: 'CRAB TRIANGLE 0.7M',
+      category: 'BUNGALOW (5.5M)',
+      quantity: 574,
+      available: 520,
+      price: 2.21,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-014',
+      name: 'CRAB JACK BASE C60 / 600',
+      category: 'BUNGALOW (5.5M)',
+      quantity: 347,
+      available: 320,
+      price: 1.30,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-015',
+      name: 'CRAB U-HEAD C60 / 600',
+      category: 'BUNGALOW (5.5M)',
+      quantity: 347,
+      available: 310,
+      price: 2.07,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    // BUNGALOW (3.95M) items
+    {
+      itemCode: 'SC-016',
+      name: 'CRAB STANDARD 0.50M C60',
+      category: 'BUNGALOW (3.95M)',
+      quantity: 206,
+      available: 180,
+      price: 0.95,
+      status: 'Available',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-017',
+      name: 'CRAB BRACE H1 X L0.70M',
+      category: 'BUNGALOW (3.95M)',
+      quantity: 28,
+      available: 20,
+      price: 0.82,
+      status: 'Low Stock',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+    {
+      itemCode: 'SC-018',
+      name: 'CRAB BRACE H1 X L1.00M',
+      category: 'BUNGALOW (3.95M)',
+      quantity: 34,
+      available: 0,
+      price: 0.93,
+      status: 'Out of Stock',
+      location: 'Warehouse B',
+      itemStatus: 'Unavailable',
+    },
+    {
+      itemCode: 'SC-019',
+      name: 'CRAB BRACE H1 X L1.50M',
+      category: 'BUNGALOW (3.95M)',
+      quantity: 17,
+      available: 15,
+      price: 1.14,
+      status: 'Low Stock',
+      location: 'Warehouse A',
+      itemStatus: 'Available',
+    },
+  ];
+
+  for (const item of scaffoldingItems) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (prisma as any).scaffoldingItem.create({ data: item });
+    console.log(`  - Scaffolding Item: ${item.itemCode} - ${item.name}`);
+  }
 
   console.log("Seeding completed!");
 }

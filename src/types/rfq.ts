@@ -56,6 +56,10 @@ export interface NotificationChange {
   description: string;
 }
 
+/**
+ * @deprecated Use /api/scaffolding endpoint to fetch scaffolding items from database instead.
+ * This constant is kept for backward compatibility with components not yet updated.
+ */
 export const SCAFFOLDING_TYPES: ScaffoldingItem[] = [
   {
     id: 'std-frame-1',

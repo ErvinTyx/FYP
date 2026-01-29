@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   ArrowLeft, FileText, Download, Eye, CheckCircle2, Package,
   Calendar, User, Phone, Truck, MapPin, AlertCircle, Settings,
@@ -9,6 +10,8 @@ import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { format } from 'date-fns';
 import { Return, ReturnItem } from './ReturnWorkflow';
+import { GRNViewer } from './GRNViewer';
+import { RCFViewer } from './RCFViewer';
 
 interface ReturnDetailsProps {
   returnOrder: Return;
@@ -17,6 +20,9 @@ interface ReturnDetailsProps {
 }
 
 export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsProps) {
+  const [showGRNViewer, setShowGRNViewer] = useState(false);
+  const [showRCFViewer, setShowRCFViewer] = useState(false);
+
   const getStatusBadge = (status: Return['status']) => {
     const config = {
       'Requested': { color: 'bg-blue-500 text-white', label: 'Requested' },
@@ -41,9 +47,7 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
       'Pending': { color: 'bg-gray-100 text-gray-800', icon: Package },
       'Good': { color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
       'Damaged': { color: 'bg-red-100 text-red-800', icon: AlertCircle },
-      'Repairable': { color: 'bg-amber-100 text-amber-800', icon: Settings },
-      'To Retire': { color: 'bg-gray-100 text-gray-800', icon: PackageX },
-      'Ready to Reuse': { color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
+      'Replace': { color: 'bg-amber-100 text-amber-800', icon: PackageX },
     };
     const { color, icon: Icon } = config[status] || config['Pending'];
     return (
@@ -65,7 +69,7 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
             <ArrowLeft className="size-4" />
           </Button>
           <div>
-            <h1 className="text-[#231F20]">Return Details - {returnOrder.id}</h1>
+            <h1 className="text-[#231F20]">Return Details - {returnOrder.orderId || returnOrder.id}</h1>
             <p className="text-gray-600">{returnOrder.customer}</p>
           </div>
         </div>
@@ -91,13 +95,9 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
+              <div className="col-span-2">
                 <p className="text-gray-600">Return ID</p>
-                <p className="text-[#231F20]">{returnOrder.id}</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Order ID</p>
-                <p className="text-[#231F20]">{returnOrder.orderId}</p>
+                <p className="text-[#231F20] font-mono">{returnOrder.orderId || returnOrder.id}</p>
               </div>
               <div>
                 <p className="text-gray-600">Return Type</p>
@@ -192,8 +192,13 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
               {returnOrder.grnNumber && (
                 <div className="p-3 border rounded-lg flex-1">
                   <p className="text-sm text-gray-600">GRN Number</p>
-                  <p className="text-[#231F20]">{returnOrder.grnNumber}</p>
-                  <Button variant="outline" size="sm" className="mt-2">
+                  <p className="text-[#231F20] font-medium">{returnOrder.grnNumber}</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={() => setShowGRNViewer(true)}
+                  >
                     <Eye className="size-3 mr-1" />
                     View GRN
                   </Button>
@@ -202,8 +207,13 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
               {returnOrder.rcfNumber && (
                 <div className="p-3 border rounded-lg flex-1">
                   <p className="text-sm text-gray-600">RCF Number</p>
-                  <p className="text-[#231F20]">{returnOrder.rcfNumber}</p>
-                  <Button variant="outline" size="sm" className="mt-2">
+                  <p className="text-[#231F20] font-medium">{returnOrder.rcfNumber}</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={() => setShowRCFViewer(true)}
+                  >
                     <Eye className="size-3 mr-1" />
                     View RCF
                   </Button>
@@ -408,6 +418,47 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* GRN Viewer Modal */}
+      {showGRNViewer && returnOrder.grnNumber && (
+        <GRNViewer
+          grnNumber={returnOrder.grnNumber}
+          returnData={{
+            orderId: returnOrder.orderId || returnOrder.id,
+            customer: returnOrder.customer,
+            customerContact: returnOrder.customerContact,
+            pickupAddress: returnOrder.pickupAddress,
+            returnType: returnOrder.returnType,
+            transportationType: returnOrder.transportationType,
+            items: returnOrder.items,
+            requestDate: returnOrder.requestDate,
+            pickupDate: returnOrder.pickupDate,
+            pickupTimeSlot: returnOrder.pickupTimeSlot,
+            pickupDriver: returnOrder.pickupDriver,
+            driverContact: returnOrder.driverContact,
+            warehousePhotos: returnOrder.warehousePhotos,
+          }}
+          onClose={() => setShowGRNViewer(false)}
+        />
+      )}
+
+      {/* RCF Viewer Modal */}
+      {showRCFViewer && returnOrder.rcfNumber && (
+        <RCFViewer
+          rcfNumber={returnOrder.rcfNumber}
+          grnNumber={returnOrder.grnNumber}
+          returnData={{
+            orderId: returnOrder.orderId || returnOrder.id,
+            customer: returnOrder.customer,
+            items: returnOrder.items,
+            productionNotes: returnOrder.productionNotes,
+            hasExternalGoods: returnOrder.hasExternalGoods,
+            externalGoodsNotes: returnOrder.externalGoodsNotes,
+            damagePhotos: returnOrder.damagePhotos,
+          }}
+          onClose={() => setShowRCFViewer(false)}
+        />
       )}
     </div>
   );

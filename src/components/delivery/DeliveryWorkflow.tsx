@@ -5,6 +5,7 @@ import {
   ArrowRight, User, Phone, MapPin, AlertCircle, Download, FileText, CheckCircle2,
   Loader2
 } from 'lucide-react';
+import { uploadDeliveryPhotos } from '@/lib/upload';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -14,6 +15,13 @@ import { Badge } from '../ui/badge';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Calendar } from '../ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { DeliveryOrder, DeliveryItem } from './DeliveryManagement';
@@ -27,7 +35,7 @@ import {
 
 interface DeliveryWorkflowProps {
   delivery: DeliveryOrder | null;
-  onSave: (delivery: DeliveryOrder) => void;
+  onSave: (delivery: DeliveryOrder) => Promise<void>;
   onBack: () => void;
 }
 
@@ -41,7 +49,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<Partial<DeliveryOrder>>(delivery || {
     items: [],
-    status: 'pending',
+    status: 'Pending',
     type: 'delivery',
     createdBy: 'Current User',
     createdAt: new Date().toISOString(),
@@ -65,21 +73,46 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [isDOViewerOpen, setIsDOViewerOpen] = useState(false);
+  
+  // Saving state for API persistence
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (delivery) {
       setFormData(delivery);
-      // Set current step based on status
-      const statusToStep: Record<DeliveryOrder['status'], number> = {
-        pending: 1,
-        packing_list_issued: 2,
-        stock_checked: 3,
-        packing_loading: 4,
-        in_transit: 4,
-        ready_for_pickup: 4,
-        completed: 5,
+      // Set current step based on status (using database values)
+      const statusToStep: Record<string, number> = {
+        'Pending': 1,
+        'Packing List Issued': 2,
+        'Stock Checked': 3,
+        'Packing & Loading': 3, // Still in packing step
+        'In Transit': 4,
+        'Ready for Pickup': 4,
+        'Completed': 5,
       };
-      setCurrentStep(statusToStep[delivery.status] || 1);
+      
+      // Determine the correct step based on status AND completion indicators
+      // This handles cases where status might not be updated but actions are complete
+      let mappedStep = statusToStep[delivery.status] || 1;
+      
+      // If completed (has signature/OTP verified), go to step 5
+      if (delivery.status === 'Completed' || delivery.verifiedOTP) {
+        mappedStep = 5;
+      }
+      // If loading completed (dispatched/in transit), go to step 4
+      else if (delivery.loadingCompletedAt || delivery.status === 'In Transit' || delivery.status === 'Ready for Pickup') {
+        mappedStep = 4;
+      }
+      // If stock checked, go to step 3
+      else if (delivery.stockCheckDate || delivery.status === 'Stock Checked' || delivery.status === 'Packing & Loading') {
+        mappedStep = 3;
+      }
+      // If packing list generated, go to step 2
+      else if (delivery.packingListNumber || delivery.status === 'Packing List Issued') {
+        mappedStep = 2;
+      }
+      
+      setCurrentStep(mappedStep);
       
       // Pre-fill scheduled date from delivery order (already confirmed from delivery request page)
       if (delivery.scheduledDate) {
@@ -116,7 +149,24 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
   const steps = getSteps();
 
-  const handleGeneratePackingList = () => {
+  // Helper function to save progress to database via API
+  const saveProgressToApi = async (updatedData: Partial<DeliveryOrder>) => {
+    if (!updatedData.id) return;
+    
+    setIsSaving(true);
+    try {
+      // Call onSave which will persist to the API
+      await onSave(updatedData as DeliveryOrder);
+    } catch (error) {
+      console.error('Failed to save progress:', error);
+      toast.error('Failed to save progress. Please try again.');
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleGeneratePackingList = async () => {
     if (!formData.items || formData.items.length === 0) {
       toast.error('No items to pack');
       return;
@@ -124,19 +174,26 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
     const plNumber = `PL-${Date.now().toString().slice(-8)}`;
     
-    setFormData({
+    const updatedData = {
       ...formData,
       packingListNumber: plNumber,
       packingListDate: new Date().toISOString(),
-      status: 'packing_list_issued',
+      status: 'Packing List Issued' as DeliveryOrder['status'],
       updatedAt: new Date().toISOString(),
-    });
-
-    toast.success(`Packing list ${plNumber} generated`);
-    setCurrentStep(2);
+    };
+    
+    setFormData(updatedData);
+    
+    try {
+      await saveProgressToApi(updatedData);
+      toast.success(`Packing list ${plNumber} generated`);
+      setCurrentStep(2);
+    } catch {
+      // Error already handled in saveProgressToApi
+    }
   };
 
-  const handleStockCheck = () => {
+  const handleStockCheck = async () => {
     if (!formData.items || formData.items.length === 0) {
       toast.error('No items to check');
       return;
@@ -144,69 +201,100 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
     const allAvailable = formData.items?.every(item => item.availableStock >= item.quantity);
     
-    setFormData({
+    const updatedData = {
       ...formData,
       stockCheckDate: new Date().toISOString(),
       stockCheckBy: 'Current User',
       stockCheckNotes,
       allItemsAvailable: allAvailable,
-      status: 'stock_checked',
+      status: 'Stock Checked' as DeliveryOrder['status'],
       updatedAt: new Date().toISOString(),
-    });
-
-    if (!allAvailable) {
-      toast.warning('Some items have insufficient stock. Please proceed with caution.');
-    }
+    };
     
-    toast.success('Stock check completed successfully');
-    setCurrentStep(3);
+    setFormData(updatedData);
+    
+    try {
+      await saveProgressToApi(updatedData);
+      
+      if (!allAvailable) {
+        toast.warning('Some items have insufficient stock. Please proceed with caution.');
+      }
+      
+      toast.success('Stock check completed successfully');
+      setCurrentStep(3);
+    } catch {
+      // Error already handled in saveProgressToApi
+    }
   };
 
-  const handleStartPacking = () => {
-    if (!scheduledDate || !scheduleTimeSlot) {
-      toast.error('Please select delivery/pickup date and time slot');
+  const handleStartPacking = async () => {
+    if (!scheduledDate) {
+      toast.error('Scheduled date is not set. Please check the delivery order.');
+      return;
+    }
+    if (!scheduleTimeSlot) {
+      toast.error('Please select a time slot');
       return;
     }
 
-    setFormData({
+    const updatedData = {
       ...formData,
       scheduledDate: scheduledDate.toISOString(),
       scheduledTimeSlot: scheduleTimeSlot,
       packingStartedAt: new Date().toISOString(),
       packingStartedBy: 'Current User',
-      status: 'packing_loading',
+      status: 'Packing & Loading' as DeliveryOrder['status'],
       updatedAt: new Date().toISOString(),
-    });
-    toast.success('Packing started');
+    };
+    
+    setFormData(updatedData);
+    
+    try {
+      await saveProgressToApi(updatedData);
+      toast.success('Packing started');
+    } catch {
+      // Error already handled in saveProgressToApi
+    }
   };
 
-  const handleCompleteLoading = () => {
+  const handleCompleteLoading = async () => {
     if (formData.type === 'delivery') {
       // For delivery, need driver details
       if (!formData.driverName || !formData.vehicleNumber) {
-        toast.error('Please enter driver and vehicle details');
+        toast.error('Please enter driver name and vehicle number');
         return;
       }
     }
 
-    const newStatus = formData.type === 'delivery' ? 'in_transit' : 'ready_for_pickup';
+    const newStatus = formData.type === 'delivery' ? 'In Transit' : 'Ready for Pickup';
 
-    setFormData({
+    const updatedData = {
       ...formData,
+      // Ensure schedule data is included
+      scheduledDate: scheduledDate?.toISOString(),
+      scheduledTimeSlot: scheduleTimeSlot,
       loadingCompletedAt: new Date().toISOString(),
       loadingCompletedBy: 'Current User',
       packingPhotos,
-      status: newStatus,
+      status: newStatus as DeliveryOrder['status'],
       dispatchedAt: formData.type === 'delivery' ? new Date().toISOString() : undefined,
       updatedAt: new Date().toISOString(),
-    });
-
-    if (formData.type === 'delivery') {
-      toast.success('Items loaded and dispatched for delivery');
-    } else {
-      toast.success('Items packed and ready for customer pickup');
+    };
+    
+    setFormData(updatedData);
+    
+    try {
+      await saveProgressToApi(updatedData);
+      
+      if (formData.type === 'delivery') {
+        toast.success('Items loaded and dispatched for delivery');
+      } else {
+        toast.success('Items packed and ready for customer pickup');
+      }
+      setCurrentStep(4);
+    } catch {
+      // Error already handled in saveProgressToApi
     }
-    setCurrentStep(4);
   };
 
   const handleSendOTP = () => {
@@ -222,7 +310,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     toast.success(`OTP sent to customer: ${otp}`);
   };
 
-  const handleVerifyOTP = () => {
+  const handleVerifyOTP = async () => {
     if (otpInput !== generatedOtp) {
       toast.error('Invalid OTP. Please try again.');
       return;
@@ -233,7 +321,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
       return;
     }
 
-    setFormData({
+    const updatedData = {
       ...formData,
       deliveredAt: new Date().toISOString(),
       customerAcknowledgedAt: new Date().toISOString(),
@@ -242,23 +330,36 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
       customerOTP: generatedOtp,
       verifiedOTP: true,
       deliveryPhotos,
-      status: 'completed',
+      status: 'Completed' as DeliveryOrder['status'],
       inventoryUpdatedAt: new Date().toISOString(),
-      inventoryStatus: 'Rental',
+      inventoryStatus: 'Rental' as const,
       updatedAt: new Date().toISOString(),
-    });
-
-    toast.success('OTP verified and delivery completed!');
-    setCurrentStep(5);
+    };
+    
+    setFormData(updatedData);
+    
+    try {
+      await saveProgressToApi(updatedData);
+      toast.success('OTP verified and delivery completed!');
+      setCurrentStep(5);
+    } catch {
+      // Error already handled in saveProgressToApi
+    }
   };
 
-  const handleComplete = () => {
-    toast.success('Delivery process completed successfully');
-    
-    // Save and go back
-    setTimeout(() => {
-      onSave(formData as DeliveryOrder);
-    }, 500);
+  const handleComplete = async () => {
+    try {
+      setIsSaving(true);
+      await onSave(formData as DeliveryOrder);
+      toast.success('Delivery process completed successfully');
+      // Navigate back to list after completion
+      onBack();
+    } catch (error) {
+      console.error('Failed to complete delivery:', error);
+      toast.error('Failed to save. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openSignatureDialog = (type: 'driver' | 'customer') => {
@@ -352,52 +453,69 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     clearSignature();
   };
 
+  const [isUploading, setIsUploading] = useState(false);
+
   const handlePhotoUpload = () => {
     fileInputRef.current?.click();
   };
 
-  const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
-    let loadedCount = 0;
-    const newPhotos: string[] = [];
-
-    fileArray.forEach(file => {
+    
+    // Validate files before uploading
+    const validFiles = fileArray.filter(file => {
       if (!file.type.startsWith('image/')) {
         toast.error(`${file.name} is not an image file`);
-        return;
+        return false;
       }
-
       if (file.size > 5 * 1024 * 1024) {
         toast.error(`${file.name} is too large (max 5MB)`);
-        return;
+        return false;
       }
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const url = event.target?.result as string;
-        newPhotos.push(url);
-        loadedCount++;
-
-        if (loadedCount === fileArray.length) {
-          if (currentStep === 3) {
-            setPackingPhotos([...packingPhotos, ...newPhotos]);
-            toast.success(`${newPhotos.length} photo(s) uploaded`);
-          } else if (currentStep === 4) {
-            setDeliveryPhotos([...deliveryPhotos, ...newPhotos]);
-            toast.success(`${newPhotos.length} photo(s) uploaded`);
-          }
-        }
-      };
-      reader.onerror = () => {
-        toast.error(`Failed to read ${file.name}`);
-      };
-      reader.readAsDataURL(file);
+      return true;
     });
 
-    e.target.value = '';
+    if (validFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
+
+    // Determine photo type based on current step
+    const photoType: 'packing' | 'delivery' = currentStep === 3 ? 'packing' : 'delivery';
+
+    setIsUploading(true);
+    try {
+      // Upload files to server
+      const results = await uploadDeliveryPhotos(validFiles, photoType);
+      
+      const successfulUploads = results.filter(r => r.success && r.url);
+      const failedCount = results.filter(r => !r.success).length;
+      
+      if (failedCount > 0) {
+        toast.error(`${failedCount} file(s) failed to upload`);
+      }
+      
+      if (successfulUploads.length > 0) {
+        const newPhotoUrls = successfulUploads.map(r => r.url!);
+        
+        if (photoType === 'packing') {
+          setPackingPhotos([...packingPhotos, ...newPhotoUrls]);
+        } else {
+          setDeliveryPhotos([...deliveryPhotos, ...newPhotoUrls]);
+        }
+        
+        toast.success(`${successfulUploads.length} photo(s) uploaded to server`);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload photos');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
   };
 
   const removePhoto = (index: number, type: 'packing' | 'delivery') => {
@@ -498,10 +616,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             <Button
               onClick={handleGeneratePackingList}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
-              disabled={!formData.items || formData.items.length === 0}
+              disabled={!formData.items || formData.items.length === 0 || isSaving}
             >
-              <FileText className="size-4 mr-2" />
-              Generate Packing List
+              {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <FileText className="size-4 mr-2" />}
+              {isSaving ? 'Saving...' : 'Generate Packing List'}
             </Button>
           </CardContent>
         </Card>
@@ -560,9 +678,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             <Button
               onClick={handleStockCheck}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
+              disabled={isSaving}
             >
-              <Check className="size-4 mr-2" />
-              Complete Stock Check
+              {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
+              {isSaving ? 'Saving...' : 'Complete Stock Check'}
             </Button>
           </CardContent>
         </Card>
@@ -581,28 +700,40 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
               Pack items and load them {formData.type === 'delivery' ? 'onto the delivery vehicle' : 'for customer pickup'}.
             </p>
 
-            {/* Schedule Date & Time - Auto-filled from Delivery Request */}
+            {/* Schedule Date - Auto-filled from DO */}
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-sm text-amber-800 mb-2">
+              <p className="text-sm text-amber-800 mb-3">
                 <CalendarIcon className="size-4 inline mr-1" />
-                Scheduled {formData.type === 'delivery' ? 'Delivery' : 'Pickup'} Date & Time (Auto-filled from request)
+                Scheduled {formData.type === 'delivery' ? 'Delivery' : 'Pickup'} Date (Auto-filled)
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div>
-                  <span className="text-xs text-gray-600">Date:</span>
-                  <p className="text-[#231F20]">{scheduledDate ? format(scheduledDate, 'PPP') : 'Not set'}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-600">Time Slot:</span>
-                  <p className="text-[#231F20]">{scheduleTimeSlot || 'Not set'}</p>
-                </div>
+              <div className="space-y-1">
+                <span className="text-xs text-gray-600">Date:</span>
+                <p className="text-[#231F20] font-medium">{scheduledDate ? format(scheduledDate, 'PPP') : 'Not set'}</p>
               </div>
+            </div>
+
+            {/* Time Slot Selection - Driver fills this */}
+            <div className="space-y-2">
+              <Label>Time Slot (Select by Driver) *</Label>
+              <Select value={scheduleTimeSlot} onValueChange={setScheduleTimeSlot}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select time slot" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIME_SLOTS.map((slot) => (
+                    <SelectItem key={slot} value={slot}>
+                      {slot}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">Driver must select a time slot for the {formData.type === 'delivery' ? 'delivery' : 'pickup'}</p>
             </div>
 
             {formData.type === 'delivery' && (
               <>
                 <div className="space-y-2">
-                  <Label>Driver Name</Label>
+                  <Label>Driver Name *</Label>
                   <Input
                     value={formData.driverName || ''}
                     onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
@@ -621,7 +752,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Vehicle Number</Label>
+                    <Label>Vehicle Number *</Label>
                     <Input
                       value={formData.vehicleNumber || ''}
                       onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value })}
@@ -635,18 +766,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             {/* Photo Upload */}
             <div className="space-y-2">
               <Label>Packing Photos (Optional)</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full">
-                <Upload className="size-4 mr-2" />
-                Upload Photos
+              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+                {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
+                {isUploading ? 'Uploading...' : 'Upload Photos'}
               </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={onFileSelect}
-                className="hidden"
-              />
               {packingPhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {packingPhotos.map((photo, index) => (
@@ -667,22 +790,24 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             </div>
 
             <div className="flex gap-2">
-              {formData.status !== 'packing_loading' && (
+              {formData.status !== 'Packing & Loading' && (
                 <Button
                   onClick={handleStartPacking}
                   variant="outline"
                   className="flex-1"
+                  disabled={isSaving}
                 >
-                  Start Packing
+                  {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
+                  {isSaving ? 'Saving...' : 'Start Packing'}
                 </Button>
               )}
               <Button
                 onClick={handleCompleteLoading}
                 className="bg-[#F15929] hover:bg-[#d94d1f] flex-1"
-                disabled={!scheduledDate || !scheduleTimeSlot || (formData.type === 'delivery' && (!formData.driverName || !formData.vehicleNumber))}
+                disabled={!scheduledDate || !scheduleTimeSlot || (formData.type === 'delivery' && (!formData.driverName || !formData.vehicleNumber)) || isSaving}
               >
-                <Check className="size-4 mr-2" />
-                Complete Loading
+                {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
+                {isSaving ? 'Saving...' : 'Complete Loading'}
               </Button>
             </div>
           </CardContent>
@@ -759,18 +884,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             {/* Delivery Photos */}
             <div className="space-y-2">
               <Label>{formData.type === 'delivery' ? 'Delivery Photos (Optional)' : 'Pickup Photos (Optional)'}</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full">
-                <Upload className="size-4 mr-2" />
-                Upload Photos
+              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+                {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
+                {isUploading ? 'Uploading...' : 'Upload Photos'}
               </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={onFileSelect}
-                className="hidden"
-              />
               {deliveryPhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {deliveryPhotos.map((photo, index) => (
@@ -853,10 +970,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                   <Button
                     onClick={handleVerifyOTP}
                     className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
-                    disabled={otpInput.length !== 6 || !formData.customerSignature}
+                    disabled={otpInput.length !== 6 || !formData.customerSignature || isSaving}
                   >
-                    <Check className="size-4 mr-2" />
-                    Verify OTP & Complete
+                    {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
+                    {isSaving ? 'Saving...' : 'Verify OTP & Complete'}
                   </Button>
                 </div>
               )}
@@ -910,9 +1027,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
               <Button
                 onClick={handleComplete}
                 className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
+                disabled={isSaving}
               >
-                <Save className="size-4 mr-2" />
-                Save & Return to List
+                {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Save className="size-4 mr-2" />}
+                {isSaving ? 'Saving...' : 'Save & Return to List'}
               </Button>
             </div>
           </CardContent>

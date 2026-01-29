@@ -56,10 +56,6 @@ try {
 
             console.log(`[NextAuth] Attempting login for: ${email}`);
 
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth.ts:authorize:beforeQuery',message:'Before DB query for user',data:{email},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-H3'})}).catch(()=>{});
-            // #endregion
-
             // Find user with roles
             let user;
             try {
@@ -73,22 +69,13 @@ try {
                   },
                 },
               });
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth.ts:authorize:afterQuery',message:'DB query completed',data:{userFound:!!user,userId:user?.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-H3-H4'})}).catch(()=>{});
-              // #endregion
             } catch (dbError) {
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth.ts:authorize:dbError',message:'DB query failed',data:{error:dbError instanceof Error ? dbError.message : String(dbError)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2-H3-H4-H5'})}).catch(()=>{});
-              // #endregion
               console.error("[NextAuth] Database query error:", dbError);
               throw dbError;
             }
 
             if (!user) {
               console.log(`[NextAuth] User not found: ${email}`);
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/b7c4a22a-0601-4c93-b3c4-fcb3bea1d43b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'auth.ts:authorize:userNotFound',message:'User not found in DB',data:{email},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
-              // #endregion
               return null;
             }
 

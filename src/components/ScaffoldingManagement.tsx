@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { Plus, Search, Edit, Upload, Package } from "lucide-react";
+"use client";
+
+import { useState, useEffect } from "react";
+import { Plus, Search, Edit, Upload, Package, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -33,10 +35,11 @@ import { toast } from "sonner";
 
 interface ScaffoldingItem {
   id: string;
+  itemCode: string;
   name: string;
-  category: string;
-  quantity: number;
-  available: number;
+  category: string;  // Project type: CLUSTER (4.7M), CLUSTER (3.5M), BUNGALOW (5.5M), BUNGALOW (3.95M)
+  quantity: number;  // Total Quantity
+  available: number; // Available Quantity
   price: number;
   status: 'Available' | 'Low Stock' | 'Out of Stock';
   location: string;
@@ -44,61 +47,16 @@ interface ScaffoldingItem {
   imageUrl?: string;
 }
 
-const mockItems: ScaffoldingItem[] = [
-  {
-    id: 'SC-001',
-    name: 'Aluminum Scaffolding Frame',
-    category: 'Frames',
-    quantity: 150,
-    available: 120,
-    price: 85,
-    status: 'Available',
-    location: 'Warehouse A',
-    itemStatus: 'Available'
-  },
-  {
-    id: 'SC-002',
-    name: 'Steel Platform Board',
-    category: 'Platforms',
-    quantity: 200,
-    available: 15,
-    price: 45,
-    status: 'Low Stock',
-    location: 'Warehouse A',
-    itemStatus: 'Available'
-  },
-  {
-    id: 'SC-003',
-    name: 'Scaffold Caster Wheels',
-    category: 'Accessories',
-    quantity: 80,
-    available: 0,
-    price: 25,
-    status: 'Out of Stock',
-    location: 'Warehouse B',
-    itemStatus: 'Unavailable'
-  },
-  {
-    id: 'SC-004',
-    name: 'Guard Rail Set',
-    category: 'Safety',
-    quantity: 100,
-    available: 85,
-    price: 65,
-    status: 'Available',
-    location: 'Warehouse A',
-    itemStatus: 'Available'
-  },
-];
-
 export function ScaffoldingManagement() {
-  const [items, setItems] = useState<ScaffoldingItem[]>(mockItems);
+  const [items, setItems] = useState<ScaffoldingItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ScaffoldingItem | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -112,9 +70,34 @@ export function ScaffoldingManagement() {
     imageUrl: '' as string | undefined
   });
 
+  // Fetch scaffolding items from API
+  const fetchItems = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/scaffolding');
+      const data = await response.json();
+      
+      if (data.success) {
+        setItems(data.data);
+      } else {
+        toast.error(data.message || 'Failed to fetch scaffolding items');
+      }
+    } catch (error) {
+      console.error('Error fetching scaffolding items:', error);
+      toast.error('Failed to fetch scaffolding items');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch items on mount
+  useEffect(() => {
+    fetchItems();
+  }, []);
+
   const filteredItems = items.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          item.id.toLowerCase().includes(searchTerm.toLowerCase());
+                          item.itemCode.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
     const matchesStatus = statusFilter === "all" || 
                           item.status === statusFilter || 
@@ -135,37 +118,47 @@ export function ScaffoldingManagement() {
     });
   };
 
-  const handleAddItem = () => {
+  const handleAddItem = async () => {
     if (!formData.name || !formData.category || !formData.location) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    // Determine status based on availability
-    let status: ScaffoldingItem['status'] = 'Available';
-    if (formData.available === 0) {
-      status = 'Out of Stock';
-    } else if (formData.available < formData.quantity * 0.2) {
-      status = 'Low Stock';
+    try {
+      setIsSaving(true);
+      const response = await fetch('/api/scaffolding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          category: formData.category,
+          quantity: formData.quantity,
+          available: formData.available,
+          price: formData.price,
+          location: formData.location,
+          itemStatus: formData.itemStatus,
+          imageUrl: formData.imageUrl,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Item added successfully!");
+        setIsAddDialogOpen(false);
+        resetForm();
+        fetchItems(); // Refresh the list
+      } else {
+        toast.error(data.message || 'Failed to add item');
+      }
+    } catch (error) {
+      console.error('Error adding item:', error);
+      toast.error('Failed to add item');
+    } finally {
+      setIsSaving(false);
     }
-
-    const newItem: ScaffoldingItem = {
-      id: `SC-${String(items.length + 1).padStart(3, '0')}`,
-      name: formData.name,
-      category: formData.category,
-      quantity: formData.quantity,
-      available: formData.available,
-      price: formData.price,
-      status: status,
-      location: formData.location,
-      itemStatus: formData.itemStatus,
-      imageUrl: formData.imageUrl
-    };
-
-    setItems([...items, newItem]);
-    toast.success("Item added successfully!");
-    setIsAddDialogOpen(false);
-    resetForm();
   };
 
   const handleEditClick = (item: ScaffoldingItem) => {
@@ -183,38 +176,49 @@ export function ScaffoldingManagement() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateItem = () => {
+  const handleUpdateItem = async () => {
     if (!selectedItem || !formData.name || !formData.category || !formData.location) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    // Determine status based on availability
-    let status: ScaffoldingItem['status'] = 'Available';
-    if (formData.available === 0) {
-      status = 'Out of Stock';
-    } else if (formData.available < formData.quantity * 0.2) {
-      status = 'Low Stock';
+    try {
+      setIsSaving(true);
+      const response = await fetch('/api/scaffolding', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: selectedItem.id,
+          name: formData.name,
+          category: formData.category,
+          quantity: formData.quantity,
+          available: formData.available,
+          price: formData.price,
+          location: formData.location,
+          itemStatus: formData.itemStatus,
+          imageUrl: formData.imageUrl,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Item updated successfully!");
+        setIsEditDialogOpen(false);
+        setSelectedItem(null);
+        resetForm();
+        fetchItems(); // Refresh the list
+      } else {
+        toast.error(data.message || 'Failed to update item');
+      }
+    } catch (error) {
+      console.error('Error updating item:', error);
+      toast.error('Failed to update item');
+    } finally {
+      setIsSaving(false);
     }
-
-    const updatedItem: ScaffoldingItem = {
-      ...selectedItem,
-      name: formData.name,
-      category: formData.category,
-      quantity: formData.quantity,
-      available: formData.available,
-      price: formData.price,
-      status: status,
-      location: formData.location,
-      itemStatus: formData.itemStatus,
-      imageUrl: formData.imageUrl
-    };
-
-    setItems(items.map(item => item.id === selectedItem.id ? updatedItem : item));
-    toast.success("Item updated successfully!");
-    setIsEditDialogOpen(false);
-    setSelectedItem(null);
-    resetForm();
   };
 
   const getStatusBadge = (status: ScaffoldingItem['status']) => {
@@ -237,6 +241,15 @@ export function ScaffoldingManagement() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-[#F15929]" />
+        <span className="ml-2 text-[#374151]">Loading scaffolding items...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -258,15 +271,15 @@ export function ScaffoldingManagement() {
             />
           </div>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[160px] h-10 bg-white border-[#D1D5DB] rounded-md">
+            <SelectTrigger className="w-[180px] h-10 bg-white border-[#D1D5DB] rounded-md">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="Frames">Frames</SelectItem>
-              <SelectItem value="Platforms">Platforms</SelectItem>
-              <SelectItem value="Accessories">Accessories</SelectItem>
-              <SelectItem value="Safety">Safety</SelectItem>
+              <SelectItem value="CLUSTER (4.7M)">CLUSTER (4.7M)</SelectItem>
+              <SelectItem value="CLUSTER (3.5M)">CLUSTER (3.5M)</SelectItem>
+              <SelectItem value="BUNGALOW (5.5M)">BUNGALOW (5.5M)</SelectItem>
+              <SelectItem value="BUNGALOW (3.95M)">BUNGALOW (3.95M)</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -296,67 +309,79 @@ export function ScaffoldingManagement() {
       </div>
 
       {/* Items Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {filteredItems.map((item) => (
-          <Card key={item.id} className="border-[#E5E7EB] hover:shadow-lg transition-shadow flex flex-col">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between gap-2 h-[48px]">
-                <div className="flex-1">
-                  <CardTitle className="text-[16px]">{item.name}</CardTitle>
-                  <p className="text-[12px] text-[#6B7280] mt-1">{item.id}</p>
+      {filteredItems.length === 0 ? (
+        <div className="text-center py-12">
+          <Package className="h-12 w-12 text-[#9CA3AF] mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-[#374151]">No scaffolding items found</h3>
+          <p className="text-[#6B7280] mt-1">
+            {items.length === 0 
+              ? "Get started by adding your first scaffolding item."
+              : "Try adjusting your search or filter criteria."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredItems.map((item) => (
+            <Card key={item.id} className="border-[#E5E7EB] hover:shadow-lg transition-shadow flex flex-col">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-2 h-[48px]">
+                  <div className="flex-1">
+                    <CardTitle className="text-[16px]">{item.name}</CardTitle>
+                    <p className="text-[12px] text-[#6B7280] mt-1">{item.itemCode}</p>
+                  </div>
+                  <div className="flex-shrink-0">
+                    {(item.status === 'Low Stock' || item.status === 'Out of Stock') && getStatusBadge(item.status)}
+                  </div>
                 </div>
-                <div className="flex-shrink-0">
-                  {(item.status === 'Low Stock' || item.status === 'Out of Stock') && getStatusBadge(item.status)}
+              </CardHeader>
+              <CardContent className="space-y-3 flex-1 flex flex-col">
+                <div className="aspect-video bg-[#F3F4F6] rounded-lg flex items-center justify-center overflow-hidden">
+                  {item.imageUrl ? (
+                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <Package className="h-12 w-12 text-[#9CA3AF]" />
+                  )}
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 flex-1 flex flex-col">
-              <div className="aspect-video bg-[#F3F4F6] rounded-lg flex items-center justify-center overflow-hidden">
-                {item.imageUrl ? (
-                  <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                ) : (
-                  <Package className="h-12 w-12 text-[#9CA3AF]" />
-                )}
-              </div>
-              
-              <div className="space-y-2 text-[14px] flex-1">
-                <div className="flex justify-between">
-                  <span className="text-[#6B7280] flex-1">Category:</span>
-                  <span className="text-[#111827] flex-1 text-right">{item.category}</span>
+                
+                <div className="space-y-2 text-[14px] flex-1">
+                  <div className="flex justify-between">
+                    <span className="text-[#6B7280] flex-1">Category:</span>
+                    <span className="text-[#111827] flex-1 text-right">{item.category}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#6B7280] flex-1">Available:</span>
+                    <span className="text-[#111827] flex-1 text-right">{item.available} / {item.quantity}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#6B7280] flex-1">Price/Day:</span>
+                    <span className="text-[#111827] flex-1 text-right">RM {item.price.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#6B7280] flex-1">Location:</span>
+                    <span className="text-[#111827] flex-1 text-right">{item.location}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#6B7280] flex-1">Status:</span>
+                    <span className="flex-1 flex justify-end">{getItemStatusBadge(item.itemStatus)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-[#6B7280] flex-1">Available:</span>
-                  <span className="text-[#111827] flex-1 text-right">{item.available} / {item.quantity}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#6B7280] flex-1">Price/Day:</span>
-                  <span className="text-[#111827] flex-1 text-right">RM {item.price}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#6B7280] flex-1">Location:</span>
-                  <span className="text-[#111827] flex-1 text-right">{item.location}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[#6B7280] flex-1">Status:</span>
-                  <span className="flex-1 flex justify-end">{getItemStatusBadge(item.itemStatus)}</span>
-                </div>
-              </div>
 
-              <div className="pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => handleEditClick(item)}
-                >
-                  <Edit className="mr-1 h-3 w-3" />
-                  Edit
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                <div className="pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => handleEditClick(item)}
+                  >
+                    <Edit className="mr-1 h-3 w-3" />
+                    Edit
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Add Item Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -388,10 +413,10 @@ export function ScaffoldingManagement() {
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Frames">Frames</SelectItem>
-                    <SelectItem value="Platforms">Platforms</SelectItem>
-                    <SelectItem value="Accessories">Accessories</SelectItem>
-                    <SelectItem value="Safety">Safety</SelectItem>
+                    <SelectItem value="CLUSTER (4.7M)">CLUSTER (4.7M)</SelectItem>
+                    <SelectItem value="CLUSTER (3.5M)">CLUSTER (3.5M)</SelectItem>
+                    <SelectItem value="BUNGALOW (5.5M)">BUNGALOW (5.5M)</SelectItem>
+                    <SelectItem value="BUNGALOW (3.95M)">BUNGALOW (3.95M)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -422,6 +447,7 @@ export function ScaffoldingManagement() {
                 <Input 
                   id="price" 
                   type="number" 
+                  step="0.01"
                   placeholder="0.00" 
                   className="h-10" 
                   value={formData.price}
@@ -477,8 +503,20 @@ export function ScaffoldingManagement() {
               }}>
                 Cancel
               </Button>
-              <Button type="button" className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]" onClick={handleAddItem}>
-                Save Item
+              <Button 
+                type="button" 
+                className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]" 
+                onClick={handleAddItem}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Item'
+                )}
               </Button>
             </div>
           </div>
@@ -515,10 +553,10 @@ export function ScaffoldingManagement() {
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Frames">Frames</SelectItem>
-                    <SelectItem value="Platforms">Platforms</SelectItem>
-                    <SelectItem value="Accessories">Accessories</SelectItem>
-                    <SelectItem value="Safety">Safety</SelectItem>
+                    <SelectItem value="CLUSTER (4.7M)">CLUSTER (4.7M)</SelectItem>
+                    <SelectItem value="CLUSTER (3.5M)">CLUSTER (3.5M)</SelectItem>
+                    <SelectItem value="BUNGALOW (5.5M)">BUNGALOW (5.5M)</SelectItem>
+                    <SelectItem value="BUNGALOW (3.95M)">BUNGALOW (3.95M)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -549,6 +587,7 @@ export function ScaffoldingManagement() {
                 <Input 
                   id="editPrice" 
                   type="number" 
+                  step="0.01"
                   placeholder="0.00" 
                   className="h-10" 
                   value={formData.price}
@@ -614,8 +653,20 @@ export function ScaffoldingManagement() {
               }}>
                 Cancel
               </Button>
-              <Button type="button" className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]" onClick={handleUpdateItem}>
-                Update Item
+              <Button 
+                type="button" 
+                className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]" 
+                onClick={handleUpdateItem}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update Item'
+                )}
               </Button>
             </div>
           </div>

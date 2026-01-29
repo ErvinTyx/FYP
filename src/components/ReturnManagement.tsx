@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { 
   Package, Calendar as CalendarIcon, CheckCircle2, AlertCircle, Eye,
   AlertTriangle, ClipboardCheck, ArrowRight, Plus, PackageCheck, Truck,
-  MoreVertical, Edit, FileText
+  MoreVertical, Edit, FileText, Loader2, Search
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -21,6 +21,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { Input } from "./ui/input";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ReturnWorkflow, Return, ReturnItem } from "./return/ReturnWorkflow";
@@ -30,19 +38,175 @@ export function ReturnManagement() {
   const [returns, setReturns] = useState<Return[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'workflow' | 'details'>('list');
   const [selectedReturn, setSelectedReturn] = useState<Return | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Load returns from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('returnOrders');
-    if (saved) {
-      setReturns(JSON.parse(saved));
+  // Fetch returns from API
+  const fetchReturns = useCallback(async () => {
+    try {
+      const response = await fetch('/api/return');
+      const data = await response.json();
+      if (data.success) {
+        // Transform API data to match Return interface
+        const transformedReturns: Return[] = data.returnRequests
+          .filter((req: { status: string }) => 
+            // Only show returns that have moved past 'Requested' status (i.e., Agreed or later)
+            req.status !== 'Requested' && req.status !== 'Quoted'
+          )
+          .map((req: {
+            id: string;
+            requestId: string;
+            customerName: string;
+            customerPhone?: string;
+            agreementNo: string;
+            setName: string;
+            returnType: string;
+            collectionMethod: string;
+            requestDate: string;
+            status: string;
+            pickupAddress: string;
+            grnNumber?: string;
+            rcfNumber?: string;
+            pickupDriver?: string;
+            driverContact?: string;
+            pickupDate?: string;
+            pickupTimeSlot?: string;
+            customerNotificationSent?: boolean;
+            hasExternalGoods?: boolean;
+            externalGoodsNotes?: string;
+            productionNotes?: string;
+            inventoryUpdated?: boolean;
+            soaUpdated?: boolean;
+            driverRecordPhotos?: unknown;
+            warehousePhotos?: unknown;
+            damagePhotos?: unknown;
+            items: Array<{
+              id: string;
+              name: string;
+              quantity: number;
+              quantityReturned: number;
+              status: string;
+              notes?: string;
+            }>;
+          }) => ({
+            id: req.id,
+            orderId: req.requestId, // Standard Return ID (RET-XXX format)
+            customer: req.customerName,
+            customerContact: req.customerPhone || '',
+            returnType: req.returnType === 'full' ? 'Full' : req.returnType === 'partial' ? 'Partial' : req.returnType as 'Full' | 'Partial',
+            transportationType: req.collectionMethod === 'transport' ? 'Transportation Needed' : req.collectionMethod === 'self-return' ? 'Self Return' : req.collectionMethod as 'Self Return' | 'Transportation Needed',
+            requestDate: req.requestDate,
+            status: mapApiStatusToWorkflowStatus(req.status),
+            pickupAddress: req.pickupAddress,
+            grnNumber: req.grnNumber,
+            rcfNumber: req.rcfNumber,
+            pickupDriver: req.pickupDriver,
+            driverContact: req.driverContact,
+            pickupDate: req.pickupDate,
+            pickupTimeSlot: req.pickupTimeSlot,
+            customerNotificationSent: req.customerNotificationSent,
+            hasExternalGoods: req.hasExternalGoods,
+            externalGoodsNotes: req.externalGoodsNotes,
+            productionNotes: req.productionNotes,
+            inventoryUpdated: req.inventoryUpdated,
+            soaUpdated: req.soaUpdated,
+            driverRecordPhotos: req.driverRecordPhotos as Return['driverRecordPhotos'],
+            warehousePhotos: req.warehousePhotos as Return['warehousePhotos'],
+            damagePhotos: req.damagePhotos as Return['damagePhotos'],
+            items: req.items.map((item) => ({
+              id: item.id,
+              name: item.name,
+              category: 'Scaffolding',
+              quantity: item.quantity,
+              quantityReturned: item.quantityReturned || item.quantity,
+              status: (item.status || 'Good') as ReturnItem['status'],
+              notes: item.notes,
+            })),
+          }));
+        setReturns(transformedReturns);
+      } else {
+        console.error('Failed to fetch returns:', data.message);
+        toast.error('Failed to load returns');
+      }
+    } catch (error) {
+      console.error('Error fetching returns:', error);
+      toast.error('Error loading returns');
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
-  // Save to localStorage whenever returns change
-  const saveReturns = (updated: Return[]) => {
-    setReturns(updated);
-    localStorage.setItem('returnOrders', JSON.stringify(updated));
+  // Map API status to workflow status
+  const mapApiStatusToWorkflowStatus = (apiStatus: string): Return['status'] => {
+    const statusMap: Record<string, Return['status']> = {
+      'Requested': 'Requested',
+      'Quoted': 'Requested',
+      'Agreed': 'Requested', // Start from step 1 (Schedule Date & Time)
+      'Scheduled': 'Pickup Scheduled',
+      'In Transit': 'In Transit',
+      'Received': 'Received at Warehouse',
+      'Customer Notified': 'Customer Notified',
+      'GRN Generated': 'Under Inspection',
+      'Cancelled': 'Completed',
+      // Direct workflow statuses
+      'Approved': 'Approved',
+      'Pickup Scheduled': 'Pickup Scheduled',
+      'Pickup Confirmed': 'Pickup Confirmed',
+      'Driver Recording': 'Driver Recording',
+      'Received at Warehouse': 'Received at Warehouse',
+      'Under Inspection': 'Under Inspection',
+      'Sorting Complete': 'Sorting Complete',
+      'Dispute Raised': 'Dispute Raised',
+      'Completed': 'Completed',
+    };
+    return statusMap[apiStatus] || 'Requested';
+  };
+
+  // Load returns on mount
+  useEffect(() => {
+    fetchReturns();
+  }, [fetchReturns]);
+
+  // Save return to database
+  const saveReturnToDatabase = async (returnOrder: Return): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/return', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: returnOrder.id,
+          status: returnOrder.status,
+          grnNumber: returnOrder.grnNumber,
+          rcfNumber: returnOrder.rcfNumber,
+          pickupDriver: returnOrder.pickupDriver,
+          driverContact: returnOrder.driverContact,
+          pickupDate: returnOrder.pickupDate,
+          pickupTimeSlot: returnOrder.pickupTimeSlot,
+          customerNotificationSent: returnOrder.customerNotificationSent,
+          hasExternalGoods: returnOrder.hasExternalGoods,
+          externalGoodsNotes: returnOrder.externalGoodsNotes,
+          productionNotes: returnOrder.productionNotes,
+          inventoryUpdated: returnOrder.inventoryUpdated,
+          soaUpdated: returnOrder.soaUpdated,
+          driverRecordPhotos: returnOrder.driverRecordPhotos,
+          warehousePhotos: returnOrder.warehousePhotos,
+          damagePhotos: returnOrder.damagePhotos,
+          items: returnOrder.items?.map(item => ({
+            id: item.id,
+            quantityReturned: item.quantityReturned,
+            status: item.status,
+            notes: item.notes,
+          })),
+        }),
+      });
+      const data = await response.json();
+      
+      return data.success;
+    } catch (error) {
+      console.error('Error saving return to database:', error);
+      return false;
+    }
   };
 
   const getReturnStatusBadge = (status: Return['status']) => {
@@ -74,33 +238,29 @@ export function ReturnManagement() {
     setViewMode('workflow');
   };
 
-  const handleSaveReturn = (returnOrder: Return) => {
-    const isNew = !returns.find(r => r.id === returnOrder.id);
+  const handleSaveReturn = async (returnOrder: Return) => {
+    // Save to database
+    const success = await saveReturnToDatabase(returnOrder);
     
-    if (isNew) {
-      saveReturns([returnOrder, ...returns]);
-      toast.success('Return created successfully');
+    if (success) {
+      // Refresh data from database
+      await fetchReturns();
+      // Update selected return with latest data
+      setSelectedReturn(returnOrder);
+      // Only show toast for completed, otherwise silent save
+      if (returnOrder.status === 'Completed') {
+        toast.success('Return completed successfully');
+        setViewMode('list');
+        setSelectedReturn(null);
+      }
     } else {
-      saveReturns(returns.map(r => r.id === returnOrder.id ? returnOrder : r));
-      toast.success('Return updated successfully');
+      throw new Error('Failed to save return to database');
     }
-    
-    setViewMode('list');
-    setSelectedReturn(null);
   };
 
   const handleBack = () => {
     setViewMode('list');
     setSelectedReturn(null);
-  };
-
-  const handleViewGRN = (returnOrder: Return) => {
-    if (returnOrder.grnNumber) {
-      toast.success(`Viewing GRN: ${returnOrder.grnNumber}`);
-      // In a real implementation, this would open a GRN document viewer
-    } else {
-      toast.error('GRN not yet generated for this return');
-    }
   };
 
   // Stats
@@ -110,6 +270,34 @@ export function ReturnManagement() {
   ).length;
   const completedReturns = returns.filter(r => r.status === 'Completed').length;
   const disputeReturns = returns.filter(r => r.status === 'Dispute Raised').length;
+
+  // Filter returns based on search term and status filter
+  const filteredReturns = returns.filter(returnItem => {
+    const matchesSearch = 
+      (returnItem.orderId?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+      returnItem.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      returnItem.id.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = statusFilter === 'all' || returnItem.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  // Get unique statuses for filter dropdown
+  const statusOptions: Return['status'][] = [
+    'Requested',
+    'Approved',
+    'Pickup Scheduled',
+    'Pickup Confirmed',
+    'Driver Recording',
+    'In Transit',
+    'Received at Warehouse',
+    'Under Inspection',
+    'Sorting Complete',
+    'Customer Notified',
+    'Dispute Raised',
+    'Completed',
+  ];
 
   // Show workflow view
   if (viewMode === 'workflow') {
@@ -193,12 +381,72 @@ export function ReturnManagement() {
         </Card>
       </div>
 
+      {/* Search and Filter */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 size-4" />
+          <Input
+            type="text"
+            placeholder="Search by Return ID or Customer..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-[200px]">
+            <SelectValue placeholder="Filter by Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {statusOptions.map((status) => (
+              <SelectItem key={status} value={status}>
+                {status}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Returns Table */}
       <Card className="border-[#E5E7EB]">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>All Returns</CardTitle>
+          {(searchTerm || statusFilter !== 'all') && (
+            <span className="text-sm text-gray-500">
+              Showing {filteredReturns.length} of {returns.length} returns
+            </span>
+          )}
         </CardHeader>
         <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="size-8 animate-spin text-[#F15929]" />
+              <span className="ml-3 text-gray-600">Loading returns...</span>
+            </div>
+          ) : returns.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Package className="size-12 text-gray-400 mx-auto mb-4" />
+              <p>No returns found</p>
+              <p className="text-sm">Returns will appear here once they are agreed upon in Delivery & Return Management</p>
+            </div>
+          ) : filteredReturns.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <Search className="size-12 text-gray-400 mx-auto mb-4" />
+              <p>No matching returns found</p>
+              <p className="text-sm">Try adjusting your search or filter criteria</p>
+              <Button 
+                variant="outline" 
+                className="mt-4"
+                onClick={() => {
+                  setSearchTerm('');
+                  setStatusFilter('all');
+                }}
+              >
+                Clear Filters
+              </Button>
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -212,9 +460,9 @@ export function ReturnManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {returns.map((returnItem) => (
+              {filteredReturns.map((returnItem) => (
                 <TableRow key={returnItem.id}>
-                  <TableCell className="text-[#231F20]">{returnItem.id}</TableCell>
+                  <TableCell className="text-[#231F20] font-mono text-sm">{returnItem.orderId || returnItem.id}</TableCell>
                   <TableCell>
                     <div>
                       <p className="text-[#231F20]">{returnItem.customer}</p>
@@ -265,12 +513,6 @@ export function ReturnManagement() {
                             Process
                           </DropdownMenuItem>
                         )}
-                        {(returnItem.status === 'Customer Notified' || returnItem.status === 'Completed') && returnItem.grnNumber && (
-                          <DropdownMenuItem onClick={() => handleViewGRN(returnItem)}>
-                            <FileText className="size-4 mr-2" />
-                            View GRN
-                          </DropdownMenuItem>
-                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -278,6 +520,7 @@ export function ReturnManagement() {
               ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
     </div>
