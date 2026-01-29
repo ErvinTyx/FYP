@@ -33,7 +33,7 @@ DATABASE_URL="mysql://USER:PASSWORD@HOST:PORT/DATABASE"
 Then apply the schema to your database:
 
 ```bash
-npx prisma migrate dev
+npx prisma migrate dev --name init
 ```
 Then seed the database
 ```

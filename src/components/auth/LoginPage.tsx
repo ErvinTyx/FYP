@@ -9,10 +9,11 @@ import { Alert, AlertDescription } from "../ui/alert";
 interface LoginPageProps {
   onLogin: (role: string) => void;
   onNavigateToRegister: () => void;
+  onNavigateToForgotPassword: () => void;
   onBack: () => void;
 }
 
-export function LoginPage({ onLogin, onNavigateToRegister, onBack }: LoginPageProps) {
+export function LoginPage({ onLogin, onNavigateToRegister, onNavigateToForgotPassword, onBack }: LoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -140,6 +141,7 @@ export function LoginPage({ onLogin, onNavigateToRegister, onBack }: LoginPagePr
             </div>
             <button
               type="button"
+              onClick={onNavigateToForgotPassword}
               className="text-[14px] text-[#F15929] hover:text-[#D94E23]"
             >
               Forgot password?

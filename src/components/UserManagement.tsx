@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   Users, 
   UserPlus, 
@@ -18,7 +18,9 @@ import {
   Building2,
   UserCircle,
   Shield,
-  ArrowLeft
+  ArrowLeft,
+  Loader2,
+  ExternalLink
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -64,8 +66,15 @@ import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
 
 type UserType = 'Internal Staff' | 'Individual Customer' | 'Business Customer';
-type UserStatus = 'Active' | 'Inactive' | 'Pending Approval';
+type UserStatus = 'Active' | 'Inactive' | 'Pending Approval' | 'Pending Verification';
 type StaffRole = 'Admin' | 'Sales' | 'Finance' | 'Support' | 'Operations' | 'Production';
+type DbStatus = 'pending' | 'active' | 'inactive';
+
+// Admin roles that can perform administrative actions
+const ADMIN_ROLES = ['super_user', 'admin'];
+
+// Pagination settings
+const ITEMS_PER_PAGE = 10;
 
 interface User {
   id: string;
@@ -78,104 +87,75 @@ interface User {
   role?: StaffRole;  // Only for Internal Staff
   lastLogin: string;
   
-  // Individual Customer specific fields
-  tin?: string;  // Tax Identification Number
-  idCardNumber?: string;
+  // Customer specific fields
+  tin?: string;  // Tax Identification Number (individual: IG..., business: C/CS/D/etc...)
+  idType?: string;  // 'NRIC', 'PASSPORT', 'ARMY' for individual, 'BRN' for business
+  idNumber?: string;  // ID number: NRIC/Passport/Army for individual, BRN for business
+  identityDocumentUrl?: string;
   idCardFrontImage?: string;
   idCardBackImage?: string;
-  
-  // Business Customer specific fields
-  brn?: string;  // Business Registration Number
-  companyTin?: string;
 }
 
-const mockUsers: User[] = [
-  { 
-    id: '1', 
-    firstName: 'John', 
-    lastName: 'Doe', 
-    email: 'john.doe@company.com', 
-    phone: '+60 12-345-6789',
-    userType: 'Internal Staff',
-    role: 'Admin', 
-    status: 'Active', 
-    lastLogin: '2024-11-03' 
-  },
-  { 
-    id: '2', 
-    firstName: 'Sarah', 
-    lastName: 'Williams', 
-    email: 'sarah.w@company.com', 
-    phone: '+60 12-456-7890',
-    userType: 'Internal Staff',
-    role: 'Sales', 
-    status: 'Active', 
-    lastLogin: '2024-11-04' 
-  },
-  { 
-    id: '3', 
-    firstName: 'Mike', 
-    lastName: 'Johnson', 
-    email: 'mike.j@gmail.com', 
-    phone: '+60 13-234-5678',
-    userType: 'Individual Customer',
-    status: 'Pending Approval',
-    tin: 'IG123456789012',
-    idCardNumber: '920415-10-5234',
-    idCardFrontImage: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400',
-    idCardBackImage: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?w=400',
-    lastLogin: 'Never' 
-  },
-  { 
-    id: '4', 
-    firstName: 'Ahmad', 
-    lastName: 'Hassan', 
-    email: 'ahmad@steelworks.com', 
-    phone: '+60 19-876-5432',
-    userType: 'Business Customer',
-    status: 'Pending Approval',
-    brn: '202201123456',
-    companyTin: 'C987654321012',
-    lastLogin: 'Never' 
-  },
-  { 
-    id: '5', 
-    firstName: 'Lisa', 
-    lastName: 'Tan', 
-    email: 'lisa.tan@outlook.com', 
-    phone: '+60 16-555-4321',
-    userType: 'Individual Customer',
-    status: 'Active',
-    tin: 'IG998877665544',
-    idCardNumber: '880320-08-1234',
-    lastLogin: '2024-11-01' 
-  },
-  { 
-    id: '6', 
-    firstName: 'David', 
-    lastName: 'Lee', 
-    email: 'david@construction.my', 
-    phone: '+60 17-222-3333',
-    userType: 'Business Customer',
-    status: 'Active',
-    brn: '201905234567',
-    companyTin: 'PT123456789012',
-    lastLogin: '2024-11-02' 
-  },
-  { 
-    id: '7', 
-    firstName: 'Emily', 
-    lastName: 'Wong', 
-    email: 'emily.wong@company.com', 
-    phone: '+60 12-888-9999',
-    userType: 'Internal Staff',
-    status: 'Pending Approval',
-    lastLogin: 'Never' 
-  },
-];
+interface UserManagementProps {
+  userRole?: string;
+}
 
-export function UserManagement() {
-  const [users, setUsers] = useState<User[]>(mockUsers);
+/**
+ * Map database status to UI status
+ */
+function mapDbStatusToUi(dbStatus: string): UserStatus {
+  switch (dbStatus) {
+    case 'active':
+      return 'Active';
+    case 'inactive':
+      return 'Inactive';
+    case 'pending':
+    default:
+      return 'Pending Approval';
+  }
+}
+
+/**
+ * Map UI status to database status
+ */
+function mapUiStatusToDb(uiStatus: UserStatus): DbStatus {
+  switch (uiStatus) {
+    case 'Active':
+      return 'active';
+    case 'Inactive':
+      return 'inactive';
+    case 'Pending Approval':
+    case 'Pending Verification':
+    default:
+      return 'pending';
+  }
+}
+
+/**
+ * Get the primary staff role from roles array
+ */
+function getStaffRole(roles: string[]): StaffRole | undefined {
+  const roleMap: Record<string, StaffRole> = {
+    'admin': 'Admin',
+    'super_user': 'Admin',
+    'sales': 'Sales',
+    'finance': 'Finance',
+    'support': 'Support',
+    'operations': 'Operations',
+    'production': 'Production',
+  };
+  
+  for (const role of roles) {
+    if (roleMap[role]) {
+      return roleMap[role];
+    }
+  }
+  return undefined;
+}
+
+export function UserManagement({ userRole = '' }: UserManagementProps) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [userTypeFilter, setUserTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -187,6 +167,19 @@ export function UserManagement() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [pendingRole, setPendingRole] = useState<StaffRole>('Sales');
   const [rejectionReason, setRejectionReason] = useState("");
+  const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Check if current user is admin/super_user
+  const isAdmin = ADMIN_ROLES.includes(userRole);
   
   const [editForm, setEditForm] = useState({
     firstName: "",
@@ -202,17 +195,391 @@ export function UserManagement() {
     email: "",
     phone: "",
     role: "",
-    status: "Active" as UserStatus
+    status: "pending" as DbStatus
   });
+  const [isAddingUser, setIsAddingUser] = useState(false);
+
+  // Fetch users on mount
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/user-management');
+      const data = await response.json();
+
+      if (!data.success) {
+        toast.error(data.message || 'Failed to fetch users');
+        return;
+      }
+
+      // Transform API response to User format
+      const transformedUsers: User[] = data.users.map((user: any) => ({
+        id: user.id,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email,
+        phone: user.phone || '',
+        userType: user.userType as UserType,
+        status: mapDbStatusToUi(user.status),
+        // Role may be undefined for pending internal staff (they need role assignment on approval)
+        role: getStaffRole(user.roles || []),
+        lastLogin: user.updatedAt ? new Date(user.updatedAt).toLocaleDateString() : 'Never',
+        tin: user.tin,
+        idType: user.idType,
+        idNumber: user.idNumber,
+        identityDocumentUrl: user.identityDocumentUrl,
+      }));
+
+      setUsers(transformedUsers);
+    } catch (error) {
+      console.error('Fetch users error:', error);
+      toast.error('An error occurred while fetching users');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
+                          user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          user.phone?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesUserType = userTypeFilter === "all" || user.userType === userTypeFilter;
     const matchesStatus = statusFilter === "all" || user.status === statusFilter;
     return matchesSearch && matchesUserType && matchesStatus;
   });
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, userTypeFilter, statusFilter]);
+
+  // Pagination handlers
+  const handlePreviousPage = () => {
+    setCurrentPage(prev => Math.max(1, prev - 1));
+  };
+
+  const handleNextPage = () => {
+    setCurrentPage(prev => Math.min(totalPages, prev + 1));
+  };
+
+  const handlePageClick = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    
+    if (totalPages <= 5) {
+      // Show all pages if 5 or less
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Always show first page
+      pages.push(1);
+      
+      if (currentPage > 3) {
+        pages.push('...');
+      }
+      
+      // Show pages around current page
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      
+      for (let i = start; i <= end; i++) {
+        if (!pages.includes(i)) {
+          pages.push(i);
+        }
+      }
+      
+      if (currentPage < totalPages - 2) {
+        pages.push('...');
+      }
+      
+      // Always show last page
+      if (!pages.includes(totalPages)) {
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  // Export users to CSV
+  const handleExportUsers = () => {
+    // Define CSV headers
+    const headers = [
+      'First Name',
+      'Last Name',
+      'Email',
+      'Phone',
+      'User Type',
+      'Role',
+      'Status',
+    ];
+
+    // Convert users to CSV rows
+    const rows = filteredUsers.map(user => [
+      user.firstName,
+      user.lastName,
+      user.email,
+      user.phone || '',
+      user.userType,
+      user.role || '',
+      user.status,
+    ]);
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `users_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast.success(`Exported ${filteredUsers.length} users to CSV`);
+  };
+
+  // Handle file selection for import
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.csv')) {
+      toast.error('Please select a CSV file');
+      return;
+    }
+
+    setImportFile(file);
+    setImportErrors([]);
+
+    // Parse CSV for preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        setImportErrors(['CSV file must have a header row and at least one data row']);
+        return;
+      }
+
+      // Parse header
+      const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+      
+      // Required columns
+      const requiredColumns = ['first name', 'last name', 'email', 'role'];
+      const missingColumns = requiredColumns.filter(col => !headers.includes(col));
+      
+      if (missingColumns.length > 0) {
+        setImportErrors([`Missing required columns: ${missingColumns.join(', ')}`]);
+        return;
+      }
+
+      // Parse data rows
+      const preview: any[] = [];
+      const errors: string[] = [];
+
+      for (let i = 1; i < Math.min(lines.length, 6); i++) { // Preview first 5 rows
+        const values = parseCSVLine(lines[i]);
+        const row: any = {};
+        
+        headers.forEach((header, index) => {
+          row[header] = values[index]?.trim() || '';
+        });
+
+        // Basic validation
+        if (!row['email'] || !row['first name'] || !row['last name']) {
+          errors.push(`Row ${i}: Missing required fields`);
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row['email'])) {
+          errors.push(`Row ${i}: Invalid email format`);
+        }
+
+        preview.push({
+          firstName: row['first name'] || '',
+          lastName: row['last name'] || '',
+          email: row['email'] || '',
+          phone: row['phone'] || '',
+          role: row['role'] || '',
+        });
+      }
+
+      setImportPreview(preview);
+      if (errors.length > 0) {
+        setImportErrors(errors);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Parse a CSV line handling quoted values
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+    
+    return result;
+  };
+
+  // Handle import submit
+  const handleImportUsers = async () => {
+    if (!importFile) return;
+
+    setIsImporting(true);
+    
+    try {
+      const reader = new FileReader();
+      
+      reader.onload = async (e) => {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(line => line.trim());
+        const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+        
+        const usersToImport: any[] = [];
+        const errors: string[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          const values = parseCSVLine(lines[i]);
+          const row: any = {};
+          
+          headers.forEach((header, index) => {
+            row[header] = values[index]?.trim() || '';
+          });
+
+          // Validate
+          if (!row['email'] || !row['first name'] || !row['last name'] || !row['role']) {
+            errors.push(`Row ${i}: Missing required fields (first name, last name, email, role)`);
+            continue;
+          }
+
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row['email'])) {
+            errors.push(`Row ${i}: Invalid email format`);
+            continue;
+          }
+
+          usersToImport.push({
+            firstName: row['first name'],
+            lastName: row['last name'],
+            email: row['email'],
+            phone: row['phone'] || '',
+            role: row['role'].toLowerCase(),
+          });
+        }
+
+        if (usersToImport.length === 0) {
+          setImportErrors(['No valid users to import']);
+          setIsImporting(false);
+          return;
+        }
+
+        // Call API to import users
+        const response = await fetch('/api/user-management/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ users: usersToImport }),
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+          toast.error(data.message || 'Failed to import users');
+          if (data.errors) {
+            setImportErrors(data.errors);
+          }
+          setIsImporting(false);
+          return;
+        }
+
+        toast.success(`Successfully imported ${data.imported} users`);
+        if (data.skipped > 0) {
+          toast.info(`${data.skipped} users were skipped (already exist)`);
+        }
+
+        // Refresh the user list
+        fetchUsers();
+        
+        // Close dialog and reset state
+        setIsImportDialogOpen(false);
+        setImportFile(null);
+        setImportPreview([]);
+        setImportErrors([]);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      };
+
+      reader.readAsText(importFile);
+    } catch (error) {
+      console.error('Import error:', error);
+      toast.error('An error occurred while importing users');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // Download sample CSV template
+  const handleDownloadTemplate = () => {
+    const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Role'];
+    const sampleData = [
+      ['John', 'Doe', 'john.doe@example.com', '+60 12-345-6789', 'Sales'],
+      ['Jane', 'Smith', 'jane.smith@example.com', '+60 13-456-7890', 'Finance'],
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...sampleData.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.setAttribute('href', URL.createObjectURL(blob));
+    link.setAttribute('download', 'user_import_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast.success('Template downloaded');
+  };
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
@@ -242,6 +609,8 @@ export function UserManagement() {
 
   const handleViewDetails = (user: User) => {
     setSelectedUser(user);
+    // For pending internal staff without role, default to 'Sales'
+    // Otherwise use their existing role
     setPendingRole(user.role || 'Sales');
     setRejectionReason("");
     setViewMode('detail');
@@ -266,7 +635,7 @@ export function UserManagement() {
     setIsEditDialogOpen(true);
   };
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (!selectedUser) return;
 
     if (!editForm.firstName.trim() || !editForm.lastName.trim() || !editForm.email.trim()) {
@@ -280,15 +649,52 @@ export function UserManagement() {
       return;
     }
 
-    setUsers(users.map(user => 
-      user.id === selectedUser.id 
-        ? { ...user, ...editForm }
-        : user
-    ));
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/user-management/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: editForm.firstName,
+          lastName: editForm.lastName,
+          email: editForm.email,
+          phone: editForm.phone || undefined,
+          role: editForm.role || undefined,
+          status: mapUiStatusToDb(editForm.status),
+        }),
+      });
 
-    toast.success("User updated successfully");
-    setIsEditDialogOpen(false);
-    setSelectedUser(null);
+      const data = await response.json();
+
+      if (!data.success) {
+        toast.error(data.message || 'Failed to update user');
+        return;
+      }
+
+      // Update local state
+      setUsers(users.map(user => 
+        user.id === selectedUser.id 
+          ? { 
+              ...user, 
+              firstName: editForm.firstName,
+              lastName: editForm.lastName,
+              email: editForm.email,
+              phone: editForm.phone,
+              role: editForm.role as StaffRole,
+              status: editForm.status,
+            }
+          : user
+      ));
+
+      toast.success("User updated successfully");
+      setIsEditDialogOpen(false);
+      setSelectedUser(null);
+    } catch (error) {
+      console.error('Update user error:', error);
+      toast.error('An error occurred while updating the user');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDeleteUser = (userId: string) => {
@@ -303,12 +709,12 @@ export function UserManagement() {
       email: "",
       phone: "",
       role: "",
-      status: "Active"
+      status: "pending"
     });
     setIsAddDialogOpen(true);
   };
 
-  const handleAddNewUser = () => {
+  const handleAddNewUser = async () => {
     if (!addForm.firstName.trim() || !addForm.lastName.trim() || !addForm.email.trim() || !addForm.role) {
       toast.error("Please fill in all required fields");
       return;
@@ -320,31 +726,68 @@ export function UserManagement() {
       return;
     }
 
-    if (users.some(user => user.email.toLowerCase() === addForm.email.toLowerCase())) {
-      toast.error("A user with this email already exists");
-      return;
-    }
-
-    const newId = (Math.max(...users.map(u => parseInt(u.id))) + 1).toString();
+    setIsAddingUser(true);
     
-    const newUser: User = {
-      id: newId,
-      firstName: addForm.firstName,
-      lastName: addForm.lastName,
-      email: addForm.email,
-      phone: addForm.phone,
-      userType: 'Internal Staff',
-      role: addForm.role as StaffRole,
-      status: addForm.status,
-      lastLogin: new Date().toISOString().split('T')[0]
-    };
+    try {
+      const response = await fetch('/api/user-management', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: addForm.firstName,
+          lastName: addForm.lastName,
+          email: addForm.email,
+          phone: addForm.phone || undefined,
+          role: addForm.role.toLowerCase(),
+          status: addForm.status,
+        }),
+      });
 
-    setUsers([...users, newUser]);
-    toast.success("User added successfully");
-    setIsAddDialogOpen(false);
+      const data = await response.json();
+
+      if (!data.success) {
+        toast.error(data.message || "Failed to create user");
+        return;
+      }
+
+      // Map API status to UI status
+      const statusMap: Record<string, UserStatus> = {
+        'pending': 'Pending Verification',
+        'active': 'Active',
+        'inactive': 'Inactive',
+      };
+
+      // Add the new user to local state
+      const newUser: User = {
+        id: data.user.id,
+        firstName: data.user.firstName,
+        lastName: data.user.lastName,
+        email: data.user.email,
+        phone: data.user.phone || '',
+        userType: 'Internal Staff',
+        role: addForm.role as StaffRole,
+        status: statusMap[data.user.status] || 'Pending Verification',
+        lastLogin: 'Never'
+      };
+
+      setUsers([newUser, ...users]);
+      
+      // Show success message based on email status
+      if (data.emailSent) {
+        toast.success("User created! Password setup email has been sent.");
+      } else {
+        toast.warning("User created but email failed to send. Please contact support.");
+      }
+      
+      setIsAddDialogOpen(false);
+    } catch (error) {
+      console.error('Add user error:', error);
+      toast.error("An error occurred while creating the user");
+    } finally {
+      setIsAddingUser(false);
+    }
   };
 
-  const handleApproveUser = () => {
+  const handleApproveUser = async () => {
     if (!selectedUser) return;
 
     // For internal staff, role must be selected
@@ -353,24 +796,49 @@ export function UserManagement() {
       return;
     }
 
-    setUsers(users.map(user => 
-      user.id === selectedUser.id 
-        ? { 
-            ...user, 
-            status: 'Active' as UserStatus,
-            role: selectedUser.userType === 'Internal Staff' ? pendingRole : user.role,
-            lastLogin: new Date().toISOString().split('T')[0]
-          }
-        : user
-    ));
+    setIsApproving(true);
+    try {
+      const response = await fetch('/api/user-management/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: selectedUser.id,
+          role: selectedUser.userType === 'Internal Staff' ? pendingRole : undefined,
+        }),
+      });
 
-    toast.success(`${selectedUser.firstName} ${selectedUser.lastName} has been approved`);
-    setIsApproveDialogOpen(false);
-    setViewMode('list');
-    setSelectedUser(null);
+      const data = await response.json();
+
+      if (!data.success) {
+        toast.error(data.message || 'Failed to approve user');
+        return;
+      }
+
+      // Update local state
+      setUsers(users.map(user => 
+        user.id === selectedUser.id 
+          ? { 
+              ...user, 
+              status: 'Active' as UserStatus,
+              role: selectedUser.userType === 'Internal Staff' ? pendingRole : user.role,
+              lastLogin: new Date().toISOString().split('T')[0]
+            }
+          : user
+      ));
+
+      toast.success(`${selectedUser.firstName} ${selectedUser.lastName} has been approved`);
+      setIsApproveDialogOpen(false);
+      setViewMode('list');
+      setSelectedUser(null);
+    } catch (error) {
+      console.error('Approve user error:', error);
+      toast.error('An error occurred while approving the user');
+    } finally {
+      setIsApproving(false);
+    }
   };
 
-  const handleRejectUser = () => {
+  const handleRejectUser = async () => {
     if (!selectedUser) return;
 
     if (!rejectionReason.trim()) {
@@ -378,14 +846,51 @@ export function UserManagement() {
       return;
     }
 
-    setUsers(users.filter(user => user.id !== selectedUser.id));
-    
-    toast.success(`Registration for ${selectedUser.firstName} ${selectedUser.lastName} has been rejected`);
-    setIsRejectDialogOpen(false);
-    setRejectionReason("");
-    setViewMode('list');
-    setSelectedUser(null);
+    setIsRejecting(true);
+    try {
+      const response = await fetch('/api/user-management/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: selectedUser.id,
+          rejectionReason: rejectionReason.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        toast.error(data.message || 'Failed to reject user');
+        return;
+      }
+
+      // Remove user from local state
+      setUsers(users.filter(user => user.id !== selectedUser.id));
+      
+      toast.success(`Registration for ${selectedUser.firstName} ${selectedUser.lastName} has been rejected`);
+      setIsRejectDialogOpen(false);
+      setRejectionReason("");
+      setViewMode('list');
+      setSelectedUser(null);
+    } catch (error) {
+      console.error('Reject user error:', error);
+      toast.error('An error occurred while rejecting the user');
+    } finally {
+      setIsRejecting(false);
+    }
   };
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-[#1E40AF]" />
+          <p className="text-[#6B7280]">Loading users...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -482,7 +987,7 @@ export function UserManagement() {
                     
                     <Card className="border-[#E5E7EB] bg-[#F9FAFB]">
                       <CardContent className="pt-6">
-                        {selectedUser.status === 'Pending Approval' ? (
+                        {selectedUser.status === 'Pending Approval' && isAdmin ? (
                           <div className="space-y-2">
                             <Label htmlFor="role-select">
                               Assign Role <span className="text-red-500">*</span>
@@ -501,13 +1006,16 @@ export function UserManagement() {
                               </SelectContent>
                             </Select>
                             <p className="text-[12px] text-[#6B7280]">
-                              Role must be assigned before approval
+                              {selectedUser.role 
+                                ? `Current role: ${selectedUser.role}. You can change the role before approval.`
+                                : 'This staff member needs a role assignment before approval.'
+                              }
                             </p>
                           </div>
                         ) : (
                           <div>
                             <Label className="text-[#6B7280]">Current Role</Label>
-                            <p className="text-[#111827] mt-1">{selectedUser.role}</p>
+                            <p className="text-[#111827] mt-1">{selectedUser.role || 'Not assigned'}</p>
                           </div>
                         )}
                       </CardContent>
@@ -527,35 +1035,50 @@ export function UserManagement() {
                       <CardContent className="pt-6 space-y-4">
                         <div>
                           <Label className="text-[#6B7280]">Tax Identification Number (TIN)</Label>
-                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.tin}</p>
+                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.tin || 'Not provided'}</p>
+                        </div>
+                        
+                        <div>
+                          <Label className="text-[#6B7280]">ID Type</Label>
+                          <p className="text-[#111827] mt-1">{selectedUser.idType || 'Not provided'}</p>
                         </div>
                         
                         <div>
                           <Label className="text-[#6B7280]">Identification Card Number</Label>
-                          <p className="text-[#111827] mt-1">{selectedUser.idCardNumber}</p>
+                          <p className="text-[#111827] mt-1">{selectedUser.idNumber || 'Not provided'}</p>
                         </div>
                       </CardContent>
                     </Card>
 
-                    {selectedUser.idCardFrontImage && selectedUser.idCardBackImage && (
+                    {/* Identity Document - Admin only */}
+                    {isAdmin && selectedUser.identityDocumentUrl && (
                       <Card className="border-[#E5E7EB]">
                         <CardContent className="pt-6 space-y-4">
                           <div>
-                            <Label className="text-[#6B7280] mb-2 block">ID Card Front</Label>
-                            <img 
-                              src={selectedUser.idCardFrontImage} 
-                              alt="ID Card Front" 
-                              className="w-full h-48 object-cover rounded-lg border border-[#E5E7EB]"
-                            />
-                          </div>
-                          
-                          <div>
-                            <Label className="text-[#6B7280] mb-2 block">ID Card Back</Label>
-                            <img 
-                              src={selectedUser.idCardBackImage} 
-                              alt="ID Card Back" 
-                              className="w-full h-48 object-cover rounded-lg border border-[#E5E7EB]"
-                            />
+                            <Label className="text-[#6B7280] mb-2 block">Identity Document</Label>
+                            {selectedUser.identityDocumentUrl.toLowerCase().endsWith('.pdf') ? (
+                              <div className="flex items-center gap-3 p-4 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB]">
+                                <FileText className="h-8 w-8 text-[#1E40AF]" />
+                                <div className="flex-1">
+                                  <p className="text-[#111827] font-medium">Identity Document (PDF)</p>
+                                  <p className="text-[12px] text-[#6B7280]">Click to view document</p>
+                                </div>
+                                <a 
+                                  href={selectedUser.identityDocumentUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-[#1E40AF] hover:underline flex items-center gap-1"
+                                >
+                                  View <ExternalLink className="h-4 w-4" />
+                                </a>
+                              </div>
+                            ) : (
+                              <img 
+                                src={selectedUser.identityDocumentUrl} 
+                                alt="Identity Document" 
+                                className="w-full max-h-64 object-contain rounded-lg border border-[#E5E7EB]"
+                              />
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -575,24 +1098,60 @@ export function UserManagement() {
                       <CardContent className="pt-6 space-y-4">
                         <div>
                           <Label className="text-[#6B7280]">Business Registration Number (BRN)</Label>
-                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.brn}</p>
-                          <p className="text-[12px] text-[#6B7280] mt-1">
-                            Year: {selectedUser.brn?.substring(0, 4)} | Type: {selectedUser.brn?.substring(4, 6)} | ID: {selectedUser.brn?.substring(6)}
-                          </p>
+                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.idNumber || 'Not provided'}</p>
+                          {selectedUser.idNumber && (
+                            <p className="text-[12px] text-[#6B7280] mt-1">
+                              Year: {selectedUser.idNumber?.substring(0, 4)} | Type: {selectedUser.idNumber?.substring(4, 6)} | ID: {selectedUser.idNumber?.substring(6)}
+                            </p>
+                          )}
                         </div>
                         
                         <div>
                           <Label className="text-[#6B7280]">Company Tax Identification Number (TIN)</Label>
-                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.companyTin}</p>
+                          <p className="text-[#111827] mt-1 font-mono">{selectedUser.tin || 'Not provided'}</p>
                         </div>
                       </CardContent>
                     </Card>
+
+                    {/* Identity Document - Admin only */}
+                    {isAdmin && selectedUser.identityDocumentUrl && (
+                      <Card className="border-[#E5E7EB]">
+                        <CardContent className="pt-6 space-y-4">
+                          <div>
+                            <Label className="text-[#6B7280] mb-2 block">Business Document</Label>
+                            {selectedUser.identityDocumentUrl.toLowerCase().endsWith('.pdf') ? (
+                              <div className="flex items-center gap-3 p-4 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB]">
+                                <FileText className="h-8 w-8 text-[#1E40AF]" />
+                                <div className="flex-1">
+                                  <p className="text-[#111827] font-medium">Business Document (PDF)</p>
+                                  <p className="text-[12px] text-[#6B7280]">Click to view document</p>
+                                </div>
+                                <a 
+                                  href={selectedUser.identityDocumentUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-[#1E40AF] hover:underline flex items-center gap-1"
+                                >
+                                  View <ExternalLink className="h-4 w-4" />
+                                </a>
+                              </div>
+                            ) : (
+                              <img 
+                                src={selectedUser.identityDocumentUrl} 
+                                alt="Business Document" 
+                                className="w-full max-h-64 object-contain rounded-lg border border-[#E5E7EB]"
+                              />
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
                   </div>
                 </>
               )}
 
-              {/* Approval Actions */}
-              {selectedUser.status === 'Pending Approval' && (
+              {/* Approval Actions - Admin only */}
+              {isAdmin && selectedUser.status === 'Pending Approval' && (
                 <>
                   <Separator />
                   <div className="flex gap-3">
@@ -626,24 +1185,34 @@ export function UserManagement() {
         <p className="text-[#374151]">Manage system users and permissions</p>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex gap-3">
-        <Button 
-          className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6 rounded-lg"
-          onClick={handleOpenAddDialog}
-        >
-          <UserPlus className="mr-2 h-4 w-4" />
-          Add New User
-        </Button>
-        <Button variant="outline" className="h-10 px-6 rounded-lg">
-          <Upload className="mr-2 h-4 w-4" />
-          Import Users
-        </Button>
-        <Button variant="outline" className="h-10 px-6 rounded-lg">
-          <Download className="mr-2 h-4 w-4" />
-          Export Users
-        </Button>
-      </div>
+      {/* Action Buttons - Admin only */}
+      {isAdmin && (
+        <div className="flex gap-3">
+          <Button 
+            className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6 rounded-lg"
+            onClick={handleOpenAddDialog}
+          >
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add New User
+          </Button>
+          <Button 
+            variant="outline" 
+            className="h-10 px-6 rounded-lg"
+            onClick={() => setIsImportDialogOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Import Users
+          </Button>
+          <Button 
+            variant="outline" 
+            className="h-10 px-6 rounded-lg"
+            onClick={handleExportUsers}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export Users
+          </Button>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="flex gap-4 items-center bg-white p-4 rounded-lg border border-[#E5E7EB]">
@@ -698,7 +1267,7 @@ export function UserManagement() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.map((user) => (
+            {paginatedUsers.map((user) => (
               <TableRow key={user.id} className="h-14 hover:bg-[#F3F4F6]">
                 <TableCell>
                   <Checkbox />
@@ -765,7 +1334,7 @@ export function UserManagement() {
                         <Eye className="mr-2 h-4 w-4" />
                         View Details
                       </DropdownMenuItem>
-                      {user.status !== 'Pending Approval' && (
+                      {isAdmin && user.status !== 'Pending Approval' && (
                         <DropdownMenuItem onClick={() => handleEditUser(user)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Edit
@@ -783,15 +1352,44 @@ export function UserManagement() {
       {/* Pagination */}
       <div className="flex items-center justify-between">
         <p className="text-[#6B7280]">
-          Showing {filteredUsers.length} of {users.length} users
+          Showing {filteredUsers.length === 0 ? 0 : startIndex + 1} - {Math.min(endIndex, filteredUsers.length)} of {filteredUsers.length} users
         </p>
-        <div className="flex gap-2">
-          <Button variant="outline" className="h-10 px-4">Previous</Button>
-          <Button className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-4">1</Button>
-          <Button variant="outline" className="h-10 px-4">2</Button>
-          <Button variant="outline" className="h-10 px-4">3</Button>
-          <Button variant="outline" className="h-10 px-4">Next</Button>
-        </div>
+        {totalPages > 1 && (
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              className="h-10 px-4"
+              onClick={handlePreviousPage}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            {getPageNumbers().map((page, index) => (
+              typeof page === 'number' ? (
+                <Button
+                  key={index}
+                  variant={currentPage === page ? "default" : "outline"}
+                  className={`h-10 px-4 ${currentPage === page ? 'bg-[#1E40AF] hover:bg-[#1E3A8A]' : ''}`}
+                  onClick={() => handlePageClick(page)}
+                >
+                  {page}
+                </Button>
+              ) : (
+                <span key={index} className="h-10 px-2 flex items-center text-[#6B7280]">
+                  {page}
+                </span>
+              )
+            ))}
+            <Button 
+              variant="outline" 
+              className="h-10 px-4"
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </div>
         </>
       )}
@@ -818,12 +1416,20 @@ export function UserManagement() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isApproving}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleApproveUser}
               className="bg-[#059669] hover:bg-[#047857]"
+              disabled={isApproving}
             >
-              Approve User
+              {isApproving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Approving...
+                </>
+              ) : (
+                'Approve User'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -864,12 +1470,20 @@ export function UserManagement() {
             </p>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isRejecting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRejectUser}
               className="bg-[#DC2626] hover:bg-[#B91C1C]"
+              disabled={isRejecting}
             >
-              Reject User
+              {isRejecting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Rejecting...
+                </>
+              ) : (
+                'Reject User'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -944,16 +1558,19 @@ export function UserManagement() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="add-status">Status *</Label>
-              <Select value={addForm.status} onValueChange={(value: UserStatus) => setAddForm({ ...addForm, status: value })}>
+              <Label htmlFor="add-status">Account Status *</Label>
+              <Select value={addForm.status} onValueChange={(value: DbStatus) => setAddForm({ ...addForm, status: value })}>
                 <SelectTrigger id="add-status" className="h-10">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
+                  <SelectItem value="pending">Pending Verification (default)</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-[12px] text-[#6B7280]">
+                New users will receive email to setup their password.
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -961,14 +1578,16 @@ export function UserManagement() {
               variant="outline" 
               onClick={() => setIsAddDialogOpen(false)}
               className="h-10 px-6"
+              disabled={isAddingUser}
             >
               Cancel
             </Button>
             <Button 
               onClick={handleAddNewUser}
-              className="bg-[#F15929] hover:bg-[#D14820] h-10 px-6"
+              className="bg-[#1E40AF] hover:bg-[#1E3A8A] h-10 px-6"
+              disabled={isAddingUser}
             >
-              Add User
+              {isAddingUser ? "Creating..." : "Add User"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1062,14 +1681,154 @@ export function UserManagement() {
               variant="outline" 
               onClick={() => setIsEditDialogOpen(false)}
               className="h-10 px-6"
+              disabled={isSaving}
             >
               Cancel
             </Button>
             <Button 
               onClick={handleSaveUser}
               className="bg-[#F15929] hover:bg-[#D14820] h-10 px-6"
+              disabled={isSaving}
             >
-              Save Changes
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Users Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
+        setIsImportDialogOpen(open);
+        if (!open) {
+          setImportFile(null);
+          setImportPreview([]);
+          setImportErrors([]);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        }
+      }}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Import Users from CSV</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file to import multiple users at once. Users will be created as Internal Staff with pending status.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Download Template */}
+            <div className="flex items-center justify-between p-4 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB]">
+              <div>
+                <p className="text-sm font-medium text-[#111827]">Need a template?</p>
+                <p className="text-xs text-[#6B7280]">Download our CSV template with the correct format</p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleDownloadTemplate}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Template
+              </Button>
+            </div>
+
+            {/* File Upload */}
+            <div className="space-y-2">
+              <Label htmlFor="csv-file">CSV File</Label>
+              <div className="flex gap-2">
+                <Input
+                  ref={fileInputRef}
+                  id="csv-file"
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileSelect}
+                  className="h-10"
+                />
+              </div>
+              <p className="text-xs text-[#6B7280]">
+                Required columns: First Name, Last Name, Email, Role
+              </p>
+            </div>
+
+            {/* Import Errors */}
+            {importErrors.length > 0 && (
+              <div className="p-4 bg-[#FEF2F2] border border-[#FECACA] rounded-lg">
+                <p className="text-sm font-medium text-[#991B1B] mb-2">Validation Errors:</p>
+                <ul className="text-xs text-[#7F1D1D] space-y-1">
+                  {importErrors.map((error, index) => (
+                    <li key={index}>• {error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Preview Table */}
+            {importPreview.length > 0 && importErrors.length === 0 && (
+              <div className="space-y-2">
+                <Label>Preview (first 5 rows)</Label>
+                <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-[#F9FAFB]">
+                        <TableHead className="text-xs">First Name</TableHead>
+                        <TableHead className="text-xs">Last Name</TableHead>
+                        <TableHead className="text-xs">Email</TableHead>
+                        <TableHead className="text-xs">Phone</TableHead>
+                        <TableHead className="text-xs">Role</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importPreview.map((row, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="text-xs py-2">{row.firstName}</TableCell>
+                          <TableCell className="text-xs py-2">{row.lastName}</TableCell>
+                          <TableCell className="text-xs py-2">{row.email}</TableCell>
+                          <TableCell className="text-xs py-2">{row.phone || '-'}</TableCell>
+                          <TableCell className="text-xs py-2">{row.role}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <p className="text-xs text-[#6B7280]">
+                  Users will receive an email to set up their password after import.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsImportDialogOpen(false)}
+              disabled={isImporting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleImportUsers}
+              className="bg-[#1E40AF] hover:bg-[#1E3A8A]"
+              disabled={!importFile || importErrors.length > 0 || isImporting}
+            >
+              {isImporting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import Users
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
