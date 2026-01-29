@@ -292,7 +292,6 @@ model DamageInvoice {
 }
 
 model InvoiceItem {
-<<<<<<< HEAD
   id              String        @id @default(cuid())
   damageInvoiceId String
   damageInvoice   DamageInvoice @relation(fields: [damageInvoiceId], references: [id], onDelete: Cascade)
@@ -303,7 +302,6 @@ model InvoiceItem {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
-=======
   id                    String               @id @default(cuid())
   damageInvoiceId       String
   damageInvoice         DamageInvoice        @relation(fields: [damageInvoiceId], references: [id], onDelete: Cascade)
@@ -720,4 +718,3 @@ model ScaffoldingItem {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
->>>>>>> main
