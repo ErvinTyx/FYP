@@ -48,7 +48,6 @@ interface AgreementVersion {
   allowedRoles: string[];
 }
 
-<<<<<<< Updated upstream
 
 interface RFQOption {
   id: string;
@@ -64,14 +63,6 @@ interface DepositInfo {
   depositAmount: number;
   status: string;
   dueDate: string;
-=======
-interface RfqOption {
-  id: string;
-  projectName: string;
-  customerName: string;
-  customerPhone: string;
-  projectLocation: string;
->>>>>>> Stashed changes
 }
 
 interface RentalAgreement {
