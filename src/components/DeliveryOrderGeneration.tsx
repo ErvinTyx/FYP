@@ -11,10 +11,32 @@ interface DeliveryOrderProps {
   };
   deliveryAddress: string;
   deliveryDate: string;
+  scheduledPeriod?: string; // e.g., "1 Jan 2026 - 31 Mar 2026"
   customerPhone: string;
   customerEmail: string;
   onClose: () => void;
 }
+
+// Parse period string and get 1 day before start date
+const calculateScheduledDate = (scheduledPeriod: string | undefined, fallbackDate: string): string => {
+  if (!scheduledPeriod) return fallbackDate;
+  
+  try {
+    // Parse format like "1 Jan 2026 - 31 Mar 2026"
+    const startDateStr = scheduledPeriod.split(' - ')[0].trim();
+    const startDate = new Date(startDateStr);
+    
+    if (isNaN(startDate.getTime())) {
+      return fallbackDate;
+    }
+    
+    // Subtract 1 day
+    startDate.setDate(startDate.getDate() - 1);
+    return startDate.toISOString().split('T')[0];
+  } catch {
+    return fallbackDate;
+  }
+};
 
 export default function DeliveryOrderGeneration({
   requestId,
@@ -23,15 +45,17 @@ export default function DeliveryOrderGeneration({
   setDetails,
   deliveryAddress,
   deliveryDate,
+  scheduledPeriod,
   customerPhone,
   customerEmail,
   onClose
 }: DeliveryOrderProps) {
   const [doNumber, setDoNumber] = useState(`DO-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`);
-  const [driverName, setDriverName] = useState('');
-  const [vehicleNumber, setVehicleNumber] = useState('');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+
+  // Auto-calculate scheduled date: 1 day before period start
+  const scheduledDeliveryDate = calculateScheduledDate(scheduledPeriod, deliveryDate);
 
   const handleGenerateDO = () => {
     setShowPreview(true);
@@ -177,18 +201,7 @@ export default function DeliveryOrderGeneration({
           <div class="info-label">Delivery Address:</div>
           <div class="info-value">${deliveryAddress}</div>
           <div class="info-label">Scheduled Delivery Date:</div>
-          <div class="info-value">${new Date(deliveryDate).toLocaleDateString('en-MY')}</div>
-        </div>
-
-        <div class="info-section" style="margin-top: 20px;">
-          <div class="info-box">
-            <div class="info-label">Driver Name:</div>
-            <div class="info-value">${driverName || 'N/A'}</div>
-          </div>
-          <div class="info-box">
-            <div class="info-label">Vehicle Number:</div>
-            <div class="info-value">${vehicleNumber || 'N/A'}</div>
-          </div>
+          <div class="info-value">${new Date(scheduledDeliveryDate).toLocaleDateString('en-MY')}</div>
         </div>
 
         <div style="margin-top: 20px;">
@@ -335,19 +348,8 @@ export default function DeliveryOrderGeneration({
                   </div>
                   <div>
                     <span className="text-gray-600">Scheduled Date:</span>
-                    <span className="ml-2 text-[#231F20]">{new Date(deliveryDate).toLocaleDateString('en-MY')}</span>
+                    <span className="ml-2 text-[#231F20]">{new Date(scheduledDeliveryDate).toLocaleDateString('en-MY')}</span>
                   </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6 mb-6">
-                <div className="border border-gray-200 rounded p-4">
-                  <span className="text-gray-600">Driver:</span>
-                  <span className="ml-2 text-[#231F20]">{driverName || 'N/A'}</span>
-                </div>
-                <div className="border border-gray-200 rounded p-4">
-                  <span className="text-gray-600">Vehicle:</span>
-                  <span className="ml-2 text-[#231F20]">{vehicleNumber || 'N/A'}</span>
                 </div>
               </div>
 
@@ -467,34 +469,15 @@ export default function DeliveryOrderGeneration({
               <label className="block text-sm text-gray-700 mb-2">Scheduled Delivery Date</label>
               <input
                 type="text"
-                value={new Date(deliveryDate).toLocaleDateString('en-MY')}
+                value={new Date(scheduledDeliveryDate).toLocaleDateString('en-MY')}
                 disabled
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
               />
-            </div>
-
-            {/* Driver & Vehicle */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-700 mb-2">Driver Name</label>
-                <input
-                  type="text"
-                  value={driverName}
-                  onChange={(e) => setDriverName(e.target.value)}
-                  placeholder="Enter driver name"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F15929] focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-2">Vehicle Number</label>
-                <input
-                  type="text"
-                  value={vehicleNumber}
-                  onChange={(e) => setVehicleNumber(e.target.value)}
-                  placeholder="e.g., ABC1234"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F15929] focus:border-transparent"
-                />
-              </div>
+              {scheduledPeriod && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Auto-calculated: 1 day before rental period ({scheduledPeriod})
+                </p>
+              )}
             </div>
 
             {/* Items Summary */}

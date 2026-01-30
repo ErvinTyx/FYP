@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Save, Upload, X, Image as ImageIcon, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Upload, X, Image as ImageIcon, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -17,6 +17,7 @@ import {
 import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
+import { uploadInspectionPhotos } from '@/lib/upload';
 
 interface ConditionReportFormProps {
   report: ConditionReport | null;
@@ -151,34 +152,53 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
     }));
   };
 
-  const handleImageUpload = (itemId: string, event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files) return;
+  const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
 
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const newImage: InspectionImage = {
-          id: `img-${Date.now()}-${Math.random()}`,
-          url: e.target?.result as string,
-          caption: file.name,
+  const handleImageUpload = async (itemId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    
+    setUploadingItemId(itemId);
+    try {
+      // Upload files to server
+      const results = await uploadInspectionPhotos(fileArray, 'before');
+      
+      const successfulUploads = results.filter(r => r.success && r.url);
+      const failedCount = results.filter(r => !r.success).length;
+      
+      if (failedCount > 0) {
+        toast.error(`${failedCount} file(s) failed to upload`);
+      }
+      
+      if (successfulUploads.length > 0) {
+        const newImages: InspectionImage[] = successfulUploads.map((result, index) => ({
+          id: `img-${Date.now()}-${index}`,
+          url: result.url!,
+          caption: result.originalName || `Image ${index + 1}`,
           uploadedAt: new Date().toISOString()
-        };
+        }));
 
         setItems(items.map(item => {
           if (item.id === itemId) {
             return {
               ...item,
-              images: [...item.images, newImage]
+              images: [...item.images, ...newImages]
             };
           }
           return item;
         }));
-      };
-      reader.readAsDataURL(file);
-    });
-
-    toast.success(`${files.length} image(s) uploaded`);
+        
+        toast.success(`${successfulUploads.length} image(s) uploaded to server`);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload images');
+    } finally {
+      setUploadingItemId(null);
+      event.target.value = '';
+    }
   };
 
   const removeImage = (itemId: string, imageId: string) => {
@@ -567,9 +587,14 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
                           variant="outline"
                           size="sm"
                           onClick={() => document.getElementById(`file-${item.id}`)?.click()}
+                          disabled={uploadingItemId === item.id}
                         >
-                          <Upload className="size-4 mr-2" />
-                          Upload Images
+                          {uploadingItemId === item.id ? (
+                            <Loader2 className="size-4 mr-2 animate-spin" />
+                          ) : (
+                            <Upload className="size-4 mr-2" />
+                          )}
+                          {uploadingItemId === item.id ? 'Uploading...' : 'Upload Images'}
                         </Button>
                         <input
                           id={`file-${item.id}`}
@@ -578,6 +603,7 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
                           multiple
                           className="hidden"
                           onChange={(e) => handleImageUpload(item.id, e)}
+                          disabled={uploadingItemId === item.id}
                         />
                       </div>
 

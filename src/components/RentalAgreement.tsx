@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { FileText, Plus, Eye, Edit, History, Download, FileSignature, Lock, Unlock, Save, X, Calendar as CalendarIcon, Upload, FileCheck } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
@@ -82,88 +82,11 @@ interface RentalAgreement {
   createdBy: string;
 }
 
-const mockAgreements: RentalAgreement[] = [
-  {
-    id: 'AGR-2024-001',
-    agreementNumber: 'RA-2024-001',
-    poNumber: 'PO-2024-001',
-    projectName: 'Downtown Plaza Construction',
-    owner: 'Power Metal & Steel Sdn Bhd',
-    ownerPhone: '+60 3-1234 5678',
-    hirer: 'Acme Construction Sdn Bhd',
-    hirerPhone: '+60 12-345 6789',
-    location: 'Lot 123, Jalan Teknologi, Cyberjaya, Selangor',
-    termOfHire: '6 months (Starting: 01 Dec 2024)',
-    transportation: 'Included - Delivery & Collection',
-    monthlyRental: 15000,
-    securityDeposit: 2,
-    minimumCharges: 3,
-    defaultInterest: 1.5,
-    ownerSignatoryName: 'Ahmad bin Abdullah',
-    ownerNRIC: '720101-01-5678',
-    hirerSignatoryName: 'John Tan Wei Ming',
-    hirerNRIC: '850505-10-1234',
-    status: 'Active',
-    currentVersion: 1,
-    versions: [
-      {
-        versionNumber: 1,
-        createdAt: '2024-11-15 10:30:00',
-        createdBy: 'Admin User',
-        changes: 'Initial agreement created',
-        allowedRoles: ['Admin', 'Manager', 'Sales', 'Finance']
-      }
-    ],
-    createdAt: '2024-11-15',
-    createdBy: 'Admin User'
-  },
-  {
-    id: 'AGR-2024-002',
-    agreementNumber: 'RA-2024-002',
-    poNumber: 'PO-2024-002',
-    projectName: 'City Center Tower',
-    owner: 'Power Metal & Steel Sdn Bhd',
-    ownerPhone: '+60 3-1234 5678',
-    hirer: 'BuildRight Inc Sdn Bhd',
-    hirerPhone: '+60 11-222 3333',
-    location: 'Jalan Raja, Kuala Lumpur',
-    termOfHire: '12 months (Starting: 01 Jan 2025)',
-    transportation: 'Excluded - Self Collection',
-    monthlyRental: 28000,
-    securityDeposit: 3,
-    minimumCharges: 6,
-    defaultInterest: 2.0,
-    ownerSignatoryName: 'Ahmad bin Abdullah',
-    ownerNRIC: '720101-01-5678',
-    hirerSignatoryName: 'Sarah Lee',
-    hirerNRIC: '900812-14-5678',
-    status: 'Draft',
-    currentVersion: 2,
-    versions: [
-      {
-        versionNumber: 1,
-        createdAt: '2024-11-20 09:00:00',
-        createdBy: 'Sales User',
-        changes: 'Initial draft created',
-        allowedRoles: ['Admin', 'Manager', 'Sales']
-      },
-      {
-        versionNumber: 2,
-        createdAt: '2024-11-22 14:15:00',
-        createdBy: 'Manager User',
-        changes: 'Updated monthly rental from RM 25,000 to RM 28,000',
-        allowedRoles: ['Admin', 'Manager']
-      }
-    ],
-    createdAt: '2024-11-20',
-    createdBy: 'Sales User'
-  }
-];
-
 const userRoles = ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff'];
 
 export function RentalAgreement() {
-  const [agreements, setAgreements] = useState<RentalAgreement[]>(mockAgreements);
+  const [agreements, setAgreements] = useState<RentalAgreement[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -179,6 +102,31 @@ export function RentalAgreement() {
   const [isDrawing, setIsDrawing] = useState(false);
   
   const [currentUserRole] = useState('Admin'); // Mock current user role
+
+  // Fetch agreements from API
+  const fetchAgreements = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/rental-agreement');
+      const data = await response.json();
+      
+      if (data.success) {
+        setAgreements(data.agreements);
+      } else {
+        toast.error(data.message || 'Failed to fetch agreements');
+      }
+    } catch (error) {
+      console.error('Error fetching agreements:', error);
+      toast.error('Failed to connect to server');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Load agreements on mount
+  useEffect(() => {
+    fetchAgreements();
+  }, [fetchAgreements]);
 
   // Form state
   const [formData, setFormData] = useState<Partial<RentalAgreement>>({
@@ -204,83 +152,93 @@ export function RentalAgreement() {
     }
   };
 
-  const handleCreateAgreement = () => {
+  const handleCreateAgreement = async () => {
     if (!formData.projectName || !formData.hirer || !formData.agreementNumber || !formData.poNumber) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    const newAgreement: RentalAgreement = {
-      id: `AGR-2024-${String(agreements.length + 1).padStart(3, '0')}`,
-      agreementNumber: formData.agreementNumber!,
-      poNumber: formData.poNumber!,
-      projectName: formData.projectName!,
-      owner: formData.owner || 'Power Metal & Steel Sdn Bhd',
-      ownerPhone: formData.ownerPhone || '+60 3-1234 5678',
-      hirer: formData.hirer!,
-      hirerPhone: formData.hirerPhone || '',
-      location: formData.location || '',
-      termOfHire: formData.termOfHire || '',
-      transportation: formData.transportation || '',
-      monthlyRental: formData.monthlyRental || 0,
-      securityDeposit: formData.securityDeposit || 0,
-      minimumCharges: formData.minimumCharges || 0,
-      defaultInterest: formData.defaultInterest || 0,
-      ownerSignatoryName: formData.ownerSignatoryName || '',
-      ownerNRIC: formData.ownerNRIC || '',
-      hirerSignatoryName: formData.hirerSignatoryName || '',
-      hirerNRIC: formData.hirerNRIC || '',
-      status: 'Draft',
-      currentVersion: 1,
-      versions: [
-        {
-          versionNumber: 1,
-          createdAt: new Date().toISOString(),
-          createdBy: 'Current User',
-          changes: 'Initial agreement created',
-          allowedRoles: versionAccess
-        }
-      ],
-      createdAt: format(new Date(), 'yyyy-MM-dd'),
-      createdBy: 'Current User'
-    };
+    try {
+      const response = await fetch('/api/rental-agreement', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agreementNumber: formData.agreementNumber,
+          poNumber: formData.poNumber,
+          projectName: formData.projectName,
+          owner: formData.owner || 'Power Metal & Steel Sdn Bhd',
+          ownerPhone: formData.ownerPhone || '+60 3-1234 5678',
+          hirer: formData.hirer,
+          hirerPhone: formData.hirerPhone || '',
+          location: formData.location || '',
+          termOfHire: formData.termOfHire || '',
+          transportation: formData.transportation || '',
+          monthlyRental: formData.monthlyRental || 0,
+          securityDeposit: formData.securityDeposit || 0,
+          minimumCharges: formData.minimumCharges || 0,
+          defaultInterest: formData.defaultInterest || 0,
+          ownerSignatoryName: formData.ownerSignatoryName || '',
+          ownerNRIC: formData.ownerNRIC || '',
+          hirerSignatoryName: formData.hirerSignatoryName || '',
+          hirerNRIC: formData.hirerNRIC || '',
+          status: 'Draft',
+          allowedRoles: versionAccess,
+        }),
+      });
 
-    setAgreements([...agreements, newAgreement]);
-    toast.success("Rental agreement created successfully!");
-    setIsCreateDialogOpen(false);
-    resetForm();
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Rental agreement created successfully!");
+        setIsCreateDialogOpen(false);
+        resetForm();
+        fetchAgreements(); // Refresh the list
+      } else {
+        toast.error(data.message || 'Failed to create agreement');
+      }
+    } catch (error) {
+      console.error('Error creating agreement:', error);
+      toast.error('Failed to connect to server');
+    }
   };
 
-  const handleEditAgreement = () => {
+  const handleEditAgreement = async () => {
     if (!selectedAgreement || !formData.projectName) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    const updatedAgreement: RentalAgreement = {
-      ...selectedAgreement,
-      ...formData,
-      currentVersion: selectedAgreement.currentVersion + 1,
-      versions: [
-        ...selectedAgreement.versions,
-        {
-          versionNumber: selectedAgreement.currentVersion + 1,
-          createdAt: new Date().toISOString(),
-          createdBy: 'Current User',
+    try {
+      const response = await fetch('/api/rental-agreement', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: selectedAgreement.id,
+          ...formData,
           changes: 'Agreement updated',
-          allowedRoles: ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff']
-        }
-      ]
-    };
+          allowedRoles: ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff'],
+        }),
+      });
 
-    setAgreements(agreements.map(agr => 
-      agr.id === selectedAgreement.id ? updatedAgreement as RentalAgreement : agr
-    ));
+      const data = await response.json();
 
-    toast.success("Agreement updated successfully!");
-    setIsEditDialogOpen(false);
-    setSelectedAgreement(null);
-    resetForm();
+      if (data.success) {
+        toast.success("Agreement updated successfully!");
+        setIsEditDialogOpen(false);
+        setSelectedAgreement(null);
+        resetForm();
+        fetchAgreements(); // Refresh the list
+      } else {
+        toast.error(data.message || 'Failed to update agreement');
+      }
+    } catch (error) {
+      console.error('Error updating agreement:', error);
+      toast.error('Failed to connect to server');
+    }
   };
 
   const resetForm = () => {
@@ -372,31 +330,46 @@ export function RentalAgreement() {
     }, 1500);
   };
 
-  const handleUploadSignedDocument = () => {
+  const handleUploadSignedDocument = async () => {
     if (!uploadedFile || !selectedAgreement) {
       toast.error("Please select a file to upload");
       return;
     }
 
-    // In real application, this would upload to a server
-    // For now, we'll create a fake URL
-    const fakeUrl = URL.createObjectURL(uploadedFile);
+    try {
+      // In real application, this would upload to a cloud storage (S3, etc.)
+      // For now, we'll create a fake URL and update the database
+      const fakeUrl = URL.createObjectURL(uploadedFile);
 
-    const updatedAgreement: RentalAgreement = {
-      ...selectedAgreement,
-      signedDocumentUrl: fakeUrl,
-      signedDocumentUploadedAt: new Date().toISOString(),
-      signedDocumentUploadedBy: 'Current Admin User',
-    };
+      const response = await fetch('/api/rental-agreement', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: selectedAgreement.id,
+          signedDocumentUrl: fakeUrl,
+          signedDocumentUploadedAt: new Date().toISOString(),
+          changes: 'Signed document uploaded',
+          allowedRoles: ['Admin', 'Manager'],
+        }),
+      });
 
-    setAgreements(agreements.map(agr => 
-      agr.id === selectedAgreement.id ? updatedAgreement : agr
-    ));
+      const data = await response.json();
 
-    toast.success("Signed agreement uploaded successfully!");
-    setIsUploadDialogOpen(false);
-    setUploadedFile(null);
-    setSelectedAgreement(null);
+      if (data.success) {
+        toast.success("Signed agreement uploaded successfully!");
+        setIsUploadDialogOpen(false);
+        setUploadedFile(null);
+        setSelectedAgreement(null);
+        fetchAgreements(); // Refresh the list
+      } else {
+        toast.error(data.message || 'Failed to upload signed document');
+      }
+    } catch (error) {
+      console.error('Error uploading signed document:', error);
+      toast.error('Failed to connect to server');
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -473,7 +446,19 @@ export function RentalAgreement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {agreements.map((agreement) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8 text-[#6B7280]">
+                    Loading agreements...
+                  </TableCell>
+                </TableRow>
+              ) : agreements.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8 text-[#6B7280]">
+                    No rental agreements found. Create your first agreement.
+                  </TableCell>
+                </TableRow>
+              ) : agreements.map((agreement) => (
                 <TableRow key={agreement.id} className="h-14 hover:bg-[#F3F4F6]">
                   <TableCell className="text-[#374151]">{agreement.projectName}</TableCell>
                   <TableCell className="text-[#374151]">RM {calculateTotalRental(agreement.monthlyRental, agreement.termOfHire).toLocaleString()}</TableCell>

@@ -272,6 +272,9 @@ export default function App() {
     }
   }, [status, session]);
 
+  // BUG FIX: Removed duplicate useEffect that was resetting page state on every session refresh.
+  // The first useEffect (lines 240-273) already handles session sync with hasInitializedPageRef guard.
+
   // Unified login handler - determines portal based on role
   const handleUnifiedLogin = (role: string) => {
     setUserRole(role);
@@ -628,7 +631,9 @@ export default function App() {
           />
         );
       case "delivery-return-requests":
-        return <DeliveryReturnManagement />;
+        return <DeliveryReturnManagement 
+          onNavigateToDeliveryManagement={() => setCurrentPage("delivery-management")} 
+        />;
       default:
         return <BillingDashboard />;
     }

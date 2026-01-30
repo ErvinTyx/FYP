@@ -1,12 +1,54 @@
-import React, { useState } from 'react';
-import { Search, Plus, FileText, Truck, Package, CheckCircle, Clock, XCircle, Phone, Mail, MapPin, Calendar, User, ArrowRight, Download, Upload, Check, X, Loader } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Search, Plus, FileText, Truck, Package, CheckCircle, Clock, XCircle, Phone, Mail, MapPin, Calendar as CalendarIcon, User, ArrowRight, Download, Upload, Check, X, Loader } from 'lucide-react';
 import DeliveryOrderGeneration from './DeliveryOrderGeneration';
+import { Calendar } from './ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { format } from 'date-fns';
 
 type DeliveryType = 'delivery' | 'pickup';
 type DeliveryStatus = 'Pending' | 'Quoted' | 'DO Generated' | 'Confirmed' | 'Packing List Issued' | 'Packing & Loading' | 'Driver Acknowledged' | 'In Transit' | 'Delivered' | 'Customer Confirmed' | 'Cancelled';
 type ReturnStatus = 'Requested' | 'Quoted' | 'Agreed' | 'Scheduled' | 'In Transit' | 'Received' | 'Customer Notified' | 'GRN Generated' | 'Cancelled';
 type ReturnType = 'partial' | 'full';
 type CollectionMethod = 'transport' | 'self-return';
+
+interface RentalAgreement {
+  id: string;
+  agreementNumber: string;
+  projectName: string;
+  hirer: string;
+  hirerPhone: string | null;
+  location: string | null;
+  status: string;
+}
+
+interface ScaffoldingItem {
+  id: string;
+  itemCode: string;
+  name: string;
+  category: string;
+  quantity: number;
+  available: number;
+}
+
+interface RFQItem {
+  id: string;
+  scaffoldingItemId: string;
+  scaffoldingItemName: string;
+  quantity: number;
+  unit: string;
+}
+
+interface RFQ {
+  id: string;
+  rfqNumber: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  projectName: string;
+  projectLocation: string;
+  status: string;
+  items: RFQItem[];
+}
 
 interface DeliverySet {
   id: string;
@@ -22,6 +64,7 @@ interface DeliverySet {
   customerAcknowledged?: boolean;
   otp?: string;
   signedDO?: string;
+  doNumber?: string; // DO number for tracking when DO is generated
 }
 
 interface ReturnRequest {
@@ -59,7 +102,29 @@ interface DeliveryRequest {
   pickupTime?: string;
 }
 
-export default function DeliveryReturnManagement() {
+// Calculate scheduled date: 1 day before period start
+const calculateScheduledDateFromPeriod = (period: string): string | undefined => {
+  if (!period) return undefined;
+  try {
+    // Parse format like "1 Jan 2026 - 31 Mar 2026"
+    const startDateStr = period.split(' - ')[0].trim();
+    const startDate = new Date(startDateStr);
+    if (isNaN(startDate.getTime())) return undefined;
+    // Subtract 1 day
+    startDate.setDate(startDate.getDate() - 1);
+    return startDate.toISOString();
+  } catch {
+    return undefined;
+  }
+};
+
+interface DeliveryReturnManagementProps {
+  onNavigateToDeliveryManagement?: () => void;
+}
+
+export default function DeliveryReturnManagement({ 
+  onNavigateToDeliveryManagement 
+}: DeliveryReturnManagementProps) {
   const [activeTab, setActiveTab] = useState<'delivery' | 'return'>('delivery');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -91,166 +156,284 @@ export default function DeliveryReturnManagement() {
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [customerOTP, setCustomerOTP] = useState('');
 
-  // Mock data
-  const [deliveryRequests, setDeliveryRequests] = useState<DeliveryRequest[]>([
-    {
-      id: 'DR001',
-      requestId: 'DR-2026-001',
-      customerName: 'ABC Construction Sdn Bhd',
-      agreementNo: 'AGR-2026-001',
-      customerPhone: '+60123456789',
-      customerEmail: 'contact@abc.com',
-      deliveryAddress: 'Jalan Raja Laut, 50350 Kuala Lumpur',
-      deliveryType: 'delivery',
-      requestDate: '2026-12-01',
-      totalSets: 3,
-      deliveredSets: 0,
-      sets: [
-        {
-          id: 'SET-A',
-          setName: 'Set A - Initial Phase',
-          items: [
-            { name: 'Scaffolding Pipe 6m', quantity: 100 },
-            { name: 'Coupler Standard', quantity: 200 },
-            { name: 'Base Plate', quantity: 50 }
-          ],
-          scheduledPeriod: 'Month 1-3',
-          status: 'Pending'
-        },
-        {
-          id: 'SET-B',
-          setName: 'Set B - Extension Phase',
-          items: [
-            { name: 'Scaffolding Pipe 4m', quantity: 150 },
-            { name: 'Coupler Swivel', quantity: 180 },
-            { name: 'Ladder Beam', quantity: 30 }
-          ],
-          scheduledPeriod: 'Month 4-6',
-          status: 'Pending'
-        },
-        {
-          id: 'SET-C',
-          setName: 'Set C - Final Phase',
-          items: [
-            { name: 'H-Frame Scaffolding', quantity: 80 },
-            { name: 'Cross Brace', quantity: 120 },
-            { name: 'Walk Board', quantity: 60 }
-          ],
-          scheduledPeriod: 'Month 7-9',
-          status: 'Pending'
-        }
-      ]
-    },
-    {
-      id: 'DR002',
-      requestId: 'DR-2026-002',
-      customerName: 'XYZ Development Sdn Bhd',
-      agreementNo: 'AGR-2026-002',
-      customerPhone: '+60129876543',
-      customerEmail: 'info@xyz.com',
-      deliveryAddress: 'Jalan Ampang, 50450 Kuala Lumpur',
-      deliveryType: 'delivery',
-      requestDate: '2026-12-03',
-      totalSets: 1,
-      deliveredSets: 0,
-      sets: [
-        {
-          id: 'SET-D',
-          setName: 'Set A - Main Structure',
-          items: [
-            { name: 'Steel Tube 4m', quantity: 200 },
-            { name: 'Joint Pin', quantity: 150 },
-            { name: 'Base Jack', quantity: 80 },
-            { name: 'Safety Net', quantity: 40 }
-          ],
-          scheduledPeriod: 'Month 1-6',
-          status: 'Pending'
-        }
-      ]
-    }
-  ]);
+  // Data state - fetched from API
+  const [deliveryRequests, setDeliveryRequests] = useState<DeliveryRequest[]>([]);
+  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([
-    {
-      id: 'RR001',
-      requestId: 'RR-2026-001',
-      customerName: 'DEF Builders',
-      agreementNo: 'AGR-2026-003',
-      setName: 'Set A - Foundation Phase',
-      items: [
-        { name: 'Scaffolding Pipe 6m', quantity: 80 },
-        { name: 'Coupler Standard', quantity: 160 },
-        { name: 'Base Plate', quantity: 40 }
-      ],
-      requestDate: '2026-12-02',
-      status: 'Requested',
-      reason: 'Project completed',
-      pickupAddress: 'Jalan Ipoh, 51200 Kuala Lumpur',
-      customerPhone: '+60124445555',
-      customerEmail: 'info@def.com',
-      returnType: 'full',
-      collectionMethod: 'transport'
-    },
-    {
-      id: 'RR002',
-      requestId: 'RR-2026-002',
-      customerName: 'ABC Construction Sdn Bhd',
-      agreementNo: 'AGR-2026-001',
-      setName: 'Set A - Initial Phase',
-      items: [
-        { name: 'Scaffolding Pipe 6m', quantity: 50 },
-        { name: 'Coupler Standard', quantity: 100 }
-      ],
-      requestDate: '2026-12-08',
-      status: 'Requested',
-      reason: 'Partial return - Phase 1 completed',
-      pickupAddress: 'Jalan Raja Laut, 50350 Kuala Lumpur',
-      customerPhone: '+60123456789',
-      customerEmail: 'contact@abc.com',
-      returnType: 'partial',
-      collectionMethod: 'self-return'
-    },
-    {
-      id: 'RR003',
-      requestId: 'RR-2026-003',
-      customerName: 'Megah Engineering Sdn Bhd',
-      agreementNo: 'AGR-2026-004',
-      setName: 'Set C - Rooftop',
-      items: [
-        { name: 'Aluminum Tube 4m', quantity: 100 },
-        { name: 'Edge Protection', quantity: 60 },
-        { name: 'Toe Board', quantity: 50 }
-      ],
-      requestDate: '2026-12-05',
-      status: 'Requested',
-      reason: 'Phase completed ahead of schedule',
-      pickupAddress: 'Jalan Sultan Ismail, 50250 Kuala Lumpur',
-      customerPhone: '+60167654321',
-      customerEmail: 'projects@megah.com',
-      returnType: 'full',
-      collectionMethod: 'self-return'
-    },
-    {
-      id: 'RR004',
-      requestId: 'RR-2026-004',
-      customerName: 'Sunrise Development Sdn Bhd',
-      agreementNo: 'AGR-2026-007',
-      setName: 'Set A - Bridge Construction',
-      items: [
-        { name: 'Heavy Duty Tube 6m', quantity: 120 },
-        { name: 'Beam Clamp', quantity: 90 },
-        { name: 'Support Frame', quantity: 45 }
-      ],
-      requestDate: '2026-12-07',
-      status: 'Requested',
-      reason: 'Partial return - Downsizing project scope',
-      pickupAddress: 'Jalan Damansara, 60000 Kuala Lumpur',
-      customerPhone: '+60172223333',
-      customerEmail: 'ops@sunrise.com',
-      returnType: 'partial',
-      collectionMethod: 'transport'
-    }
+  // Create modal states
+  const [showCreateDeliveryModal, setShowCreateDeliveryModal] = useState(false);
+  const [showCreateReturnModal, setShowCreateReturnModal] = useState(false);
+  const [rentalAgreements, setRentalAgreements] = useState<RentalAgreement[]>([]);
+  const [scaffoldingItems, setScaffoldingItems] = useState<ScaffoldingItem[]>([]);
+  const [rfqs, setRfqs] = useState<RFQ[]>([]);
+  const [selectedAgreementId, setSelectedAgreementId] = useState<string>('');
+  const [selectedRfqId, setSelectedRfqId] = useState<string>('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Create Delivery Form states
+  const [newDeliveryForm, setNewDeliveryForm] = useState({
+    customerEmail: '',
+    deliveryType: 'delivery' as DeliveryType,
+  });
+  const [deliverySets, setDeliverySets] = useState<{
+    setName: string;
+    scheduledPeriod: string;
+    startDate?: Date;
+    endDate?: Date;
+    items: { name: string; quantity: number; scaffoldingItemId: string }[];
+  }[]>([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+
+  // Create Return Form states
+  const [newReturnForm, setNewReturnForm] = useState({
+    setName: '',
+    reason: '',
+    returnType: 'full' as ReturnType,
+    collectionMethod: 'transport' as CollectionMethod,
+  });
+  const [returnItems, setReturnItems] = useState<{ name: string; quantity: number; scaffoldingItemId: string }[]>([
+    { name: '', quantity: 1, scaffoldingItemId: '' },
   ]);
+  const [selectedReturnRfqId, setSelectedReturnRfqId] = useState<string>('');
+
+  // Fetch delivery requests from API
+  const fetchDeliveryRequests = useCallback(async () => {
+    try {
+      const response = await fetch('/api/delivery');
+      const data = await response.json();
+      if (data.success) {
+        setDeliveryRequests(data.deliveryRequests);
+      } else {
+        console.error('Failed to fetch delivery requests:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching delivery requests:', error);
+    }
+  }, []);
+
+  // Fetch return requests from API
+  const fetchReturnRequests = useCallback(async () => {
+    try {
+      const response = await fetch('/api/return');
+      const data = await response.json();
+      if (data.success) {
+        setReturnRequests(data.returnRequests);
+      } else {
+        console.error('Failed to fetch return requests:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching return requests:', error);
+    }
+  }, []);
+
+  // Fetch rental agreements for dropdown
+  const fetchRentalAgreements = useCallback(async () => {
+    try {
+      const response = await fetch('/api/rental-agreement');
+      const data = await response.json();
+      if (data.success) {
+        setRentalAgreements(data.agreements);
+      } else {
+        console.error('Failed to fetch rental agreements:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching rental agreements:', error);
+    }
+  }, []);
+
+  // Fetch scaffolding items for dropdown
+  const fetchScaffoldingItems = useCallback(async () => {
+    try {
+      const response = await fetch('/api/scaffolding');
+      const data = await response.json();
+      if (data.success) {
+        setScaffoldingItems(data.data);
+      } else {
+        console.error('Failed to fetch scaffolding items:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching scaffolding items:', error);
+    }
+  }, []);
+
+  // Fetch RFQs for delivery creation (approved or quoted-for-delivery status)
+  const fetchRfqs = useCallback(async () => {
+    try {
+      const response = await fetch('/api/rfq');
+      const data = await response.json();
+      if (data.success) {
+        // Filter RFQs that are ready for delivery (approved or quoted-for-delivery)
+        const deliveryReadyRfqs = data.data.filter(
+          (rfq: RFQ) => rfq.status === 'approved' || rfq.status === 'quoted-for-delivery'
+        );
+        setRfqs(deliveryReadyRfqs);
+      } else {
+        console.error('Failed to fetch RFQs:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching RFQs:', error);
+    }
+  }, []);
+
+  // Generate request ID based on RFQ number
+  const generateDeliveryRequestId = (rfqNumber: string) => {
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    return `DEL-${rfqNumber}-${date}`;
+  };
+
+  const generateReturnRequestId = (agreementNo: string) => {
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, '');
+    return `RET-${agreementNo}-${date}-${time}`;
+  };
+
+  // Create Delivery Request handler
+  const handleCreateDeliveryRequest = async () => {
+    const rfq = rfqs.find(r => r.id === selectedRfqId);
+    if (!rfq) {
+      alert('Please select a quotation (RFQ)');
+      return;
+    }
+
+    // Validate sets
+    const validSets = deliverySets.filter(set => 
+      set.scheduledPeriod.trim() && 
+      set.items.some(item => item.scaffoldingItemId?.trim())
+    );
+
+    if (validSets.length === 0) {
+      alert('Please add at least one set with items');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const requestId = generateDeliveryRequestId(rfq.rfqNumber);
+      
+      const response = await fetch('/api/delivery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          customerName: rfq.customerName,
+          agreementNo: rfq.rfqNumber, // Using RFQ number as agreement reference
+          customerPhone: rfq.customerPhone || '',
+          customerEmail: rfq.customerEmail,
+          deliveryAddress: rfq.projectLocation || '',
+          deliveryType: newDeliveryForm.deliveryType,
+          rfqId: rfq.id,
+          sets: validSets.map(set => ({
+            setName: set.setName,
+            scheduledPeriod: set.scheduledPeriod,
+            items: set.items.filter(item => item.scaffoldingItemId?.trim()).map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              scaffoldingItemId: item.scaffoldingItemId,
+            })),
+          })),
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        setShowCreateDeliveryModal(false);
+        setSelectedRfqId('');
+        setNewDeliveryForm({ customerEmail: '', deliveryType: 'delivery' });
+        setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+        alert('Delivery request created successfully!');
+      } else {
+        alert('Failed to create delivery request: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error creating delivery request:', error);
+      alert('An error occurred while creating the delivery request');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Create Return Request handler
+  const handleCreateReturnRequest = async () => {
+    const rfq = rfqs.find(r => r.id === selectedReturnRfqId);
+    if (!rfq) {
+      alert('Please select a quotation (RFQ)');
+      return;
+    }
+
+    // Validate items
+    const validItems = returnItems.filter(item => item.scaffoldingItemId?.trim());
+    if (validItems.length === 0) {
+      alert('Please add at least one item to return');
+      return;
+    }
+
+    if (!newReturnForm.setName.trim()) {
+      alert('Please enter a set name');
+      return;
+    }
+
+    if (!newReturnForm.reason.trim()) {
+      alert('Please enter a reason for return');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const requestId = generateReturnRequestId(rfq.rfqNumber);
+      
+      const response = await fetch('/api/return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          customerName: rfq.customerName,
+          agreementNo: rfq.rfqNumber,
+          setName: newReturnForm.setName,
+          reason: newReturnForm.reason,
+          pickupAddress: rfq.projectLocation || '',
+          customerPhone: rfq.customerPhone || '',
+          customerEmail: rfq.customerEmail,
+          returnType: newReturnForm.returnType,
+          collectionMethod: newReturnForm.collectionMethod,
+          rfqId: rfq.id,
+          items: validItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            scaffoldingItemId: item.scaffoldingItemId,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        await fetchReturnRequests();
+        setShowCreateReturnModal(false);
+        setSelectedReturnRfqId('');
+        setNewReturnForm({ setName: '', reason: '', returnType: 'full', collectionMethod: 'transport' });
+        setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
+        alert('Return request created successfully!');
+      } else {
+        alert('Failed to create return request: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error creating return request:', error);
+      alert('An error occurred while creating the return request');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Fetch data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      await Promise.all([fetchDeliveryRequests(), fetchReturnRequests(), fetchRentalAgreements(), fetchScaffoldingItems(), fetchRfqs()]);
+      setIsLoading(false);
+    };
+    fetchData();
+  }, [fetchDeliveryRequests, fetchReturnRequests, fetchRentalAgreements, fetchScaffoldingItems, fetchRfqs]);
 
   const getStatusColor = (status: DeliveryStatus | ReturnStatus) => {
     switch (status) {
@@ -281,30 +464,78 @@ export default function DeliveryReturnManagement() {
     setShowQuotationModal(true);
   };
 
-  const handleConfirmQuotation = () => {
+  const handleConfirmQuotation = async () => {
     if (selectedRequest && selectedSet && deliveryFee) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
-            sets: req.sets.map(s => {
-              if (s.id === selectedSet.id) {
-                return {
-                  ...s,
-                  deliveryFee: parseFloat(deliveryFee),
-                  status: 'Quoted' as DeliveryStatus
-                };
-              }
-              return s;
-            })
-          };
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId: selectedSet.id,
+            deliveryFee: parseFloat(deliveryFee),
+            status: 'Quoted',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchDeliveryRequests();
+          setShowQuotationModal(false);
+          setDeliveryFee('');
+          alert('Quotation issued successfully!');
+        } else {
+          alert('Failed to issue quotation: ' + data.message);
         }
-        return req;
+      } catch (error) {
+        console.error('Error issuing quotation:', error);
+        alert('An error occurred while issuing quotation');
+      }
+    }
+  };
+
+  const handleAgreeDeliveryQuotation = async (request: DeliveryRequest, set: DeliverySet) => {
+    try {
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId: set.id,
+          status: 'Confirmed',
+        }),
       });
-      setDeliveryRequests(updatedRequests);
-      setShowQuotationModal(false);
-      setDeliveryFee('');
-      alert('Quotation issued successfully!');
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        alert('Customer agreed to quotation. You can now generate the Delivery Order.');
+      } else {
+        alert('Failed to update status: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error agreeing to quotation:', error);
+      alert('An error occurred while updating status');
+    }
+  };
+
+  const handleDisagreeDeliveryQuotation = async (request: DeliveryRequest, set: DeliverySet) => {
+    try {
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId: set.id,
+          status: 'Pending',
+          deliveryFee: null, // Clear the previous quote
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        alert('Customer disagreed with quotation. Please issue a new quotation.');
+      } else {
+        alert('Failed to update status: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error disagreeing quotation:', error);
+      alert('An error occurred');
     }
   };
 
@@ -313,37 +544,108 @@ export default function DeliveryReturnManagement() {
     setShowReturnQuotationModal(true);
   };
 
-  const handleConfirmReturnQuotation = () => {
+  const handleConfirmReturnQuotation = async () => {
     if (selectedReturnRequest && pickupFee) {
-      const updatedRequests = returnRequests.map(req => {
-        if (req.id === selectedReturnRequest.id) {
-          return {
-            ...req,
+      try {
+        const response = await fetch('/api/return', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: selectedReturnRequest.id,
             pickupFee: parseFloat(pickupFee),
-            status: 'Quoted' as ReturnStatus
-          };
+            status: 'Quoted',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchReturnRequests();
+          setShowReturnQuotationModal(false);
+          setPickupFee('');
+          alert('Return pickup quotation issued successfully!');
+        } else {
+          alert('Failed to issue quotation: ' + data.message);
         }
-        return req;
-      });
-      setReturnRequests(updatedRequests);
-      setShowReturnQuotationModal(false);
-      setPickupFee('');
-      alert('Return pickup quotation issued successfully!');
+      } catch (error) {
+        console.error('Error issuing return quotation:', error);
+        alert('An error occurred while issuing return quotation');
+      }
     }
   };
 
-  const handleAgreeReturnQuotation = (request: ReturnRequest) => {
-    const updatedRequests = returnRequests.map(req => {
-      if (req.id === request.id) {
-        return {
-          ...req,
-          status: 'Agreed' as ReturnStatus
+  const handleAgreeReturnQuotation = async (request: ReturnRequest) => {
+    try {
+      const response = await fetch('/api/return', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: request.id,
+          status: 'Agreed',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Create entry in ReturnManagement localStorage
+        const returnOrder = {
+          id: request.id,
+          customer: request.customerName,
+          customerContact: request.customerPhone || '',
+          orderId: request.requestId,
+          returnType: request.returnType === 'full' ? 'Full' : 'Partial',
+          transportationType: request.collectionMethod === 'transport' ? 'Transportation Needed' : 'Self Return',
+          items: request.items.map((item, idx) => ({
+            id: `return-item-${idx}`,
+            name: item.name,
+            category: 'Scaffolding',
+            quantity: item.quantity,
+            quantityReturned: 0,
+            status: 'Good' as const,
+          })),
+          requestDate: request.requestDate,
+          status: 'Approved' as const,
+          pickupAddress: request.pickupAddress,
         };
+
+        // Save to localStorage for ReturnManagement to pick up
+        const existingReturns = JSON.parse(localStorage.getItem('returnOrders') || '[]');
+        // Check if already exists (avoid duplicates)
+        if (!existingReturns.find((r: { id: string }) => r.id === returnOrder.id)) {
+          existingReturns.push(returnOrder);
+          localStorage.setItem('returnOrders', JSON.stringify(existingReturns));
+        }
+
+        await fetchReturnRequests();
+        alert('Customer agreed to return quotation. It is now available in Return Management.');
+      } else {
+        alert('Failed to update status: ' + data.message);
       }
-      return req;
-    });
-    setReturnRequests(updatedRequests);
-    alert('Customer agreed to return quotation. Status updated to Agreed.');
+    } catch (error) {
+      console.error('Error agreeing to quotation:', error);
+      alert('An error occurred while updating status');
+    }
+  };
+
+  const handleDisagreeReturnQuotation = async (request: ReturnRequest) => {
+    try {
+      const response = await fetch('/api/return', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: request.id,
+          status: 'Requested',
+          pickupFee: null, // Clear the previous quote
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchReturnRequests();
+        alert('Customer disagreed with quotation. Please issue a new quotation.');
+      } else {
+        alert('Failed to update status: ' + data.message);
+      }
+    } catch (error) {
+      console.error('Error disagreeing quotation:', error);
+      alert('An error occurred');
+    }
   };
 
   const handleIssuePackingList = (request: DeliveryRequest, set: DeliverySet) => {
@@ -352,52 +654,54 @@ export default function DeliveryReturnManagement() {
     setShowPackingListModal(true);
   };
 
-  const handleConfirmPackingList = () => {
+  const handleConfirmPackingList = async () => {
     if (selectedRequest && selectedSet) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
-            sets: req.sets.map(s => {
-              if (s.id === selectedSet.id) {
-                return {
-                  ...s,
-                  packingListIssued: true,
-                  status: 'Packing List Issued' as DeliveryStatus
-                };
-              }
-              return s;
-            })
-          };
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId: selectedSet.id,
+            packingListIssued: true,
+            status: 'Packing List Issued',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchDeliveryRequests();
+          setShowPackingListModal(false);
+          alert('Packing list issued successfully!');
+        } else {
+          alert('Failed to issue packing list: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowPackingListModal(false);
-      alert('Packing list issued successfully!');
+      } catch (error) {
+        console.error('Error issuing packing list:', error);
+        alert('An error occurred while issuing packing list');
+      }
     }
   };
 
-  const handleUpdatePackingLoading = (request: DeliveryRequest, set: DeliverySet) => {
-    const updatedRequests = deliveryRequests.map(req => {
-      if (req.id === request.id) {
-        return {
-          ...req,
-          sets: req.sets.map(s => {
-            if (s.id === set.id) {
-              return {
-                ...s,
-                status: 'Packing & Loading' as DeliveryStatus
-              };
-            }
-            return s;
-          })
-        };
+  const handleUpdatePackingLoading = async (request: DeliveryRequest, set: DeliverySet) => {
+    try {
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId: set.id,
+          status: 'Packing & Loading',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        alert('Status updated to Packing & Loading');
+      } else {
+        alert('Failed to update status: ' + data.message);
       }
-      return req;
-    });
-    setDeliveryRequests(updatedRequests);
-    alert('Status updated to Packing & Loading');
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('An error occurred while updating status');
+    }
   };
 
   const handleDriverAcknowledge = (request: DeliveryRequest, set: DeliverySet) => {
@@ -406,31 +710,32 @@ export default function DeliveryReturnManagement() {
     setShowDriverAckModal(true);
   };
 
-  const handleConfirmDriverAck = () => {
+  const handleConfirmDriverAck = async () => {
     if (selectedRequest && selectedSet && driverName && vehicleNumber) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
-            sets: req.sets.map(s => {
-              if (s.id === selectedSet.id) {
-                return {
-                  ...s,
-                  driverAcknowledged: true,
-                  status: 'Driver Acknowledged' as DeliveryStatus
-                };
-              }
-              return s;
-            })
-          };
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId: selectedSet.id,
+            driverAcknowledged: true,
+            status: 'Driver Acknowledged',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchDeliveryRequests();
+          setShowDriverAckModal(false);
+          setDriverName('');
+          setVehicleNumber('');
+          alert('Driver acknowledged successfully!');
+        } else {
+          alert('Failed to acknowledge: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowDriverAckModal(false);
-      setDriverName('');
-      setVehicleNumber('');
-      alert('Driver acknowledged successfully!');
+      } catch (error) {
+        console.error('Error acknowledging driver:', error);
+        alert('An error occurred while acknowledging driver');
+      }
     }
   };
 
@@ -440,31 +745,32 @@ export default function DeliveryReturnManagement() {
     setShowCustomerAckModal(true);
   };
 
-  const handleConfirmCustomerAck = () => {
+  const handleConfirmCustomerAck = async () => {
     if (selectedRequest && selectedSet && customerOTP) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
-            sets: req.sets.map(s => {
-              if (s.id === selectedSet.id) {
-                return {
-                  ...s,
-                  customerAcknowledged: true,
-                  otp: customerOTP,
-                  status: 'Customer Confirmed' as DeliveryStatus
-                };
-              }
-              return s;
-            })
-          };
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId: selectedSet.id,
+            customerAcknowledged: true,
+            otp: customerOTP,
+            status: 'Customer Confirmed',
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          await fetchDeliveryRequests();
+          setShowCustomerAckModal(false);
+          setCustomerOTP('');
+          alert('Customer acknowledgement confirmed! Signed DO stored.');
+        } else {
+          alert('Failed to confirm: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowCustomerAckModal(false);
-      setCustomerOTP('');
-      alert('Customer acknowledgement confirmed! Signed DO stored.');
+      } catch (error) {
+        console.error('Error confirming customer:', error);
+        alert('An error occurred while confirming customer');
+      }
     }
   };
 
@@ -473,23 +779,42 @@ export default function DeliveryReturnManagement() {
     setShowPickupTimeModal(true);
   };
 
-  const handleSavePickupTime = () => {
+  const handleSavePickupTime = async () => {
     if (selectedRequest && pickupDate && pickupTime) {
-      const updatedRequests = deliveryRequests.map(req => {
-        if (req.id === selectedRequest.id) {
-          return {
-            ...req,
+      try {
+        const response = await fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: selectedRequest.id,
             pickupTime: `${pickupDate} ${pickupTime}`,
-            sets: req.sets.map(s => ({ ...s, status: 'Confirmed' as DeliveryStatus }))
-          };
+          }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          // Update all sets to Confirmed status
+          for (const set of selectedRequest.sets) {
+            await fetch('/api/delivery', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                setId: set.id,
+                status: 'Confirmed',
+              }),
+            });
+          }
+          await fetchDeliveryRequests();
+          setShowPickupTimeModal(false);
+          setPickupDate('');
+          setPickupTime('');
+          alert('Pickup time confirmed successfully!');
+        } else {
+          alert('Failed to save pickup time: ' + data.message);
         }
-        return req;
-      });
-      setDeliveryRequests(updatedRequests);
-      setShowPickupTimeModal(false);
-      setPickupDate('');
-      setPickupTime('');
-      alert('Pickup time confirmed successfully!');
+      } catch (error) {
+        console.error('Error saving pickup time:', error);
+        alert('An error occurred while saving pickup time');
+      }
     }
   };
 
@@ -500,27 +825,42 @@ export default function DeliveryReturnManagement() {
     setShowDOModal(true);
   };
 
-  const handleDOGenerated = (request: DeliveryRequest, set: DeliverySet) => {
-    const updatedRequests = deliveryRequests.map(req => {
-      if (req.id === request.id) {
-        return {
-          ...req,
-          sets: req.sets.map(s => {
-            if (s.id === set.id) {
-              return {
-                ...s,
-                status: 'DO Generated' as DeliveryStatus
-              };
-            }
-            return s;
-          })
-        };
+  const handleDOGenerated = async (request: DeliveryRequest, set: DeliverySet) => {
+    try {
+      const doNumber = `DO-${request.agreementNo}-${set.setName.replace('Set ', '')}`;
+      // Calculate scheduled date from period (1 day before period start)
+      const calculatedScheduledDate = calculateScheduledDateFromPeriod(set.scheduledPeriod);
+      
+      // Save DO data to database via API
+      const response = await fetch('/api/delivery', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          setId: set.id,
+          status: 'DO Generated',
+          doNumber: doNumber,
+          doStatus: 'pending',
+          doIssuedAt: new Date().toISOString(),
+          doIssuedBy: 'System',
+          deliveryDate: calculatedScheduledDate || set.deliveryDate,
+          createdBy: 'System',
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchDeliveryRequests();
+        setShowDOModal(false);
+        // Navigate to Delivery Management page
+        if (onNavigateToDeliveryManagement) {
+          onNavigateToDeliveryManagement();
+        }
+      } else {
+        alert('Failed to generate DO: ' + data.message);
       }
-      return req;
-    });
-    setDeliveryRequests(updatedRequests);
-    setShowDOModal(false);
-    alert('Delivery Order generated successfully!');
+    } catch (error) {
+      console.error('Error generating DO:', error);
+      alert('An error occurred while generating DO');
+    }
   };
 
   const handleViewDO = (request: DeliveryRequest, set: DeliverySet) => {
@@ -533,19 +873,28 @@ export default function DeliveryReturnManagement() {
     setShowReturnDOModal(true);
   };
 
-  const handleReturnDOGenerated = (request: ReturnRequest) => {
-    const updatedRequests = returnRequests.map(req => {
-      if (req.id === request.id) {
-        return {
-          ...req,
-          status: 'DO Generated' as ReturnStatus
-        };
+  const handleReturnDOGenerated = async (request: ReturnRequest) => {
+    try {
+      const response = await fetch('/api/return', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: request.id,
+          status: 'Scheduled', // Return DO generated means pickup is scheduled
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        await fetchReturnRequests();
+        setShowReturnDOModal(false);
+        alert('Return DO generated successfully!');
+      } else {
+        alert('Failed to generate Return DO: ' + data.message);
       }
-      return req;
-    });
-    setReturnRequests(updatedRequests);
-    setShowReturnDOModal(false);
-    alert('Return DO generated successfully!');
+    } catch (error) {
+      console.error('Error generating Return DO:', error);
+      alert('An error occurred while generating Return DO');
+    }
   };
 
   const handleViewReturnDO = (request: ReturnRequest) => {
@@ -557,7 +906,7 @@ export default function DeliveryReturnManagement() {
     const setIndex = request.sets.findIndex(s => s.id === set.id);
     if (setIndex === 0) return true;
     const previousSet = request.sets[setIndex - 1];
-    return previousSet.status === 'DO Generated' || previousSet.status === 'Customer Confirmed' || previousSet.status === 'Delivered';
+    return previousSet.status === 'Confirmed' || previousSet.status === 'DO Generated' || previousSet.status === 'Customer Confirmed' || previousSet.status === 'Delivered';
   };
 
   const getNextAction = (request: DeliveryRequest, set: DeliverySet) => {
@@ -568,12 +917,18 @@ export default function DeliveryReturnManagement() {
       return { label: 'Waiting for previous set', disabled: true, color: 'gray' };
     }
 
-    // Simplified workflow: Pending → Issue Quotation → Generate DO → DO Generated (View DO)
+    // Workflow: Pending → Issue Quotation → Quoted (Agree/Disagree) → Confirmed → Generate DO → DO Generated (View DO)
     if (request.deliveryType === 'delivery' || request.deliveryType === 'pickup') {
       switch (set.status) {
         case 'Pending':
           return { label: 'Issue Quotation', action: () => handleIssueQuotation(request, set), color: 'blue' };
         case 'Quoted':
+          // Return both agree and disagree actions
+          return {
+            agree: { label: 'Agree', action: () => handleAgreeDeliveryQuotation(request, set), color: 'green' },
+            disagree: { label: 'Disagree', action: () => handleDisagreeDeliveryQuotation(request, set), color: 'red' },
+          };
+        case 'Confirmed':
           return { label: 'Generate DO', action: () => handleGenerateDO(request, set), color: 'green' };
         case 'DO Generated':
           return { label: 'View DO', action: () => handleViewDO(request, set), color: 'green', disabled: false };
@@ -588,7 +943,11 @@ export default function DeliveryReturnManagement() {
       case 'Requested':
         return { label: 'Issue Quotation', action: () => handleIssueReturnQuotation(request), color: 'blue' };
       case 'Quoted':
-        return { label: 'Agree', action: () => handleAgreeReturnQuotation(request), color: 'green' };
+        // Return both agree and disagree actions
+        return {
+          agree: { label: 'Agree', action: () => handleAgreeReturnQuotation(request), color: 'green' },
+          disagree: { label: 'Disagree', action: () => handleDisagreeReturnQuotation(request), color: 'red' },
+        };
       case 'Agreed':
         return { label: 'Agreed', disabled: true, color: 'gray' };
       case 'Cancelled':
@@ -598,11 +957,32 @@ export default function DeliveryReturnManagement() {
     }
   };
 
-  const filteredDeliveryRequests = deliveryRequests.filter(req =>
-    req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.requestId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.agreementNo.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Helper function to check if a set meets all three conditions (Quoted + Agreed + DO Generated)
+  const isSetReadyForDelivery = (set: DeliverySet) => {
+    const isQuoted = set.quotedAmount !== null && set.quotedAmount !== undefined;
+    const isAgreed = set.status === 'Confirmed' || set.status === 'DO Generated';
+    const isDoGenerated = !!set.doNumber;
+    return isQuoted && isAgreed && isDoGenerated;
+  };
+
+  const filteredDeliveryRequests = deliveryRequests.filter(req => {
+    // Search filter
+    const matchesSearch = 
+      req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.requestId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.agreementNo.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (!matchesSearch) return false;
+    
+    // Status filter
+    if (filterStatus === 'all') return true;
+    if (filterStatus === 'ready') {
+      // Only show requests where at least one set is ready for delivery (quoted + agreed + DO generated)
+      return req.sets.some(set => isSetReadyForDelivery(set));
+    }
+    // Filter by specific set status
+    return req.sets.some(set => set.status === filterStatus);
+  });
 
   const filteredReturnRequests = returnRequests.filter(req =>
     req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -618,6 +998,19 @@ export default function DeliveryReturnManagement() {
           <h1 className="text-[#231F20]">Delivery & Return Management</h1>
           <p className="text-gray-600">Manage delivery and return requests with quotation workflow</p>
         </div>
+        <button
+          onClick={() => {
+            if (activeTab === 'delivery') {
+              setShowCreateDeliveryModal(true);
+            } else {
+              setShowCreateReturnModal(true);
+            }
+          }}
+          className="flex items-center space-x-2 px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg transition-colors"
+        >
+          <Plus className="size-5" />
+          <span>Create {activeTab === 'delivery' ? 'Delivery' : 'Return'} Request</span>
+        </button>
       </div>
 
       {/* Tabs */}
@@ -650,7 +1043,7 @@ export default function DeliveryReturnManagement() {
         </button>
       </div>
 
-      {/* Search */}
+      {/* Search and Filter */}
       <div className="flex items-center space-x-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 size-5" />
@@ -662,12 +1055,36 @@ export default function DeliveryReturnManagement() {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
           />
         </div>
+        {activeTab === 'delivery' && (
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] bg-white"
+          >
+            <option value="all">All Status</option>
+            <option value="ready">Ready for Delivery (Quoted + Agreed + DO)</option>
+            <option value="Pending">Pending</option>
+            <option value="Quoted">Quoted</option>
+            <option value="Confirmed">Confirmed (Agreed)</option>
+            <option value="DO Generated">DO Generated</option>
+          </select>
+        )}
       </div>
 
       {/* Delivery Requests Tab */}
       {activeTab === 'delivery' && (
         <div className="space-y-6">
-          {filteredDeliveryRequests.map((request) => (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader className="size-8 animate-spin text-[#F15929]" />
+              <span className="ml-3 text-gray-600">Loading delivery requests...</span>
+            </div>
+          ) : filteredDeliveryRequests.length === 0 ? (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <Truck className="size-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">No delivery requests found</p>
+            </div>
+          ) : filteredDeliveryRequests.map((request) => (
             <div key={request.id} className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
               {/* Request Header */}
               <div className="flex items-start justify-between pb-4 border-b">
@@ -745,11 +1162,34 @@ export default function DeliveryReturnManagement() {
                       </div>
 
                       {/* Action Button */}
-                      <div>
+                      <div className="flex items-center space-x-2">
                         {(() => {
                           const nextAction = getNextAction(request, set);
                           if (!nextAction) return null;
                           
+                          // Check if it's the quoted state with agree/disagree options
+                          if ('agree' in nextAction && 'disagree' in nextAction) {
+                            return (
+                              <>
+                                <button
+                                  onClick={nextAction.agree.action}
+                                  className="px-4 py-2 rounded-lg text-sm text-white"
+                                  style={{ backgroundColor: '#10b981' }}
+                                >
+                                  {nextAction.agree.label}
+                                </button>
+                                <button
+                                  onClick={nextAction.disagree.action}
+                                  className="px-4 py-2 rounded-lg text-sm text-white"
+                                  style={{ backgroundColor: '#ef4444' }}
+                                >
+                                  {nextAction.disagree.label}
+                                </button>
+                              </>
+                            );
+                          }
+                          
+                          // Single action button (existing logic)
                           return (
                             <button
                               onClick={nextAction.action}
@@ -780,20 +1220,23 @@ export default function DeliveryReturnManagement() {
               </div>
             </div>
           ))}
-
-          {filteredDeliveryRequests.length === 0 && (
-            <div className="text-center py-12 bg-gray-50 rounded-lg">
-              <Truck className="size-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No delivery requests found</p>
-            </div>
-          )}
         </div>
       )}
 
       {/* Return Requests Tab */}
       {activeTab === 'return' && (
         <div className="space-y-4">
-          {filteredReturnRequests.map((request) => (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader className="size-8 animate-spin text-[#F15929]" />
+              <span className="ml-3 text-gray-600">Loading return requests...</span>
+            </div>
+          ) : filteredReturnRequests.length === 0 ? (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <Package className="size-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">No return requests found</p>
+            </div>
+          ) : filteredReturnRequests.map((request) => (
             <div key={request.id} className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
               <div className="flex items-start justify-between">
                 <div className="space-y-2 flex-1">
@@ -856,6 +1299,29 @@ export default function DeliveryReturnManagement() {
                     const nextAction = getReturnNextAction(request);
                     if (!nextAction) return null;
                     
+                    // Check if it's the quoted state with agree/disagree options
+                    if ('agree' in nextAction && 'disagree' in nextAction) {
+                      return (
+                        <>
+                          <button
+                            onClick={nextAction.agree.action}
+                            className="px-4 py-2 rounded-lg text-sm text-white"
+                            style={{ backgroundColor: '#10b981' }}
+                          >
+                            {nextAction.agree.label}
+                          </button>
+                          <button
+                            onClick={nextAction.disagree.action}
+                            className="px-4 py-2 rounded-lg text-sm text-white"
+                            style={{ backgroundColor: '#ef4444' }}
+                          >
+                            {nextAction.disagree.label}
+                          </button>
+                        </>
+                      );
+                    }
+                    
+                    // Single action button (existing logic)
                     return (
                       <button
                         onClick={nextAction.action}
@@ -891,13 +1357,6 @@ export default function DeliveryReturnManagement() {
               </div>
             </div>
           ))}
-
-          {filteredReturnRequests.length === 0 && (
-            <div className="text-center py-12 bg-gray-50 rounded-lg">
-              <Package className="size-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No return requests found</p>
-            </div>
-          )}
         </div>
       )}
 
@@ -1069,6 +1528,7 @@ export default function DeliveryReturnManagement() {
           }}
           deliveryAddress={selectedDORequest.deliveryAddress}
           deliveryDate={new Date().toISOString().split('T')[0]}
+          scheduledPeriod={selectedSet.scheduledPeriod}
           customerPhone={selectedDORequest.customerPhone}
           customerEmail={selectedDORequest.customerEmail}
           onClose={() => {
@@ -1089,6 +1549,7 @@ export default function DeliveryReturnManagement() {
           }}
           deliveryAddress={selectedViewDO.request.deliveryAddress}
           deliveryDate={selectedViewDO.set.deliveryDate || new Date().toISOString().split('T')[0]}
+          scheduledPeriod={selectedViewDO.set.scheduledPeriod}
           customerPhone={selectedViewDO.request.customerPhone}
           customerEmail={selectedViewDO.request.customerEmail}
           onClose={() => setShowViewDOModal(false)}
@@ -1131,6 +1592,564 @@ export default function DeliveryReturnManagement() {
           customerEmail={selectedReturnRequest.customerEmail}
           onClose={() => setShowViewReturnDOModal(false)}
         />
+      )}
+
+      {/* Create Delivery Request Modal */}
+      {showCreateDeliveryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl my-8 mx-4 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold text-[#231F20]">Create Delivery Request</h3>
+            
+            <div className="space-y-4">
+              {/* RFQ Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Quotation (RFQ) *</label>
+                <select
+                  value={selectedRfqId}
+                  onChange={(e) => {
+                    setSelectedRfqId(e.target.value);
+                    // Reset delivery sets when RFQ changes
+                    setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="">-- Select Quotation --</option>
+                  {rfqs.map((rfq) => (
+                    <option key={rfq.id} value={rfq.id}>
+                      {rfq.rfqNumber} - {rfq.customerName} ({rfq.projectName})
+                    </option>
+                  ))}
+                </select>
+                {rfqs.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    No approved quotations available. Please approve a quotation first.
+                  </p>
+                )}
+              </div>
+
+              {/* Auto-populated fields (read-only display) */}
+              {selectedRfqId && (() => {
+                const rfq = rfqs.find(r => r.id === selectedRfqId);
+                if (!rfq) return null;
+                return (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Quotation:</p>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Customer Name:</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerName}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Email:</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerEmail}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Phone:</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerPhone || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Project:</span>
+                        <span className="ml-2 text-gray-900">{rfq.projectName}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Delivery Address:</span>
+                        <span className="ml-2 text-gray-900">{rfq.projectLocation || 'N/A'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Request ID:</span>
+                        <span className="ml-2 text-gray-900 font-mono">
+                          DEL-{rfq.rfqNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Show available items from RFQ */}
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-sm text-gray-500 font-medium mb-2">Available Items from Quotation:</p>
+                      <div className="space-y-1">
+                        {rfq.items.map((item, idx) => (
+                          <p key={idx} className="text-sm text-gray-700">
+                            • {item.scaffoldingItemName} - Qty: {item.quantity} {item.unit}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Delivery Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Delivery Type *</label>
+                <select
+                  value={newDeliveryForm.deliveryType}
+                  onChange={(e) => setNewDeliveryForm({ ...newDeliveryForm, deliveryType: e.target.value as DeliveryType })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="delivery">Delivery (Company delivers to customer)</option>
+                  <option value="pickup">Pickup (Customer picks up from company)</option>
+                </select>
+              </div>
+
+              {/* Sets Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">Delivery Sets *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextSetLetter = String.fromCharCode(65 + deliverySets.length);
+                      setDeliverySets([
+                        ...deliverySets,
+                        { setName: `Set ${nextSetLetter}`, scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] },
+                      ]);
+                    }}
+                    className="text-sm text-[#F15929] hover:text-[#d94d1f] flex items-center space-x-1"
+                    disabled={!selectedRfqId}
+                  >
+                    <Plus className="size-4" />
+                    <span>Add Set</span>
+                  </button>
+                </div>
+
+                {deliverySets.map((set, setIndex) => (
+                  <div key={setIndex} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-medium text-gray-700">{set.setName}</h5>
+                      {deliverySets.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const filtered = deliverySets.filter((_, i) => i !== setIndex);
+                            // Rename sets to maintain sequential naming
+                            const renamed = filtered.map((s, i) => ({
+                              ...s,
+                              setName: `Set ${String.fromCharCode(65 + i)}`
+                            }));
+                            setDeliverySets(renamed);
+                          }}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Start Date */}
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Start Date *</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-left flex items-center justify-between bg-white hover:bg-gray-50"
+                            >
+                              <span className={set.startDate ? 'text-gray-900' : 'text-gray-400'}>
+                                {set.startDate ? format(set.startDate, 'd MMM yyyy') : 'Select start date'}
+                              </span>
+                              <CalendarIcon className="size-4 text-gray-400" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={set.startDate}
+                              onSelect={(date) => {
+                                const updated = [...deliverySets];
+                                updated[setIndex].startDate = date;
+                                // Update scheduledPeriod string for backward compatibility
+                                if (date && updated[setIndex].endDate) {
+                                  updated[setIndex].scheduledPeriod = `${format(date, 'd MMM yyyy')} - ${format(updated[setIndex].endDate!, 'd MMM yyyy')}`;
+                                } else if (date) {
+                                  updated[setIndex].scheduledPeriod = format(date, 'd MMM yyyy');
+                                } else {
+                                  updated[setIndex].scheduledPeriod = '';
+                                }
+                                setDeliverySets(updated);
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      {/* End Date */}
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">End Date *</label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-left flex items-center justify-between bg-white hover:bg-gray-50"
+                            >
+                              <span className={set.endDate ? 'text-gray-900' : 'text-gray-400'}>
+                                {set.endDate ? format(set.endDate, 'd MMM yyyy') : 'Select end date'}
+                              </span>
+                              <CalendarIcon className="size-4 text-gray-400" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={set.endDate}
+                              onSelect={(date) => {
+                                const updated = [...deliverySets];
+                                updated[setIndex].endDate = date;
+                                // Update scheduledPeriod string for backward compatibility
+                                if (updated[setIndex].startDate && date) {
+                                  updated[setIndex].scheduledPeriod = `${format(updated[setIndex].startDate!, 'd MMM yyyy')} - ${format(date, 'd MMM yyyy')}`;
+                                } else if (date) {
+                                  updated[setIndex].scheduledPeriod = format(date, 'd MMM yyyy');
+                                }
+                                setDeliverySets(updated);
+                              }}
+                              disabled={(date) => set.startDate ? date < set.startDate : false}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </div>
+
+                    {/* Items in Set - only show items from selected RFQ */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs text-gray-500">Items from Quotation *</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...deliverySets];
+                            updated[setIndex].items.push({ name: '', quantity: 1, scaffoldingItemId: '' });
+                            setDeliverySets(updated);
+                          }}
+                          className="text-xs text-[#F15929] hover:text-[#d94d1f]"
+                          disabled={!selectedRfqId}
+                        >
+                          + Add Item
+                        </button>
+                      </div>
+                      {set.items.map((item, itemIndex) => {
+                        const selectedRfq = rfqs.find(r => r.id === selectedRfqId);
+                        const rfqItems = selectedRfq?.items || [];
+                        
+                        return (
+                          <div key={itemIndex} className="flex items-center space-x-2">
+                            <select
+                              value={item.scaffoldingItemId}
+                              onChange={(e) => {
+                                const updated = [...deliverySets];
+                                const selectedItem = rfqItems.find(ri => ri.scaffoldingItemId === e.target.value);
+                                updated[setIndex].items[itemIndex].scaffoldingItemId = e.target.value;
+                                updated[setIndex].items[itemIndex].name = selectedItem?.scaffoldingItemName || '';
+                                setDeliverySets(updated);
+                              }}
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm bg-white disabled:bg-gray-100"
+                              disabled={!selectedRfqId}
+                            >
+                              <option value="">-- Select Item from Quotation --</option>
+                              {rfqItems.map((rfqItem) => (
+                                <option key={rfqItem.scaffoldingItemId} value={rfqItem.scaffoldingItemId}>
+                                  {rfqItem.scaffoldingItemName} (Quoted: {rfqItem.quantity} {rfqItem.unit})
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min="1"
+                              max={rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.quantity || 9999}
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const updated = [...deliverySets];
+                                updated[setIndex].items[itemIndex].quantity = parseInt(e.target.value) || 1;
+                                setDeliverySets(updated);
+                              }}
+                              className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-center disabled:bg-gray-100"
+                              placeholder="Qty"
+                              disabled={!selectedRfqId}
+                            />
+                            {set.items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...deliverySets];
+                                  updated[setIndex].items = updated[setIndex].items.filter((_, i) => i !== itemIndex);
+                                  setDeliverySets(updated);
+                                }}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                <X className="size-4" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {!selectedRfqId && (
+                        <p className="text-xs text-gray-500 italic">
+                          Please select a quotation first to see available items
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setShowCreateDeliveryModal(false);
+                  setSelectedRfqId('');
+                  setNewDeliveryForm({ customerEmail: '', deliveryType: 'delivery' });
+                  setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+                }}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                disabled={isCreating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateDeliveryRequest}
+                disabled={isCreating || !selectedRfqId}
+                className="px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {isCreating && <Loader className="size-4 animate-spin" />}
+                <span>Create Delivery Request</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Return Request Modal */}
+      {showCreateReturnModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl my-8 mx-4 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold text-[#231F20]">Create Return Request</h3>
+            
+            <div className="space-y-4">
+              {/* RFQ Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Quotation (RFQ) *</label>
+                <select
+                  value={selectedReturnRfqId}
+                  onChange={(e) => {
+                    setSelectedReturnRfqId(e.target.value);
+                    // Reset return items when RFQ changes
+                    setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="">-- Select Quotation --</option>
+                  {rfqs.map((rfq) => (
+                    <option key={rfq.id} value={rfq.id}>
+                      {rfq.rfqNumber} - {rfq.customerName} ({rfq.projectName})
+                    </option>
+                  ))}
+                </select>
+                {rfqs.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    No approved quotations available. Please approve a quotation first.
+                  </p>
+                )}
+              </div>
+
+              {/* Auto-populated fields (read-only display) */}
+              {selectedReturnRfqId && (() => {
+                const rfq = rfqs.find(r => r.id === selectedReturnRfqId);
+                if (!rfq) return null;
+                return (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Quotation:</p>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Customer Name:</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerName}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Email:</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerEmail}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Phone:</span>
+                        <span className="ml-2 text-gray-900">{rfq.customerPhone || 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Project:</span>
+                        <span className="ml-2 text-gray-900">{rfq.projectName}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Pickup Address:</span>
+                        <span className="ml-2 text-gray-900">{rfq.projectLocation || 'N/A'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Request ID:</span>
+                        <span className="ml-2 text-gray-900 font-mono">
+                          RET-{rfq.rfqNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Show available items from RFQ */}
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-sm text-gray-500 font-medium mb-2">Available Items from Quotation:</p>
+                      <div className="space-y-1">
+                        {rfq.items.map((item, idx) => (
+                          <p key={idx} className="text-sm text-gray-700">
+                            • {item.scaffoldingItemName} - Qty: {item.quantity} {item.unit}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Set Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Set Name *</label>
+                <input
+                  type="text"
+                  value={newReturnForm.setName}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, setName: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  placeholder="e.g., Set A"
+                />
+              </div>
+
+              {/* Return Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Return Type *</label>
+                <select
+                  value={newReturnForm.returnType}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, returnType: e.target.value as ReturnType })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="full">Full Return (All items in set)</option>
+                  <option value="partial">Partial Return (Some items)</option>
+                </select>
+              </div>
+
+              {/* Collection Method */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Collection Method *</label>
+                <select
+                  value={newReturnForm.collectionMethod}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, collectionMethod: e.target.value as CollectionMethod })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                >
+                  <option value="transport">Transport (Company picks up)</option>
+                  <option value="self-return">Self Return (Customer delivers)</option>
+                </select>
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Reason for Return *</label>
+                <textarea
+                  value={newReturnForm.reason}
+                  onChange={(e) => setNewReturnForm({ ...newReturnForm, reason: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
+                  rows={3}
+                  placeholder="Enter reason for return..."
+                />
+              </div>
+
+              {/* Items Section - only show items from selected RFQ */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">Items to Return from Quotation *</label>
+                  <button
+                    type="button"
+                    onClick={() => setReturnItems([...returnItems, { name: '', quantity: 1, scaffoldingItemId: '' }])}
+                    className="text-sm text-[#F15929] hover:text-[#d94d1f] flex items-center space-x-1"
+                    disabled={!selectedReturnRfqId}
+                  >
+                    <Plus className="size-4" />
+                    <span>Add Item</span>
+                  </button>
+                </div>
+                {returnItems.map((item, index) => {
+                  const selectedRfq = rfqs.find(r => r.id === selectedReturnRfqId);
+                  const rfqItems = selectedRfq?.items || [];
+                  
+                  return (
+                    <div key={index} className="flex items-center space-x-2">
+                      <select
+                        value={item.scaffoldingItemId}
+                        onChange={(e) => {
+                          const updated = [...returnItems];
+                          const selectedItem = rfqItems.find(ri => ri.scaffoldingItemId === e.target.value);
+                          updated[index].scaffoldingItemId = e.target.value;
+                          updated[index].name = selectedItem?.scaffoldingItemName || '';
+                          setReturnItems(updated);
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm bg-white disabled:bg-gray-100"
+                        disabled={!selectedReturnRfqId}
+                      >
+                        <option value="">-- Select Item from Quotation --</option>
+                        {rfqItems.map((rfqItem) => (
+                          <option key={rfqItem.scaffoldingItemId} value={rfqItem.scaffoldingItemId}>
+                            {rfqItem.scaffoldingItemName} (Quoted: {rfqItem.quantity} {rfqItem.unit})
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="1"
+                        max={rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.quantity || 9999}
+                        value={item.quantity}
+                        onChange={(e) => {
+                          const updated = [...returnItems];
+                          updated[index].quantity = parseInt(e.target.value) || 1;
+                          setReturnItems(updated);
+                        }}
+                        className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-center disabled:bg-gray-100"
+                        placeholder="Qty"
+                        disabled={!selectedReturnRfqId}
+                      />
+                      {returnItems.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setReturnItems(returnItems.filter((_, i) => i !== index))}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {!selectedReturnRfqId && (
+                  <p className="text-xs text-gray-500 italic">
+                    Please select a quotation first to see available items
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setShowCreateReturnModal(false);
+                  setSelectedReturnRfqId('');
+                  setNewReturnForm({ setName: '', reason: '', returnType: 'full', collectionMethod: 'transport' });
+                  setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
+                }}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                disabled={isCreating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateReturnRequest}
+                disabled={isCreating || !selectedReturnRfqId || !newReturnForm.setName || !newReturnForm.reason}
+                className="px-4 py-2 bg-[#F15929] hover:bg-[#d94d1f] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {isCreating && <Loader className="size-4 animate-spin" />}
+                <span>Create Return Request</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

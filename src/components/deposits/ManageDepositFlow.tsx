@@ -18,6 +18,7 @@ import { CheckCircle } from "lucide-react";
 import { Button } from "../ui/button";
 import { FileText } from "lucide-react";
 import { RotateCcw } from "lucide-react";
+import { uploadPaymentProof } from "@/lib/upload";
 
 type View = "list" | "details" | "receipt";
 
@@ -320,14 +321,23 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
     setSelectedDepositId(null);
   };
 
-  const handleSubmitPayment = (depositId: string, file: File) => {
+  const handleSubmitPayment = async (depositId: string, file: File) => {
     const now = new Date().toISOString();
 
-    // Create mock document from file
+    // Upload file to server
+    toast.info('Uploading payment proof...');
+    const result = await uploadPaymentProof(file);
+    
+    if (!result.success || !result.url) {
+      toast.error(result.error || 'Failed to upload payment proof');
+      return;
+    }
+
+    // Create document with server URL
     const paymentProof: DepositDocument = {
       id: `proof-${Date.now()}`,
       fileName: file.name,
-      fileUrl: URL.createObjectURL(file),
+      fileUrl: result.url, // Use server URL instead of blob URL
       fileSize: file.size,
       fileType: file.type,
       uploadedAt: now,
