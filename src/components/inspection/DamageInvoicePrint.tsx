@@ -100,8 +100,8 @@ export function DamageInvoicePrint({ invoice, onClose }: DamageInvoicePrintProps
                     <td className="py-3 px-2 text-sm">{index + 1}</td>
                     <td className="py-3 px-2 text-sm">{item.description}</td>
                     <td className="py-3 px-2 text-sm text-right">{item.quantity}</td>
-                    <td className="py-3 px-2 text-sm text-right">{item.unitPrice.toFixed(2)}</td>
-                    <td className="py-3 px-2 text-sm text-right">{item.total.toFixed(2)}</td>
+                    <td className="py-3 px-2 text-sm text-right">{Number(item.unitPrice || 0).toFixed(2)}</td>
+                    <td className="py-3 px-2 text-sm text-right">{Number(item.total || 0).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -113,15 +113,15 @@ export function DamageInvoicePrint({ invoice, onClose }: DamageInvoicePrintProps
             <div className="w-64 space-y-3">
               <div className="flex justify-between pb-2">
                 <span className="text-sm text-gray-600">Subtotal:</span>
-                <span className="text-sm text-[#231F20]">RM {invoice.subtotal.toFixed(2)}</span>
+                <span className="text-sm text-[#231F20]">RM {Number(invoice.subtotal || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between pb-2">
                 <span className="text-sm text-gray-600">Tax (SST):</span>
-                <span className="text-sm text-[#231F20]">RM {invoice.tax.toFixed(2)}</span>
+                <span className="text-sm text-[#231F20]">RM {Number(invoice.tax || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between pt-2 border-t-2 border-gray-300">
                 <span className="text-[#231F20]">Total Amount:</span>
-                <span className="text-[#F15929]">RM {invoice.total.toFixed(2)}</span>
+                <span className="text-[#F15929]">RM {Number(invoice.total || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>

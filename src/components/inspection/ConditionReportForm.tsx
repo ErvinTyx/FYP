@@ -6,7 +6,22 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { ConditionReport, InspectionItem, InspectionImage } from '../../types/inspection';
-import { SCAFFOLDING_TYPES } from '../../types/rfq';
+
+// Interface for scaffolding items from API
+interface ScaffoldingItem {
+  id: string;
+  itemCode: string;
+  name: string;
+  category: string;
+  quantity: number;
+  available: number;
+  price: number;
+  status: string;
+  location: string;
+  itemStatus: string;
+  imageUrl?: string;
+}
+
 import {
   Select,
   SelectContent,
@@ -34,11 +49,39 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
     returnDate: new Date().toISOString().split('T')[0],
     inspectionDate: new Date().toISOString().split('T')[0],
     inspectedBy: 'Current User',
-    status: 'pending' as const,
+    status: 'pending' as 'pending' | 'in-progress' | 'completed',
     notes: ''
   });
 
   const [items, setItems] = useState<InspectionItem[]>([]);
+  const [scaffoldingItems, setScaffoldingItems] = useState<ScaffoldingItem[]>([]);
+  const [loadingScaffoldingItems, setLoadingScaffoldingItems] = useState(true);
+
+  // Fetch scaffolding items from API
+  useEffect(() => {
+    const fetchScaffoldingItems = async () => {
+      try {
+        const response = await fetch('/api/scaffolding', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Scaffolding items API response:', result);
+          setScaffoldingItems(result.data || []);
+        } else {
+          const errorResult = await response.json();
+          console.error('Failed to fetch scaffolding items:', response.status, errorResult);
+          toast.error('Failed to load scaffolding items');
+        }
+      } catch (error) {
+        console.error('Error fetching scaffolding items:', error);
+        toast.error('Error loading scaffolding items');
+      } finally {
+        setLoadingScaffoldingItems(false);
+      }
+    };
+    fetchScaffoldingItems();
+  }, []);
 
   useEffect(() => {
     if (report) {
@@ -53,7 +96,7 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
         status: report.status,
         notes: report.notes || ''
       });
-      setItems(report.items);
+      setItems(report.items || []);
     }
   }, [report]);
 
@@ -95,10 +138,10 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
         
         // Update scaffolding item name and original price when ID changes
         if (field === 'scaffoldingItemId') {
-          const scaffoldingItem = SCAFFOLDING_TYPES.find(s => s.id === value);
-          if (scaffoldingItem) {
-            updated.scaffoldingItemName = scaffoldingItem.name;
-            updated.originalItemPrice = (scaffoldingItem as any).price || 0;
+          const selectedItem = scaffoldingItems.find((s: ScaffoldingItem) => s.id === value);
+          if (selectedItem) {
+            updated.scaffoldingItemName = selectedItem.name;
+            updated.originalItemPrice = selectedItem.price || 0;
           }
         }
         
@@ -214,6 +257,9 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
   };
 
   const calculateTotals = () => {
+    if (!items || items.length === 0) {
+      return { totalItemsInspected: 0, totalGood: 0, totalRepair: 0, totalWriteOff: 0, totalDamaged: 0, totalRepairCost: 0 };
+    }
     const totalItemsInspected = items.reduce((sum, item) => sum + item.quantity, 0);
     const totalGood = items.reduce((sum, item) => sum + (item.quantityGood || 0), 0);
     const totalRepair = items.reduce((sum, item) => sum + (item.quantityRepair || 0), 0);
@@ -412,11 +458,17 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
                         <SelectValue placeholder="Select item type" />
                       </SelectTrigger>
                       <SelectContent>
-                        {SCAFFOLDING_TYPES.map(type => (
-                          <SelectItem key={type.id} value={type.id}>
-                            {type.name}
-                          </SelectItem>
-                        ))}
+                        {loadingScaffoldingItems ? (
+                          <SelectItem value="loading" disabled>Loading...</SelectItem>
+                        ) : scaffoldingItems.length === 0 ? (
+                          <SelectItem value="no-items" disabled>No items available</SelectItem>
+                        ) : (
+                          scaffoldingItems.filter((scaffoldItem: ScaffoldingItem) => scaffoldItem.id).map((scaffoldItem: ScaffoldingItem) => (
+                            <SelectItem key={scaffoldItem.id} value={scaffoldItem.id}>
+                              {scaffoldItem.name}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -570,7 +622,7 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
                       <Label>Estimated Repair Cost (RM) - Auto Calculated</Label>
                       <Input
                         type="number"
-                        value={item.estimatedRepairCost.toFixed(2)}
+                        value={Number(item.estimatedRepairCost || 0).toFixed(2)}
                         disabled
                         className="bg-gray-200"
                       />
@@ -683,7 +735,7 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-300">
                 <span className="text-[#231F20]">Estimated Total Repair Cost:</span>
-                <span className="text-[#231F20]">RM {totals.totalRepairCost.toFixed(2)}</span>
+                <span className="text-[#231F20]">RM {Number(totals.totalRepairCost || 0).toFixed(2)}</span>
               </div>
             </div>
           )}

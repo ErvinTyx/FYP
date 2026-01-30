@@ -115,12 +115,12 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
                 </div>
                 <div className="flex">
                   <span className="text-gray-600 w-32">Estimated Cost:</span>
-                  <span className="text-[#231F20]">RM {repairSlip.estimatedCost.toFixed(2)}</span>
+                  <span className="text-[#231F20]">RM {Number(repairSlip.estimatedCost || 0).toFixed(2)}</span>
                 </div>
                 {repairSlip.actualCost > 0 && (
                   <div className="flex">
                     <span className="text-gray-600 w-32">Actual Cost:</span>
-                    <span className="text-[#231F20]">RM {repairSlip.actualCost.toFixed(2)}</span>
+                    <span className="text-[#231F20]">RM {Number(repairSlip.actualCost || 0).toFixed(2)}</span>
                   </div>
                 )}
               </div>
@@ -183,7 +183,7 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
                       {item.repairStatus.replace('-', ' ').toUpperCase()}
                     </td>
                     <td className="border border-gray-300 p-2 text-right text-sm">
-                      {item.totalCost.toFixed(2)}
+                      {Number(item.totalCost || 0).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -193,7 +193,7 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
                   </td>
                   <td className="border border-gray-300 p-2 text-right text-sm">
                     <strong className="text-[#F15929]">
-                      RM {repairSlip.estimatedCost.toFixed(2)}
+                      RM {Number(repairSlip.estimatedCost || 0).toFixed(2)}
                     </strong>
                   </td>
                 </tr>

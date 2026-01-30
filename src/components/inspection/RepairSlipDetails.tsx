@@ -125,7 +125,7 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
               <DollarSign className="size-5 text-gray-400 mt-0.5" />
               <div>
                 <p className="text-sm text-gray-500">Estimated Cost</p>
-                <p className="text-[#231F20]">RM {repairSlip.estimatedCost.toFixed(2)}</p>
+                <p className="text-[#231F20]">RM {Number(repairSlip.estimatedCost || 0).toFixed(2)}</p>
               </div>
             </div>
           </div>
@@ -158,7 +158,7 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
                     <DollarSign className="size-5 text-gray-400 mt-0.5" />
                     <div>
                       <p className="text-sm text-gray-500">Actual Cost</p>
-                      <p className="text-[#231F20]">RM {repairSlip.actualCost.toFixed(2)}</p>
+                      <p className="text-[#231F20]">RM {Number(repairSlip.actualCost || 0).toFixed(2)}</p>
                     </div>
                   </div>
                 )}
@@ -227,7 +227,7 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {item.totalCost.toFixed(2)}
+                      {Number(item.totalCost || 0).toFixed(2)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -237,7 +237,7 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
                   </TableCell>
                   <TableCell className="text-right">
                     <span className="text-[#231F20]">
-                      RM {repairSlip.estimatedCost.toFixed(2)}
+                      RM {Number(repairSlip.estimatedCost || 0).toFixed(2)}
                     </span>
                   </TableCell>
                 </TableRow>

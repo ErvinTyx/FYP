@@ -114,7 +114,7 @@ export function DamageInvoiceList({ invoices, searchQuery }: DamageInvoiceListPr
                     <DollarSign className="size-4 text-gray-400" />
                     <div>
                       <p className="text-gray-500">Total Amount</p>
-                      <p className="text-[#231F20]">RM {invoice.total.toFixed(2)}</p>
+                      <p className="text-[#231F20]">RM {Number(invoice.total || 0).toFixed(2)}</p>
                     </div>
                   </div>
                 </div>

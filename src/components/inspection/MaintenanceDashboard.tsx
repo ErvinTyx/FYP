@@ -384,10 +384,10 @@ export function MaintenanceDashboard({ repairSlips, onUpdateRepairSlip, onCreate
                       </div>
                     )}
                     <div>
-                      <span className="text-gray-600">Estimated Cost:</span> RM {slip.estimatedCost.toFixed(2)}
+                      <span className="text-gray-600">Estimated Cost:</span> RM {Number(slip.estimatedCost || 0).toFixed(2)}
                     </div>
                     <div>
-                      <span className="text-gray-600">Actual Cost:</span> RM {slip.actualCost.toFixed(2)}
+                      <span className="text-gray-600">Actual Cost:</span> RM {Number(slip.actualCost || 0).toFixed(2)}
                     </div>
                   </div>
                 </div>
