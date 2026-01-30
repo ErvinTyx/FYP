@@ -6,6 +6,160 @@ import prisma from '@/lib/prisma';
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 
 /**
+ * Auto-generate first monthly rental invoice when delivery is completed
+ */
+async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
+  const now = new Date();
+  const billingMonth = now.getMonth() + 1;
+  const billingYear = now.getFullYear();
+
+  // Check if invoice already exists for this delivery and month
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existingInvoice = await (prisma as any).monthlyRentalInvoice.findFirst({
+    where: {
+      deliveryRequestId,
+      billingMonth,
+      billingYear,
+    },
+  });
+
+  if (existingInvoice) {
+    console.log(`Invoice already exists for delivery ${deliveryRequestId} for ${billingMonth}/${billingYear}`);
+    return;
+  }
+
+  // Get delivery request with RFQ items
+  const delivery = await prisma.deliveryRequest.findUnique({
+    where: { id: deliveryRequestId },
+    include: {
+      sets: {
+        where: { status: 'Completed' },
+        include: { items: true },
+      },
+      rfq: {
+        include: { items: true },
+      },
+    },
+  });
+
+  if (!delivery || !delivery.rfq) {
+    console.log(`Delivery request ${deliveryRequestId} or linked RFQ not found, skipping invoice generation`);
+    return;
+  }
+
+  // Calculate delivered quantities per item
+  const deliveredQty: Record<string, number> = {};
+  for (const set of delivery.sets) {
+    for (const item of set.items) {
+      const itemId = item.scaffoldingItemId || item.name;
+      deliveredQty[itemId] = (deliveredQty[itemId] || 0) + item.quantity;
+    }
+  }
+
+  // Get days in billing month
+  const daysInMonth = new Date(billingYear, billingMonth, 0).getDate();
+
+  // Create RFQ item price map
+  const rfqItemPrices: Record<string, { name: string; unitPrice: number }> = {};
+  for (const rfqItem of delivery.rfq.items) {
+    rfqItemPrices[rfqItem.scaffoldingItemId] = {
+      name: rfqItem.scaffoldingItemName,
+      unitPrice: Number(rfqItem.unitPrice),
+    };
+  }
+
+  // Calculate billing items
+  let totalAmount = 0;
+  const items: Array<{
+    scaffoldingItemId: string;
+    scaffoldingItemName: string;
+    quantityBilled: number;
+    unitPrice: number;
+    daysCharged: number;
+    lineTotal: number;
+  }> = [];
+
+  for (const itemId in deliveredQty) {
+    const qty = deliveredQty[itemId];
+    const rfqItem = rfqItemPrices[itemId];
+    if (rfqItem && qty > 0) {
+      const lineTotal = qty * rfqItem.unitPrice * daysInMonth;
+      totalAmount += lineTotal;
+      items.push({
+        scaffoldingItemId: itemId,
+        scaffoldingItemName: rfqItem.name,
+        quantityBilled: qty,
+        unitPrice: rfqItem.unitPrice,
+        daysCharged: daysInMonth,
+        lineTotal,
+      });
+    }
+  }
+
+  if (items.length === 0) {
+    console.log(`No billable items found for delivery ${deliveryRequestId}`);
+    return;
+  }
+
+  // Generate invoice number
+  const today = new Date();
+  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  const prefix = `MRI-${dateStr}-`;
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const latestInvoice = await (prisma as any).monthlyRentalInvoice.findFirst({
+    where: {
+      invoiceNumber: {
+        startsWith: prefix,
+      },
+    },
+    orderBy: {
+      invoiceNumber: 'desc',
+    },
+  });
+  
+  let sequence = 1;
+  if (latestInvoice) {
+    const lastSequence = parseInt(latestInvoice.invoiceNumber.split('-')[2], 10);
+    sequence = lastSequence + 1;
+  }
+  const invoiceNumber = `${prefix}${sequence.toString().padStart(3, '0')}`;
+
+  // Calculate dates
+  const billingStartDate = new Date(billingYear, billingMonth - 1, 1);
+  const billingEndDate = new Date(billingYear, billingMonth, 0);
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 7);
+
+  // Create invoice
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).monthlyRentalInvoice.create({
+    data: {
+      invoiceNumber,
+      deliveryRequestId,
+      customerName: delivery.customerName,
+      customerEmail: delivery.customerEmail,
+      customerPhone: delivery.customerPhone,
+      billingMonth,
+      billingYear,
+      billingStartDate,
+      billingEndDate,
+      daysInPeriod: daysInMonth,
+      baseAmount: totalAmount,
+      overdueCharges: 0,
+      totalAmount,
+      status: 'Pending Payment',
+      dueDate,
+      items: {
+        create: items,
+      },
+    },
+  });
+
+  console.log(`Auto-generated monthly invoice ${invoiceNumber} for delivery ${deliveryRequestId}`);
+}
+
+/**
  * GET /api/delivery
  * List all delivery requests with their sets and items
  */
@@ -637,6 +791,16 @@ export async function PUT(request: NextRequest) {
             },
           },
         });
+
+        // Auto-generate first monthly rental invoice if delivery is completed
+        if (updateData.status === 'Completed') {
+          try {
+            await autoGenerateMonthlyInvoice(existingSet.deliveryRequestId);
+          } catch (invoiceError) {
+            // Log error but don't fail the delivery update
+            console.error('Failed to auto-generate monthly invoice:', invoiceError);
+          }
+        }
       }
 
       return NextResponse.json({
