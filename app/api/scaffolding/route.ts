@@ -53,9 +53,14 @@ export async function GET(request: NextRequest) {
       orderBy: {
         itemCode: 'asc',
       },
+      include: {
+        damageRepairs: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
 
-    // Transform the data for the frontend
+    // Transform the data for the frontend (damageRepairs from relation → array shape)
     const transformedItems = scaffoldingItems.map(item => ({
       id: item.id,
       itemCode: item.itemCode,
@@ -68,6 +73,13 @@ export async function GET(request: NextRequest) {
       location: item.location,
       itemStatus: item.itemStatus,
       imageUrl: item.imageUrl,
+      damageRepairs: item.damageRepairs.length > 0
+        ? item.damageRepairs.map(dr => ({
+            description: dr.description,
+            repairChargePerUnit: Number(dr.repairChargePerUnit),
+            partsLabourCostPerUnit: Number(dr.partsLabourCostPerUnit),
+          }))
+        : undefined,
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString(),
     }));
@@ -110,7 +122,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, category, available, price, originPrice, location, itemStatus, imageUrl } = body;
+    const { name, category, available, price, originPrice, location, itemStatus, imageUrl, damageRepairs } = body;
 
     if (!name || !category) {
       return NextResponse.json(
@@ -156,6 +168,18 @@ export async function POST(request: NextRequest) {
         location: location || 'Warehouse A',
         itemStatus: itemStatus || 'Available',
         imageUrl,
+        damageRepairs: Array.isArray(damageRepairs) && damageRepairs.length > 0
+          ? {
+              create: damageRepairs.map((dr: { description?: string; repairChargePerUnit?: number; partsLabourCostPerUnit?: number }) => ({
+                description: dr.description ?? '',
+                repairChargePerUnit: dr.repairChargePerUnit ?? 0,
+                partsLabourCostPerUnit: dr.partsLabourCostPerUnit ?? 0,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        damageRepairs: { orderBy: { createdAt: 'asc' } },
       },
     });
 
@@ -174,6 +198,13 @@ export async function POST(request: NextRequest) {
         location: scaffoldingItem.location,
         itemStatus: scaffoldingItem.itemStatus,
         imageUrl: scaffoldingItem.imageUrl,
+        damageRepairs: scaffoldingItem.damageRepairs.length > 0
+          ? scaffoldingItem.damageRepairs.map(dr => ({
+              description: dr.description,
+              repairChargePerUnit: Number(dr.repairChargePerUnit),
+              partsLabourCostPerUnit: Number(dr.partsLabourCostPerUnit),
+            }))
+          : undefined,
       },
     });
   } catch (error) {
@@ -210,7 +241,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, name, category, available, price, originPrice, location, itemStatus, imageUrl } = body;
+    const { id, name, category, available, price, originPrice, location, itemStatus, imageUrl, damageRepairs } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -242,19 +273,40 @@ export async function PUT(request: NextRequest) {
       status = 'Low Stock';
     }
 
-    const updatedItem = await prisma.scaffoldingItem.update({
-      where: { id },
-      data: {
-        name: name !== undefined ? name : existingItem.name,
-        category: category !== undefined ? category : existingItem.category,
-        available: newAvailable,
-        price: price !== undefined ? price : existingItem.price,
-        originPrice: originPrice !== undefined ? originPrice : existingItem.originPrice,
-        status,
-        location: location !== undefined ? location : existingItem.location,
-        itemStatus: itemStatus !== undefined ? itemStatus : existingItem.itemStatus,
-        imageUrl: imageUrl !== undefined ? imageUrl : existingItem.imageUrl,
-      },
+    // Replace damage repair entries: delete existing, create from payload
+    const damageRepairsArray = Array.isArray(damageRepairs) ? damageRepairs : [];
+
+    const updatedItem = await prisma.$transaction(async (tx) => {
+      await tx.scaffoldingDamageRepair.deleteMany({
+        where: { scaffoldingItemId: id },
+      });
+      const item = await tx.scaffoldingItem.update({
+        where: { id },
+        data: {
+          name: name !== undefined ? name : existingItem.name,
+          category: category !== undefined ? category : existingItem.category,
+          available: newAvailable,
+          price: price !== undefined ? price : existingItem.price,
+          originPrice: originPrice !== undefined ? originPrice : existingItem.originPrice,
+          status,
+          location: location !== undefined ? location : existingItem.location,
+          itemStatus: itemStatus !== undefined ? itemStatus : existingItem.itemStatus,
+          imageUrl: imageUrl !== undefined ? imageUrl : existingItem.imageUrl,
+          ...(damageRepairsArray.length > 0 && {
+            damageRepairs: {
+              create: damageRepairsArray.map((dr: { description?: string; repairChargePerUnit?: number; partsLabourCostPerUnit?: number }) => ({
+                description: dr.description ?? '',
+                repairChargePerUnit: dr.repairChargePerUnit ?? 0,
+                partsLabourCostPerUnit: dr.partsLabourCostPerUnit ?? 0,
+              })),
+            },
+          }),
+        },
+        include: {
+          damageRepairs: { orderBy: { createdAt: 'asc' } },
+        },
+      });
+      return item;
     });
 
     return NextResponse.json({
@@ -272,6 +324,13 @@ export async function PUT(request: NextRequest) {
         location: updatedItem.location,
         itemStatus: updatedItem.itemStatus,
         imageUrl: updatedItem.imageUrl,
+        damageRepairs: updatedItem.damageRepairs.length > 0
+          ? updatedItem.damageRepairs.map(dr => ({
+              description: dr.description,
+              repairChargePerUnit: Number(dr.repairChargePerUnit),
+              partsLabourCostPerUnit: Number(dr.partsLabourCostPerUnit),
+            }))
+          : undefined,
       },
     });
   } catch (error) {

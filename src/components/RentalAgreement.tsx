@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { FileText, Plus, Eye, Edit, History, Download, FileSignature, Lock, Unlock, Save, X, Calendar as CalendarIcon, Upload, FileCheck } from "lucide-react";
+import { generateRentalAgreementPdf } from "@/lib/rental-agreement-pdf";
+import { uploadFile } from "@/lib/upload";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -46,14 +48,18 @@ interface AgreementVersion {
   createdBy: string;
   changes: string;
   allowedRoles: string[];
+  snapshot?: Record<string, unknown> | null;
 }
+
 
 interface RFQOption {
   id: string;
-  rfqNumber: string;
+  rfqNumber?: string;
   customerName: string;
+  customerPhone?: string;
   projectName: string;
-  totalAmount: number;
+  projectLocation?: string;
+  totalAmount?: number;
 }
 
 interface DepositInfo {
@@ -91,6 +97,7 @@ interface RentalAgreement {
   signedDocumentUrl?: string;
   signedDocumentUploadedAt?: string;
   signedDocumentUploadedBy?: string;
+  signedStatus?: string | null;
   status: 'Draft' | 'Active' | 'Expired' | 'Terminated';
   currentVersion: number;
   versions: AgreementVersion[];
@@ -105,7 +112,6 @@ const userRoles = ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff'
 
 export function RentalAgreement() {
   const [agreements, setAgreements] = useState<RentalAgreement[]>([]);
-  const [rfqOptions, setRfqOptions] = useState<RFQOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -122,6 +128,9 @@ export function RentalAgreement() {
   const [isDrawing, setIsDrawing] = useState(false);
   
   const [currentUserRole] = useState('Admin'); // Mock current user role
+  const [rfqProjectList, setRfqProjectList] = useState<RFQOption[]>([]);
+  const [rfqProjectLoading, setRfqProjectLoading] = useState(false);
+  const [selectedRfqProjectId, setSelectedRfqProjectId] = useState<string>('');
 
   // Fetch agreements from API
   const fetchAgreements = useCallback(async () => {
@@ -143,35 +152,49 @@ export function RentalAgreement() {
     }
   }, []);
 
-  // Fetch RFQs from API for selection dropdown
-  const fetchRFQs = useCallback(async () => {
+  // Load agreements on mount
+  useEffect(() => {
+    fetchAgreements();
+  }, [fetchAgreements]);
+
+  // Fetch RFQ projects when create dialog opens (for project name selector).
+  // Exclude RFQs that already have a rental agreement linked so they don't appear in the dropdown.
+  const fetchRfqProjects = useCallback(async (existingAgreements: RentalAgreement[]) => {
     try {
+      setRfqProjectLoading(true);
       const response = await fetch('/api/rfq');
       const data = await response.json();
-      
-      if (data.success && data.rfqs) {
-        // Filter to only approved/confirmed RFQs that can be used for agreements
-        const availableRFQs = data.rfqs
-          .filter((rfq: { status: string }) => ['approved', 'confirmed', 'active'].includes(rfq.status?.toLowerCase()))
-          .map((rfq: { id: string; rfqNumber: string; customerName: string; projectName: string; totalAmount: number }) => ({
-            id: rfq.id,
-            rfqNumber: rfq.rfqNumber,
-            customerName: rfq.customerName,
-            projectName: rfq.projectName,
-            totalAmount: Number(rfq.totalAmount),
+      if (data.success && Array.isArray(data.data)) {
+        const linkedRfqIds = new Set(
+          existingAgreements.map((a) => a.rfqId).filter((id): id is string => Boolean(id))
+        );
+        const list = data.data
+          .filter((r: { id: string }) => !linkedRfqIds.has(r.id))
+          .map((r: { id: string; projectName: string; customerName: string; customerPhone?: string; projectLocation?: string; rfqNumber?: string; totalAmount?: number }) => ({
+            id: r.id,
+            projectName: r.projectName,
+            customerName: r.customerName,
+            customerPhone: r.customerPhone ?? '',
+            projectLocation: r.projectLocation ?? '',
+            rfqNumber: r.rfqNumber,
+            totalAmount: r.totalAmount != null ? Number(r.totalAmount) : undefined,
           }));
-        setRfqOptions(availableRFQs);
+        setRfqProjectList(list);
+      } else {
+        setRfqProjectList([]);
       }
-    } catch (error) {
-      console.error('Error fetching RFQs:', error);
+    } catch (err) {
+      console.error('Error fetching RFQ projects:', err);
+      toast.error('Failed to load projects');
+      setRfqProjectList([]);
+    } finally {
+      setRfqProjectLoading(false);
     }
   }, []);
 
-  // Load agreements and RFQs on mount
   useEffect(() => {
-    fetchAgreements();
-    fetchRFQs();
-  }, [fetchAgreements, fetchRFQs]);
+    if (isCreateDialogOpen) fetchRfqProjects(agreements);
+  }, [isCreateDialogOpen, fetchRfqProjects, agreements]);
 
   // Form state
   const [formData, setFormData] = useState<Partial<RentalAgreement>>({
@@ -198,9 +221,32 @@ export function RentalAgreement() {
     }
   };
 
+  const getCreateValidationError = (): string | null => {
+    if (!formData.projectName?.trim()) return 'Project Name';
+    if (!formData.owner?.trim()) return 'Owner';
+    if (!formData.ownerPhone?.trim()) return 'Owner Telephone';
+    if (!formData.hirer?.trim()) return 'Hirer';
+    if (!formData.hirerPhone?.trim()) return 'Hirer Telephone';
+    if (!formData.location?.trim()) return 'Location & Address of Goods';
+    if (!formData.termOfHire?.trim()) return 'Term of Hire';
+    if (!formData.transportation?.trim()) return 'Transportation';
+    const num = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v === '') || Number(v) < 0;
+    if (num(formData.monthlyRental)) return 'Monthly Rental (RM)';
+    if (num(formData.securityDeposit)) return 'Security Deposit (Month)';
+    if (num(formData.minimumCharges)) return 'Minimum Charges (Month)';
+    if (num(formData.defaultInterest)) return 'Default Interest (% per month)';
+    if (!formData.ownerSignatoryName?.trim()) return 'Owner Signatory Name';
+    if (!formData.ownerNRIC?.trim()) return 'Owner NRIC No.';
+    if (!formData.hirerSignatoryName?.trim()) return 'Hirer Signatory Name';
+    if (!formData.hirerNRIC?.trim()) return 'Hirer NRIC No.';
+    if (!formData.status) return 'Status';
+    return null;
+  };
+
   const handleCreateAgreement = async () => {
-    if (!formData.projectName || !formData.hirer || !formData.agreementNumber || !formData.poNumber) {
-      toast.error("Please fill in all required fields");
+    const missing = getCreateValidationError();
+    if (missing) {
+      toast.error(`Please fill in all required fields. Missing: ${missing}`);
       return;
     }
 
@@ -211,8 +257,6 @@ export function RentalAgreement() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          agreementNumber: formData.agreementNumber,
-          poNumber: formData.poNumber,
           projectName: formData.projectName,
           owner: formData.owner || 'Power Metal & Steel Sdn Bhd',
           ownerPhone: formData.ownerPhone || '+60 3-1234 5678',
@@ -229,7 +273,7 @@ export function RentalAgreement() {
           ownerNRIC: formData.ownerNRIC || '',
           hirerSignatoryName: formData.hirerSignatoryName || '',
           hirerNRIC: formData.hirerNRIC || '',
-          status: 'Draft',
+          status: (formData.status as RentalAgreement['status']) || 'Draft',
           allowedRoles: versionAccess,
           rfqId: formData.rfqId || null,
         }),
@@ -251,9 +295,36 @@ export function RentalAgreement() {
     }
   };
 
+  const getEditValidationError = (): string | null => {
+    if (!formData.projectName?.trim()) return 'Project Name';
+    if (!formData.owner?.trim()) return 'Owner';
+    if (!formData.ownerPhone?.trim()) return 'Owner Telephone';
+    if (!formData.hirer?.trim()) return 'Hirer';
+    if (!formData.hirerPhone?.trim()) return 'Hirer Telephone';
+    if (!formData.location?.trim()) return 'Location & Address of Goods';
+    if (!formData.termOfHire?.trim()) return 'Term of Hire';
+    if (!formData.transportation?.trim()) return 'Transportation';
+    const num = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v === '') || Number(v) < 0;
+    if (num(formData.monthlyRental)) return 'Monthly Rental (RM)';
+    if (num(formData.securityDeposit)) return 'Security Deposit (Month)';
+    if (num(formData.minimumCharges)) return 'Minimum Charges (Month)';
+    if (num(formData.defaultInterest)) return 'Default Interest (% per month)';
+    if (!formData.ownerSignatoryName?.trim()) return 'Owner Signatory Name';
+    if (!formData.ownerNRIC?.trim()) return 'Owner NRIC No.';
+    if (!formData.hirerSignatoryName?.trim()) return 'Hirer Signatory Name';
+    if (!formData.hirerNRIC?.trim()) return 'Hirer NRIC No.';
+    if (!formData.status) return 'Status';
+    return null;
+  };
+
   const handleEditAgreement = async () => {
-    if (!selectedAgreement || !formData.projectName) {
-      toast.error("Please fill in all required fields");
+    if (!selectedAgreement) {
+      toast.error("Agreement not found");
+      return;
+    }
+    const missing = getEditValidationError();
+    if (missing) {
+      toast.error(`Please fill in all required fields. Missing: ${missing}`);
       return;
     }
 
@@ -288,15 +359,32 @@ export function RentalAgreement() {
     }
   };
 
+  const getInitialCreateFormData = (): Partial<RentalAgreement> => ({
+    projectName: '',
+    owner: 'Power Metal & Steel Sdn Bhd',
+    ownerPhone: '+60 3-1234 5678',
+    hirer: '',
+    hirerPhone: '',
+    location: '',
+    termOfHire: '',
+    transportation: undefined,
+    monthlyRental: undefined,
+    securityDeposit: undefined,
+    minimumCharges: undefined,
+    defaultInterest: undefined,
+    ownerSignatoryName: '',
+    ownerNRIC: '',
+    hirerSignatoryName: '',
+    hirerNRIC: '',
+    status: 'Draft',
+    currentVersion: 1,
+    versions: [],
+    rfqId: undefined,
+  });
+
   const resetForm = () => {
-    setFormData({
-      owner: 'Power Metal & Steel Sdn Bhd',
-      ownerPhone: '+60 3-1234 5678',
-      status: 'Draft',
-      currentVersion: 1,
-      versions: [],
-      rfqId: undefined,
-    });
+    setSelectedRfqProjectId('');
+    setFormData(getInitialCreateFormData());
     setVersionAccess(['Admin', 'Manager']);
   };
 
@@ -372,10 +460,36 @@ export function RentalAgreement() {
   };
 
   const handleDownloadPDF = (agreement: RentalAgreement) => {
-    toast.success(`Downloading ${agreement.agreementNumber} as PDF...`);
-    setTimeout(() => {
+    try {
+      toast.success(`Downloading ${agreement.agreementNumber} as PDF...`);
+      const doc = generateRentalAgreementPdf({
+        agreementNumber: agreement.agreementNumber,
+        poNumber: agreement.poNumber ?? undefined,
+        projectName: agreement.projectName,
+        owner: agreement.owner,
+        ownerPhone: agreement.ownerPhone ?? undefined,
+        hirer: agreement.hirer,
+        hirerPhone: agreement.hirerPhone ?? undefined,
+        location: agreement.location ?? undefined,
+        termOfHire: agreement.termOfHire ?? undefined,
+        transportation: agreement.transportation ?? undefined,
+        monthlyRental: Number(agreement.monthlyRental),
+        securityDeposit: Number(agreement.securityDeposit),
+        minimumCharges: Number(agreement.minimumCharges),
+        defaultInterest: Number(agreement.defaultInterest),
+        ownerSignatoryName: agreement.ownerSignatoryName ?? undefined,
+        ownerNRIC: agreement.ownerNRIC ?? undefined,
+        hirerSignatoryName: agreement.hirerSignatoryName ?? undefined,
+        hirerNRIC: agreement.hirerNRIC ?? undefined,
+        ownerSignatureDate: agreement.ownerSignatureDate ?? undefined,
+        hirerSignatureDate: agreement.hirerSignatureDate ?? undefined,
+      });
+      doc.save(`Rental-Agreement-${agreement.agreementNumber}.pdf`);
       toast.success("PDF downloaded successfully!");
-    }, 1500);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      toast.error("Failed to generate PDF. Please try again.");
+    }
   };
 
   const handleUploadSignedDocument = async () => {
@@ -385,9 +499,16 @@ export function RentalAgreement() {
     }
 
     try {
-      // In real application, this would upload to a cloud storage (S3, etc.)
-      // For now, we'll create a fake URL and update the database
-      const fakeUrl = URL.createObjectURL(uploadedFile);
+      const uploadResult = await uploadFile(uploadedFile, {
+        folder: 'agreements/signed',
+        maxSizeMB: 10,
+        allowedTypes: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
+      });
+
+      if (!uploadResult.success || !uploadResult.url) {
+        toast.error(uploadResult.error || 'Failed to upload file');
+        return;
+      }
 
       const response = await fetch('/api/rental-agreement', {
         method: 'PUT',
@@ -396,7 +517,7 @@ export function RentalAgreement() {
         },
         body: JSON.stringify({
           id: selectedAgreement.id,
-          signedDocumentUrl: fakeUrl,
+          signedDocumentUrl: uploadResult.url,
           signedDocumentUploadedAt: new Date().toISOString(),
           changes: 'Signed document uploaded',
           allowedRoles: ['Admin', 'Manager'],
@@ -438,13 +559,30 @@ export function RentalAgreement() {
     }
   };
 
-  const handleDownloadSignedDocument = (agreement: RentalAgreement) => {
-    if (agreement.signedDocumentUrl) {
+  const handleDownloadSignedDocument = async (agreement: RentalAgreement) => {
+    if (!agreement.signedDocumentUrl) {
+      toast.error("No signed document available to download.");
+      return;
+    }
+    try {
       toast.success("Downloading signed agreement...");
-      // In real application, this would trigger actual download
-      setTimeout(() => {
-        toast.success("Download complete!");
-      }, 1000);
+      const url = agreement.signedDocumentUrl.startsWith("http")
+        ? agreement.signedDocumentUrl
+        : `${window.location.origin}${agreement.signedDocumentUrl.startsWith("/") ? "" : "/"}${agreement.signedDocumentUrl}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("File not found");
+      const blob = await res.blob();
+      const ext = agreement.signedDocumentUrl.split(".").pop()?.toLowerCase() || "pdf";
+      const filename = `Signed-Agreement-${agreement.agreementNumber}.${ext}`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success("Download complete!");
+    } catch (err) {
+      console.error("Download signed document failed:", err);
+      toast.error("Failed to download. The file may be missing or inaccessible.");
     }
   };
 
@@ -476,7 +614,10 @@ export function RentalAgreement() {
           <CardTitle className="text-[18px]">All Agreements</CardTitle>
           <Button 
             className="bg-[#F15929] hover:bg-[#d94d1f] h-10 px-6 rounded-lg"
-            onClick={() => setIsCreateDialogOpen(true)}
+            onClick={() => {
+              resetForm();
+              setIsCreateDialogOpen(true);
+            }}
           >
             <Plus className="mr-2 h-4 w-4" />
             Create Agreement
@@ -619,26 +760,80 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Rental Agreement Number *</Label>
                   <Input
-                    placeholder="RA-2024-XXX"
-                    value={formData.agreementNumber || ''}
-                    onChange={(e) => setFormData({...formData, agreementNumber: e.target.value})}
+                    disabled
+                    readOnly
+                    value={`Auto-generated on save (e.g. RA-${new Date().getFullYear()}-001)`}
+                    className="bg-[#F3F4F6] text-[#6B7280] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>P/O Number *</Label>
                   <Input
-                    placeholder="PO-2024-XXX"
-                    value={formData.poNumber || ''}
-                    onChange={(e) => setFormData({...formData, poNumber: e.target.value})}
+                    disabled
+                    readOnly
+                    value={`Auto-generated on save (e.g. PO-${new Date().getFullYear()}-001)`}
+                    className="bg-[#F3F4F6] text-[#6B7280] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2 col-span-2">
                   <Label>Project Name *</Label>
-                  <Input
-                    placeholder="Enter project name"
-                    value={formData.projectName || ''}
-                    onChange={(e) => setFormData({...formData, projectName: e.target.value})}
-                  />
+                  <Select
+                    value={selectedRfqProjectId || ''}
+                    onValueChange={(value) => {
+                      if (value === 'manual') {
+                        setSelectedRfqProjectId('manual');
+                        setFormData((prev) => ({
+                          ...prev,
+                          rfqId: undefined,
+                          projectName: '',
+                          hirer: '',
+                          hirerPhone: '',
+                          location: '',
+                          monthlyRental: undefined,
+                        }));
+                        return;
+                      }
+                      setSelectedRfqProjectId(value);
+                      const rfq = rfqProjectList.find((r) => r.id === value);
+                      if (rfq) {
+                        setFormData((prev) => ({
+                          ...prev,
+                          projectName: rfq.projectName,
+                          hirer: rfq.customerName,
+                          hirerPhone: rfq.customerPhone ?? '',
+                          location: rfq.projectLocation ?? '',
+                          rfqId: rfq.id,
+                          monthlyRental: rfq.totalAmount != null ? rfq.totalAmount * 30 : prev.monthlyRental,
+                        }));
+                      }
+                    }}
+                    disabled={rfqProjectLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={rfqProjectLoading ? 'Loading projects...' : 'Select project (from RFQ)'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manual">Enter project name manually</SelectItem>
+                      {rfqProjectList.map((rfq) => (
+                        <SelectItem key={rfq.id} value={rfq.id}>
+                          {rfq.projectName}
+                          {rfq.rfqNumber ? ` (${rfq.rfqNumber})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedRfqProjectId === 'manual' ? (
+                    <Input
+                      placeholder="Enter project name"
+                      value={formData.projectName || ''}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, projectName: e.target.value }))}
+                      className="mt-1"
+                    />
+                  ) : selectedRfqProjectId ? (
+                    <p className="text-xs text-[#6B7280]">
+                      Hirer, Hirer telephone, and Location are auto-filled from the selected RFQ. You can edit them below.
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -648,14 +843,14 @@ export function RentalAgreement() {
               <h3 className="text-[#231F20]">Owner & Hirer Details</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Owner</Label>
+                  <Label>Owner *</Label>
                   <Input
                     value={formData.owner || 'Power Metal & Steel Sdn Bhd'}
                     onChange={(e) => setFormData({...formData, owner: e.target.value})}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Owner Telephone</Label>
+                  <Label>Owner Telephone *</Label>
                   <Input
                     placeholder="+60 X-XXXX XXXX"
                     value={formData.ownerPhone || ''}
@@ -686,7 +881,7 @@ export function RentalAgreement() {
               <h3 className="text-[#231F20]">Location & Terms</h3>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Location & Address of Goods</Label>
+                  <Label>Location & Address of Goods *</Label>
                   <Textarea
                     placeholder="Enter full address"
                     value={formData.location || ''}
@@ -704,7 +899,7 @@ export function RentalAgreement() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Transportation</Label>
+                    <Label>Transportation *</Label>
                     <Select
                       value={formData.transportation}
                       onValueChange={(value) => setFormData({...formData, transportation: value})}
@@ -724,55 +919,6 @@ export function RentalAgreement() {
               </div>
             </div>
 
-            {/* Linked Quotation */}
-            <div className="space-y-4">
-              <h3 className="text-[#231F20]">Linked Quotation (RFQ)</h3>
-              <div className="space-y-2">
-                <Label>Select Quotation</Label>
-                <Select
-                  value={formData.rfqId || 'none'}
-                  onValueChange={(value) => {
-                    const actualValue = value === 'none' ? undefined : value;
-                    const selectedRfq = rfqOptions.find(r => r.id === actualValue);
-                    setFormData({
-                      ...formData, 
-                      rfqId: actualValue,
-                      // Auto-fill customer name and project name from RFQ
-                      hirer: selectedRfq?.customerName || formData.hirer,
-                      projectName: selectedRfq?.projectName || formData.projectName,
-                    });
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a quotation (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No linked quotation</SelectItem>
-                    {rfqOptions.map((rfq) => (
-                      <SelectItem key={rfq.id} value={rfq.id}>
-                        {rfq.rfqNumber} - {rfq.customerName} (RM{rfq.totalAmount.toLocaleString()})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[12px] text-[#6B7280]">
-                  Linking a quotation enables automatic deposit calculation when the signed agreement is uploaded.
-                  Deposit = RFQ Total × 30 days × Security Deposit Months
-                </p>
-                {formData.rfqId && rfqOptions.find(r => r.id === formData.rfqId) && (
-                  <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg p-3 mt-2">
-                    <p className="text-[14px] text-[#047857]">
-                      <strong>Selected:</strong> {rfqOptions.find(r => r.id === formData.rfqId)?.rfqNumber}
-                    </p>
-                    <p className="text-[12px] text-[#6B7280] mt-1">
-                      Customer: {rfqOptions.find(r => r.id === formData.rfqId)?.customerName} | 
-                      Total: RM{rfqOptions.find(r => r.id === formData.rfqId)?.totalAmount.toLocaleString()}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Financial Details */}
             <div className="space-y-4">
               <h3 className="text-[#231F20]">Financial Details</h3>
@@ -787,7 +933,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Security Deposit (Month)</Label>
+                  <Label>Security Deposit (Month) *</Label>
                   <Input
                     type="number"
                     placeholder="0"
@@ -805,7 +951,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Default Interest (% per month)</Label>
+                  <Label>Default Interest (% per month) *</Label>
                   <Input
                     type="number"
                     step="0.1"
@@ -830,7 +976,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Owner NRIC No.</Label>
+                  <Label>Owner NRIC No. *</Label>
                   <Input
                     placeholder="XXXXXX-XX-XXXX"
                     value={formData.ownerNRIC || ''}
@@ -838,7 +984,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Hirer Signatory Name</Label>
+                  <Label>Hirer Signatory Name *</Label>
                   <Input
                     placeholder="Enter hirer signatory name"
                     value={formData.hirerSignatoryName || ''}
@@ -853,6 +999,26 @@ export function RentalAgreement() {
                     onChange={(e) => setFormData({...formData, hirerNRIC: e.target.value})}
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Agreement Status (Create: no Terminated option) */}
+            <div className="space-y-4">
+              <h3 className="text-[#231F20]">Agreement Status</h3>
+              <div className="space-y-2">
+                <Label>Status *</Label>
+                <Select
+                  value={formData.status || 'Draft'}
+                  onValueChange={(value) => setFormData({ ...formData, status: value as RentalAgreement['status'] })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Draft">Draft</SelectItem>
+                    <SelectItem value="Active">Active</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -896,7 +1062,7 @@ export function RentalAgreement() {
               <h3 className="text-[#231F20]">Agreement Information</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Rental Agreement Number</Label>
+                  <Label>Rental Agreement Number *</Label>
                   <Input
                     value={formData.agreementNumber || ''}
                     onChange={(e) => setFormData({...formData, agreementNumber: e.target.value})}
@@ -904,7 +1070,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>P/O Number</Label>
+                  <Label>P/O Number *</Label>
                   <Input
                     value={formData.poNumber || ''}
                     onChange={(e) => setFormData({...formData, poNumber: e.target.value})}
@@ -926,14 +1092,14 @@ export function RentalAgreement() {
               <h3 className="text-[#231F20]">Owner & Hirer Details</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Owner</Label>
+                  <Label>Owner *</Label>
                   <Input
                     value={formData.owner || ''}
                     onChange={(e) => setFormData({...formData, owner: e.target.value})}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Owner Telephone</Label>
+                  <Label>Owner Telephone *</Label>
                   <Input
                     value={formData.ownerPhone || ''}
                     onChange={(e) => setFormData({...formData, ownerPhone: e.target.value})}
@@ -961,7 +1127,7 @@ export function RentalAgreement() {
               <h3 className="text-[#231F20]">Location & Terms</h3>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Location & Address of Goods</Label>
+                  <Label>Location & Address of Goods *</Label>
                   <Textarea
                     value={formData.location || ''}
                     onChange={(e) => setFormData({...formData, location: e.target.value})}
@@ -977,7 +1143,7 @@ export function RentalAgreement() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Transportation</Label>
+                    <Label>Transportation *</Label>
                     <Select
                       value={formData.transportation}
                       onValueChange={(value) => setFormData({...formData, transportation: value})}
@@ -997,53 +1163,6 @@ export function RentalAgreement() {
               </div>
             </div>
 
-            {/* Linked Quotation */}
-            <div className="space-y-4">
-              <h3 className="text-[#231F20]">Linked Quotation (RFQ)</h3>
-              <div className="space-y-2">
-                <Label>Select Quotation</Label>
-                <Select
-                  value={formData.rfqId || 'none'}
-                  onValueChange={(value) => {
-                    const actualValue = value === 'none' ? undefined : value;
-                    const selectedRfq = rfqOptions.find(r => r.id === actualValue);
-                    setFormData({
-                      ...formData, 
-                      rfqId: actualValue,
-                      hirer: selectedRfq?.customerName || formData.hirer,
-                      projectName: selectedRfq?.projectName || formData.projectName,
-                    });
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a quotation (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No linked quotation</SelectItem>
-                    {rfqOptions.map((rfq) => (
-                      <SelectItem key={rfq.id} value={rfq.id}>
-                        {rfq.rfqNumber} - {rfq.customerName} (RM{rfq.totalAmount.toLocaleString()})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[12px] text-[#6B7280]">
-                  Linking a quotation enables automatic deposit calculation when the signed agreement is uploaded.
-                </p>
-                {formData.rfqId && rfqOptions.find(r => r.id === formData.rfqId) && (
-                  <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg p-3 mt-2">
-                    <p className="text-[14px] text-[#047857]">
-                      <strong>Selected:</strong> {rfqOptions.find(r => r.id === formData.rfqId)?.rfqNumber}
-                    </p>
-                    <p className="text-[12px] text-[#6B7280] mt-1">
-                      Customer: {rfqOptions.find(r => r.id === formData.rfqId)?.customerName} | 
-                      Total: RM{rfqOptions.find(r => r.id === formData.rfqId)?.totalAmount.toLocaleString()}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Financial Details */}
             <div className="space-y-4">
               <h3 className="text-[#231F20]">Financial Details</h3>
@@ -1057,7 +1176,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Security Deposit (Month)</Label>
+                  <Label>Security Deposit (Month) *</Label>
                   <Input
                     type="number"
                     value={formData.securityDeposit || ''}
@@ -1073,7 +1192,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Default Interest (% per month)</Label>
+                  <Label>Default Interest (% per month) *</Label>
                   <Input
                     type="number"
                     step="0.1"
@@ -1096,14 +1215,14 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Owner NRIC No.</Label>
+                  <Label>Owner NRIC No. *</Label>
                   <Input
                     value={formData.ownerNRIC || ''}
                     onChange={(e) => setFormData({...formData, ownerNRIC: e.target.value})}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Hirer Signatory Name</Label>
+                  <Label>Hirer Signatory Name *</Label>
                   <Input
                     value={formData.hirerSignatoryName || ''}
                     onChange={(e) => setFormData({...formData, hirerSignatoryName: e.target.value})}
@@ -1123,7 +1242,7 @@ export function RentalAgreement() {
             <div className="space-y-4">
               <h3 className="text-[#231F20]">Agreement Status</h3>
               <div className="space-y-2">
-                <Label>Status</Label>
+                <Label>Status *</Label>
                 <Select
                   value={formData.status}
                   onValueChange={(value) => setFormData({...formData, status: value as RentalAgreement['status']})}
@@ -1463,7 +1582,14 @@ export function RentalAgreement() {
               {selectedVersion?.versionNumber === selectedAgreement?.currentVersion && " (Current)"}
             </DialogDescription>
           </DialogHeader>
-          {selectedAgreement && selectedVersion && (
+          {selectedAgreement && selectedVersion && (() => {
+            const display = selectedVersion.snapshot && typeof selectedVersion.snapshot === 'object' && !Array.isArray(selectedVersion.snapshot)
+              ? (selectedVersion.snapshot as Record<string, unknown>)
+              : (selectedAgreement as unknown as Record<string, unknown>);
+            const v = (k: string) => String(display[k] ?? '');
+            const vn = (k: string) => Number(display[k] ?? 0);
+            const statusVal = (String(display.status ?? 'Draft')) as RentalAgreement['status'];
+            return (
             <div className="space-y-6">
               {/* Version Information */}
               <Card className="border-[#E5E7EB] bg-[#F9FAFB]">
@@ -1494,67 +1620,67 @@ export function RentalAgreement() {
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Owner</Label>
-                  <p className="text-[#111827]">{selectedAgreement.owner}</p>
+                  <p className="text-[#111827]">{v('owner')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Hirer</Label>
-                  <p className="text-[#111827]">{selectedAgreement.hirer}</p>
+                  <p className="text-[#111827]">{v('hirer')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Owner Telephone</Label>
-                  <p className="text-[#111827]">{selectedAgreement.ownerPhone}</p>
+                  <p className="text-[#111827]">{v('ownerPhone')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Hirer Telephone</Label>
-                  <p className="text-[#111827]">{selectedAgreement.hirerPhone}</p>
+                  <p className="text-[#111827]">{v('hirerPhone')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Rental Agreement Number</Label>
-                  <p className="text-[#111827]">{selectedAgreement.agreementNumber}</p>
+                  <p className="text-[#111827]">{v('agreementNumber')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">P/O Number</Label>
-                  <p className="text-[#111827]">{selectedAgreement.poNumber}</p>
+                  <p className="text-[#111827]">{v('poNumber')}</p>
                 </div>
                 <div className="space-y-2 col-span-2">
                   <Label className="text-[#6B7280]">Project Name</Label>
-                  <p className="text-[#111827]">{selectedAgreement.projectName}</p>
+                  <p className="text-[#111827]">{v('projectName')}</p>
                 </div>
                 <div className="space-y-2 col-span-2">
                   <Label className="text-[#6B7280]">Location & Address of Goods</Label>
-                  <p className="text-[#111827]">{selectedAgreement.location}</p>
+                  <p className="text-[#111827]">{v('location')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Term of Hire</Label>
-                  <p className="text-[#111827]">{selectedAgreement.termOfHire}</p>
+                  <p className="text-[#111827]">{v('termOfHire')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Transportation</Label>
-                  <p className="text-[#111827]">{selectedAgreement.transportation}</p>
+                  <p className="text-[#111827]">{v('transportation')}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Monthly Rental</Label>
-                  <p className="text-[#111827]">RM {selectedAgreement.monthlyRental.toLocaleString()}</p>
+                  <p className="text-[#111827]">RM {(vn('monthlyRental')).toLocaleString()}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Total Rental</Label>
-                  <p className="text-[#111827]">RM {calculateTotalRental(selectedAgreement.monthlyRental, selectedAgreement.termOfHire).toLocaleString()}</p>
+                  <p className="text-[#111827]">RM {calculateTotalRental(vn('monthlyRental'), v('termOfHire')).toLocaleString()}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Security Deposit</Label>
-                  <p className="text-[#111827]">{selectedAgreement.securityDeposit} month(s)</p>
+                  <p className="text-[#111827]">{vn('securityDeposit')} month(s)</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Minimum Charges</Label>
-                  <p className="text-[#111827]">{selectedAgreement.minimumCharges} month(s)</p>
+                  <p className="text-[#111827]">{vn('minimumCharges')} month(s)</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Default Interest</Label>
-                  <p className="text-[#111827]">{selectedAgreement.defaultInterest}% per month</p>
+                  <p className="text-[#111827]">{vn('defaultInterest')}% per month</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Status</Label>
-                  <div>{getStatusBadge(selectedAgreement.status)}</div>
+                  <div>{getStatusBadge(statusVal)}</div>
                 </div>
               </div>
 
@@ -1584,7 +1710,8 @@ export function RentalAgreement() {
                 </Button>
               </div>
             </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -1602,21 +1729,32 @@ export function RentalAgreement() {
             {selectedAgreement?.signedDocumentUrl && (
               <Card className="border-[#E5E7EB] bg-[#F0FDF4]">
                 <CardContent className="pt-4">
-                  <div className="flex items-start gap-3">
-                    <FileCheck className="h-5 w-5 text-[#059669] mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-[14px] text-[#059669]">
-                        A signed document has already been uploaded for this agreement.
-                      </p>
-                      {selectedAgreement.signedDocumentUploadedAt && (
-                        <p className="text-[12px] text-[#6B7280] mt-1">
-                          Uploaded on {format(new Date(selectedAgreement.signedDocumentUploadedAt), "PPp")}
-                          {selectedAgreement.signedDocumentUploadedBy && 
-                            ` by ${selectedAgreement.signedDocumentUploadedBy}`
-                          }
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 flex-1">
+                      <FileCheck className="h-5 w-5 text-[#059669] mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-[14px] text-[#059669]">
+                          A signed document has already been uploaded for this agreement.
                         </p>
-                      )}
+                        {selectedAgreement.signedDocumentUploadedAt && (
+                          <p className="text-[12px] text-[#6B7280] mt-1">
+                            Uploaded on {format(new Date(selectedAgreement.signedDocumentUploadedAt), "PPp")}
+                            {selectedAgreement.signedDocumentUploadedBy && 
+                              ` by ${selectedAgreement.signedDocumentUploadedBy}`
+                            }
+                          </p>
+                        )}
+                      </div>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectedAgreement && handleDownloadSignedDocument(selectedAgreement)}
+                      className="h-9 px-4 rounded-lg shrink-0"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

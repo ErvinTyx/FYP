@@ -406,6 +406,7 @@ model RentalAgreement {
   signedDocumentUrl        String?
   signedDocumentUploadedAt DateTime?
   signedDocumentUploadedBy String?
+  signedStatus             String?   // "completed" when signed file uploaded, null by default
   status                   String    @default("Draft")
   currentVersion           Int       @default(1)
   createdBy                String?
@@ -428,6 +429,7 @@ model AgreementVersion {
   allowedRoles  String?  @db.Text // JSON string of roles
   createdBy     String?
   createdAt     DateTime @default(now())
+  snapshot      Json?    // agreement state at this version (so v1 stays v1 after edit)
 
   agreementId String
   agreement   RentalAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
@@ -757,19 +759,34 @@ model ReturnCompletion {
 
 // ScaffoldingItem model for inventory management
 model ScaffoldingItem {
-  id          String   @id @default(cuid())
-  itemCode    String   @unique
-  name        String
-  category    String
-  available   Int      @default(0)
-  price       Decimal  @default(0)
-  originPrice Decimal? @default(0)
-  status      String   @default("Available")
-  location    String?
-  itemStatus  String   @default("Available")
-  imageUrl    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String                    @id @default(cuid())
+  itemCode      String                    @unique
+  name          String
+  category      String
+  available     Int                       @default(0)
+  price         Decimal                   @default(0)
+  originPrice   Decimal?                  @default(0)
+  status        String                    @default("Available")
+  location      String?
+  itemStatus    String                    @default("Available")
+  imageUrl      String?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  damageRepairs ScaffoldingDamageRepair[]
+}
+
+// Damage and repair entries for scaffolding items (separate table for easier querying/reporting)
+model ScaffoldingDamageRepair {
+  id                    String         @id @default(cuid())
+  scaffoldingItemId     String
+  scaffoldingItem       ScaffoldingItem @relation(fields: [scaffoldingItemId], references: [id], onDelete: Cascade)
+  description           String         @db.Text
+  repairChargePerUnit   Decimal        @default(0) @db.Decimal(10, 2)
+  partsLabourCostPerUnit Decimal       @default(0) @db.Decimal(10, 2)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  @@index([scaffoldingItemId])
 }
 
 // ============================================

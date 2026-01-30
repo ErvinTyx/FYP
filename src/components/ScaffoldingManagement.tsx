@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Search, Edit, Upload, Package, Loader2, X } from "lucide-react";
+import { Plus, Search, Edit, Eye, Upload, Package, Loader2, X } from "lucide-react";
 import { uploadScaffoldingImage } from "@/lib/upload";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Textarea } from "./ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import {
@@ -34,6 +35,12 @@ import {
 } from "./ui/alert-dialog";
 import { toast } from "sonner";
 
+export interface DamageRepairEntry {
+  description: string;
+  repairChargePerUnit: number;
+  partsLabourCostPerUnit: number;
+}
+
 interface ScaffoldingItem {
   id: string;
   itemCode: string;
@@ -46,6 +53,7 @@ interface ScaffoldingItem {
   location: string;
   itemStatus: 'Available' | 'Unavailable';
   imageUrl?: string;
+  damageRepairs?: DamageRepairEntry[];
 }
 
 export function ScaffoldingManagement() {
@@ -56,7 +64,9 @@ export function ScaffoldingManagement() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ScaffoldingItem | null>(null);
+  const [viewedItem, setViewedItem] = useState<ScaffoldingItem | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -72,7 +82,8 @@ export function ScaffoldingManagement() {
     originPrice: 0,
     location: '',
     itemStatus: 'Available' as ScaffoldingItem['itemStatus'],
-    imageUrl: '' as string | undefined
+    imageUrl: '' as string | undefined,
+    damageRepairs: [] as DamageRepairEntry[],
   });
 
   // Fetch scaffolding items from API
@@ -119,8 +130,32 @@ export function ScaffoldingManagement() {
       originPrice: 0,
       location: '',
       itemStatus: 'Available',
-      imageUrl: ''
+      imageUrl: '',
+      damageRepairs: [],
     });
+  };
+
+  const addDamageRepairEntry = () => {
+    setFormData(prev => ({
+      ...prev,
+      damageRepairs: [...prev.damageRepairs, { description: '', repairChargePerUnit: 0, partsLabourCostPerUnit: 0 }],
+    }));
+  };
+
+  const updateDamageRepairEntry = (index: number, field: keyof DamageRepairEntry, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      damageRepairs: prev.damageRepairs.map((entry, i) =>
+        i === index ? { ...entry, [field]: value } : entry
+      ),
+    }));
+  };
+
+  const removeDamageRepairEntry = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      damageRepairs: prev.damageRepairs.filter((_, i) => i !== index),
+    }));
   };
 
   const handleAddItem = async () => {
@@ -176,7 +211,14 @@ export function ScaffoldingManagement() {
       originPrice: item.originPrice ?? 0,
       location: item.location,
       itemStatus: item.itemStatus,
-      imageUrl: item.imageUrl
+      imageUrl: item.imageUrl,
+      damageRepairs: Array.isArray(item.damageRepairs) && item.damageRepairs.length > 0
+        ? item.damageRepairs.map(e => ({
+            description: e.description ?? '',
+            repairChargePerUnit: typeof e.repairChargePerUnit === 'number' ? e.repairChargePerUnit : 0,
+            partsLabourCostPerUnit: typeof e.partsLabourCostPerUnit === 'number' ? e.partsLabourCostPerUnit : 0,
+          }))
+        : [],
     });
     setIsEditDialogOpen(true);
   };
@@ -203,7 +245,8 @@ export function ScaffoldingManagement() {
           originPrice: formData.originPrice,
           location: formData.location,
           itemStatus: formData.itemStatus,
-          imageUrl: formData.imageUrl,
+          imageUrl: formData.imageUrl || null,
+          damageRepairs: formData.damageRepairs,
         }),
       });
 
@@ -300,7 +343,9 @@ export function ScaffoldingManagement() {
     e.target.value = '';
   };
 
-  const clearImage = () => {
+  const clearImage = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     setFormData(prev => ({ ...prev, imageUrl: undefined }));
   };
 
@@ -433,11 +478,23 @@ export function ScaffoldingManagement() {
                   </div>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full"
+                    className="flex-1"
+                    onClick={() => {
+                      setViewedItem(item);
+                      setIsViewDialogOpen(true);
+                    }}
+                  >
+                    <Eye className="mr-1 h-3 w-3" />
+                    View
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
                     onClick={() => handleEditClick(item)}
                   >
                     <Edit className="mr-1 h-3 w-3" />
@@ -450,16 +507,85 @@ export function ScaffoldingManagement() {
         </div>
       )}
 
+      {/* View Item Dialog */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="max-w-[600px] max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-2">
+            <DialogTitle>Scaffolding Item Details</DialogTitle>
+            <DialogDescription>
+              View all information for {viewedItem?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6 space-y-4">
+            {viewedItem && (
+              <>
+                <div className="space-y-3">
+                  <div className="aspect-video bg-[#F3F4F6] rounded-lg flex items-center justify-center overflow-hidden">
+                    {viewedItem.imageUrl ? (
+                      <img src={viewedItem.imageUrl} alt={viewedItem.name} className="w-full h-full object-contain" />
+                    ) : (
+                      <Package className="h-12 w-12 text-[#9CA3AF]" />
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div className="text-[#6B7280]">Item Code</div>
+                    <div className="text-[#111827] font-medium">{viewedItem.itemCode}</div>
+                    <div className="text-[#6B7280]">Item Name</div>
+                    <div className="text-[#111827] font-medium">{viewedItem.name}</div>
+                    <div className="text-[#6B7280]">Category</div>
+                    <div className="text-[#111827]">{viewedItem.category}</div>
+                    <div className="text-[#6B7280]">Available Quantity</div>
+                    <div className="text-[#111827]">{viewedItem.available}</div>
+                    <div className="text-[#6B7280]">Price per Day (RM)</div>
+                    <div className="text-[#111827]">{viewedItem.price.toFixed(2)}</div>
+                    <div className="text-[#6B7280]">Origin Price (RM)</div>
+                    <div className="text-[#111827]">{(viewedItem.originPrice ?? 0).toFixed(2)}</div>
+                    <div className="text-[#6B7280]">Warehouse Location</div>
+                    <div className="text-[#111827]">{viewedItem.location}</div>
+                    <div className="text-[#6B7280]">Status</div>
+                    <div className="flex items-center">{getItemStatusBadge(viewedItem.itemStatus)}</div>
+                    <div className="text-[#6B7280]">Stock Status</div>
+                    <div className="flex items-center">{(viewedItem.status === 'Low Stock' || viewedItem.status === 'Out of Stock') ? getStatusBadge(viewedItem.status) : <span className="text-[#111827]">Available</span>}</div>
+                  </div>
+                </div>
+                {Array.isArray(viewedItem.damageRepairs) && viewedItem.damageRepairs.length > 0 && (
+                  <div className="space-y-2 border-t pt-4">
+                    <h4 className="text-sm font-medium text-[#374151]">Damage and Repair</h4>
+                    <div className="space-y-3">
+                      {viewedItem.damageRepairs.map((entry, index) => (
+                        <div key={index} className="p-3 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] text-sm">
+                          <div className="font-medium text-[#6B7280] mb-2">Entry {index + 1}</div>
+                          <div className="space-y-1">
+                            <div><span className="text-[#6B7280]">Description of Damage:</span> <span className="text-[#111827]">{entry.description || '—'}</span></div>
+                            <div><span className="text-[#6B7280]">Repair Charge Per Unit (RM):</span> <span className="text-[#111827]">{(entry.repairChargePerUnit ?? 0).toFixed(2)}</span></div>
+                            <div><span className="text-[#6B7280]">Parts & Labour Cost Per Unit (RM):</span> <span className="text-[#111827]">{(entry.partsLabourCostPerUnit ?? 0).toFixed(2)}</span></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-end pt-2">
+                  <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+                    Close
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Item Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="max-w-[600px]">
-          <DialogHeader>
+        <DialogContent className="!max-w-[800px] max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-2">
             <DialogTitle>Add New Scaffolding Item</DialogTitle>
             <DialogDescription>
               Enter the details of the new scaffolding item
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="itemName">Item Name *</Label>
               <Input 
@@ -578,18 +704,20 @@ export function ScaffoldingManagement() {
                 } ${isUploadingImage ? 'pointer-events-none opacity-70' : ''}`}
               >
                 {formData.imageUrl ? (
-                  <div className="space-y-2 relative">
-                    <img src={formData.imageUrl} alt="Preview" className="max-h-40 mx-auto rounded object-contain" />
-                    <p className="text-[14px] text-[#374151]">Click or drop to replace image</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={(e) => { e.stopPropagation(); clearImage(); }}
-                    >
-                      <X className="h-4 w-4 mr-1 inline" /> Remove image
-                    </Button>
+                  <div className="space-y-2 relative" onClick={(e) => e.stopPropagation()}>
+                    <img src={formData.imageUrl} alt="Preview" className="max-h-40 mx-auto rounded object-contain cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+                    <p className="text-[14px] text-[#374151]">Click image or drop to replace</p>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={(e) => clearImage(e)}
+                      >
+                        <X className="h-4 w-4 mr-1 inline" /> Remove image
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -606,7 +734,68 @@ export function ScaffoldingManagement() {
                 )}
               </div>
             </div>
-            <div className="flex gap-3 pt-4">
+            {/* Damage and Repair (Optional) */}
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-[#374151]">Damage and Repair (Optional)</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addDamageRepairEntry}>
+                  <Plus className="h-4 w-4 mr-1" /> Add New Damage Entry
+                </Button>
+              </div>
+              {formData.damageRepairs.length > 0 && (
+                <div className="space-y-4">
+                  {formData.damageRepairs.map((entry, index) => (
+                    <div key={index} className="flex gap-4 items-start p-3 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB]">
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <Label className="text-[12px] text-[#6B7280]">Description Of Damage</Label>
+                        <Textarea
+                          placeholder="Describe the damage..."
+                          className="min-h-[80px] resize-none"
+                          value={entry.description}
+                          onChange={(e) => updateDamageRepairEntry(index, 'description', e.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2 w-[180px] flex-shrink-0">
+                        <div className="space-y-1">
+                          <Label className="text-[12px] text-[#6B7280]">Repair Charge Per Unit (RM)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            className="h-9"
+                            value={entry.repairChargePerUnit || ''}
+                            onChange={(e) => updateDamageRepairEntry(index, 'repairChargePerUnit', parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[12px] text-[#6B7280]">Parts & Labour Cost Per Unit (RM)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            className="h-9"
+                            value={entry.partsLabourCostPerUnit || ''}
+                            onChange={(e) => updateDamageRepairEntry(index, 'partsLabourCostPerUnit', parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium hover:bg-red-50 text-red-600 hover:text-red-700 h-8 px-2.5 mt-1 cursor-pointer border-0 bg-transparent"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            removeDamageRepairEntry(index);
+                          }}
+                        >
+                          <X className="h-4 w-4" /> Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 pt-4 flex-shrink-0">
               <Button type="button" variant="outline" className="flex-1" onClick={() => {
                 setIsAddDialogOpen(false);
                 resetForm();
@@ -635,14 +824,14 @@ export function ScaffoldingManagement() {
 
       {/* Edit Item Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-[600px]">
-          <DialogHeader>
+        <DialogContent className="!max-w-[800px] max-h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-2">
             <DialogTitle>Edit Scaffolding Item</DialogTitle>
             <DialogDescription>
               Update the details of {selectedItem?.name}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="editItemName">Item Name *</Label>
               <Input 
@@ -761,18 +950,20 @@ export function ScaffoldingManagement() {
                 } ${isUploadingImage ? 'pointer-events-none opacity-70' : ''}`}
               >
                 {formData.imageUrl ? (
-                  <div className="space-y-2">
-                    <img src={formData.imageUrl} alt="Preview" className="max-h-40 mx-auto rounded object-contain" />
-                    <p className="text-[14px] text-[#374151]">Click or drop to replace image</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={(e) => { e.stopPropagation(); clearImage(); }}
-                    >
-                      <X className="h-4 w-4 mr-1 inline" /> Remove image
-                    </Button>
+                  <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                    <img src={formData.imageUrl} alt="Preview" className="max-h-40 mx-auto rounded object-contain cursor-pointer" onClick={() => fileInputEditRef.current?.click()} />
+                    <p className="text-[14px] text-[#374151]">Click image or drop to replace</p>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={(e) => clearImage(e)}
+                      >
+                        <X className="h-4 w-4 mr-1 inline" /> Remove image
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -789,7 +980,68 @@ export function ScaffoldingManagement() {
                 )}
               </div>
             </div>
-            <div className="flex gap-3 pt-4">
+            {/* Damage and Repair (Optional) */}
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-[#374151]">Damage and Repair (Optional)</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addDamageRepairEntry}>
+                  <Plus className="h-4 w-4 mr-1" /> Add New Damage Entry
+                </Button>
+              </div>
+              {formData.damageRepairs.length > 0 && (
+                <div className="space-y-4">
+                  {formData.damageRepairs.map((entry, index) => (
+                    <div key={index} className="flex gap-4 items-start p-3 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB]">
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <Label className="text-[12px] text-[#6B7280]">Description Of Damage</Label>
+                        <Textarea
+                          placeholder="Describe the damage..."
+                          className="min-h-[80px] resize-none"
+                          value={entry.description}
+                          onChange={(e) => updateDamageRepairEntry(index, 'description', e.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2 w-[180px] flex-shrink-0">
+                        <div className="space-y-1">
+                          <Label className="text-[12px] text-[#6B7280]">Repair Charge Per Unit (RM)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            className="h-9"
+                            value={entry.repairChargePerUnit || ''}
+                            onChange={(e) => updateDamageRepairEntry(index, 'repairChargePerUnit', parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[12px] text-[#6B7280]">Parts & Labour Cost Per Unit (RM)</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            className="h-9"
+                            value={entry.partsLabourCostPerUnit || ''}
+                            onChange={(e) => updateDamageRepairEntry(index, 'partsLabourCostPerUnit', parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium hover:bg-red-50 text-red-600 hover:text-red-700 h-8 px-2.5 mt-1 cursor-pointer border-0 bg-transparent"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            removeDamageRepairEntry(index);
+                          }}
+                        >
+                          <X className="h-4 w-4" /> Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 pt-4 flex-shrink-0">
               <Button type="button" variant="outline" className="flex-1" onClick={() => {
                 setIsEditDialogOpen(false);
                 setSelectedItem(null);
