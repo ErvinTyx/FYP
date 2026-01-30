@@ -48,6 +48,7 @@ interface AgreementVersion {
   allowedRoles: string[];
 }
 
+<<<<<<< Updated upstream
 interface RFQOption {
   id: string;
   rfqNumber: string;
@@ -62,6 +63,14 @@ interface DepositInfo {
   depositAmount: number;
   status: string;
   dueDate: string;
+=======
+interface RfqOption {
+  id: string;
+  projectName: string;
+  customerName: string;
+  customerPhone: string;
+  projectLocation: string;
+>>>>>>> Stashed changes
 }
 
 interface RentalAgreement {
@@ -122,6 +131,9 @@ export function RentalAgreement() {
   const [isDrawing, setIsDrawing] = useState(false);
   
   const [currentUserRole] = useState('Admin'); // Mock current user role
+  const [rfqList, setRfqList] = useState<RfqOption[]>([]);
+  const [rfqLoading, setRfqLoading] = useState(false);
+  const [selectedRfqId, setSelectedRfqId] = useState<string>('');
 
   // Fetch agreements from API
   const fetchAgreements = useCallback(async () => {
@@ -173,6 +185,33 @@ export function RentalAgreement() {
     fetchRFQs();
   }, [fetchAgreements, fetchRFQs]);
 
+  // Fetch RFQs when create dialog opens (for project selector)
+  const fetchRfqs = useCallback(async () => {
+    try {
+      setRfqLoading(true);
+      const response = await fetch('/api/rfq');
+      const data = await response.json();
+      if (data.success && Array.isArray(data.data)) {
+        setRfqList(data.data.map((r: { id: string; projectName: string; customerName: string; customerPhone: string; projectLocation: string }) => ({
+          id: r.id,
+          projectName: r.projectName,
+          customerName: r.customerName,
+          customerPhone: r.customerPhone ?? '',
+          projectLocation: r.projectLocation ?? '',
+        })));
+      }
+    } catch (err) {
+      console.error('Error fetching RFQs:', err);
+      toast.error('Failed to load projects');
+    } finally {
+      setRfqLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isCreateDialogOpen) fetchRfqs();
+  }, [isCreateDialogOpen, fetchRfqs]);
+
   // Form state
   const [formData, setFormData] = useState<Partial<RentalAgreement>>({
     owner: 'Power Metal & Steel Sdn Bhd',
@@ -199,8 +238,8 @@ export function RentalAgreement() {
   };
 
   const handleCreateAgreement = async () => {
-    if (!formData.projectName || !formData.hirer || !formData.agreementNumber || !formData.poNumber) {
-      toast.error("Please fill in all required fields");
+    if (!formData.projectName || !formData.hirer) {
+      toast.error("Please select a project and ensure hirer is filled (or select a project to auto-fill)");
       return;
     }
 
@@ -211,8 +250,6 @@ export function RentalAgreement() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          agreementNumber: formData.agreementNumber,
-          poNumber: formData.poNumber,
           projectName: formData.projectName,
           owner: formData.owner || 'Power Metal & Steel Sdn Bhd',
           ownerPhone: formData.ownerPhone || '+60 3-1234 5678',
@@ -289,6 +326,7 @@ export function RentalAgreement() {
   };
 
   const resetForm = () => {
+    setSelectedRfqId('');
     setFormData({
       owner: 'Power Metal & Steel Sdn Bhd',
       ownerPhone: '+60 3-1234 5678',
@@ -617,28 +655,54 @@ export function RentalAgreement() {
               <h3 className="text-[#231F20]">Agreement Information</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Rental Agreement Number *</Label>
+                  <Label>Rental Agreement Number</Label>
                   <Input
-                    placeholder="RA-2024-XXX"
-                    value={formData.agreementNumber || ''}
-                    onChange={(e) => setFormData({...formData, agreementNumber: e.target.value})}
+                    disabled
+                    readOnly
+                    value={`Auto-generated on save (e.g. RA-${new Date().getFullYear()}-001)`}
+                    className="bg-[#F3F4F6] text-[#6B7280] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>P/O Number *</Label>
+                  <Label>P/O Number</Label>
                   <Input
-                    placeholder="PO-2024-XXX"
-                    value={formData.poNumber || ''}
-                    onChange={(e) => setFormData({...formData, poNumber: e.target.value})}
+                    disabled
+                    readOnly
+                    value={`Auto-generated on save (e.g. PO-${new Date().getFullYear()}-001)`}
+                    className="bg-[#F3F4F6] text-[#6B7280] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2 col-span-2">
                   <Label>Project Name *</Label>
-                  <Input
-                    placeholder="Enter project name"
-                    value={formData.projectName || ''}
-                    onChange={(e) => setFormData({...formData, projectName: e.target.value})}
-                  />
+                  <Select
+                    value={selectedRfqId}
+                    onValueChange={(value) => {
+                      setSelectedRfqId(value);
+                      const rfq = rfqList.find(r => r.id === value);
+                      if (rfq) {
+                        setFormData(prev => ({
+                          ...prev,
+                          projectName: rfq.projectName,
+                          hirer: rfq.customerName,
+                          hirerPhone: rfq.customerPhone ?? '',
+                          location: rfq.projectLocation ?? '',
+                        }));
+                      }
+                    }}
+                    disabled={rfqLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={rfqLoading ? "Loading projects..." : "Select project (from RFQ)"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rfqList.map((rfq) => (
+                        <SelectItem key={rfq.id} value={rfq.id}>
+                          {rfq.projectName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-[#6B7280]">Selecting a project auto-fills Hirer, Hirer telephone, and Location from the RFQ.</p>
                 </div>
               </div>
             </div>

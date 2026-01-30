@@ -200,8 +200,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      agreementNumber,
-      poNumber,
       projectName,
       owner,
       ownerPhone,
@@ -223,31 +221,50 @@ export async function POST(request: NextRequest) {
       rfqId,
     } = body;
 
-    // Validate required fields
-    if (!agreementNumber || !projectName || !owner || !hirer) {
+    // Validate required fields (agreement number and PO number are auto-generated)
+    if (!projectName || !owner || !hirer) {
       return NextResponse.json(
-        { success: false, message: 'Agreement number, project name, owner, and hirer are required' },
+        { success: false, message: 'Project name, owner, and hirer are required' },
         { status: 400 }
       );
     }
 
-    // Check if agreement number already exists
-    const existingAgreement = await prisma.rentalAgreement.findUnique({
-      where: { agreementNumber },
+    // Auto-generate unique Rental Agreement Number (RA-YYYY-NNN)
+    const year = new Date().getFullYear();
+    const prefixRa = `RA-${year}-`;
+    const lastRa = await prisma.rentalAgreement.findFirst({
+      where: { agreementNumber: { startsWith: prefixRa } },
+      orderBy: { agreementNumber: 'desc' },
     });
-
-    if (existingAgreement) {
-      return NextResponse.json(
-        { success: false, message: 'An agreement with this number already exists' },
-        { status: 400 }
-      );
+    let nextRaNum = 1;
+    if (lastRa) {
+      const match = lastRa.agreementNumber.match(new RegExp(`${prefixRa}(\\d+)`));
+      if (match) nextRaNum = parseInt(match[1], 10) + 1;
     }
+    const agreementNumber = `${prefixRa}${String(nextRaNum).padStart(3, '0')}`;
+
+    // Auto-generate unique P/O Number (PO-YYYY-NNN)
+    const prefixPo = `PO-${year}-`;
+    const agreementsWithPo = await prisma.rentalAgreement.findMany({
+      where: { poNumber: { not: null, startsWith: prefixPo } },
+      select: { poNumber: true },
+    });
+    let maxPoNum = 0;
+    const poRegex = new RegExp(`^${prefixPo.replace(/-/g, '\\-')}(\\d+)$`);
+    for (const a of agreementsWithPo) {
+      const m = a.poNumber?.match(poRegex);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxPoNum) maxPoNum = n;
+      }
+    }
+    const poNumber = `${prefixPo}${String(maxPoNum + 1).padStart(3, '0')}`;
 
     // Create the rental agreement with initial version
     const newAgreement = await prisma.rentalAgreement.create({
       data: {
         agreementNumber,
-        poNumber: poNumber || null,
+        poNumber,
         projectName,
         owner,
         ownerPhone: ownerPhone || null,
