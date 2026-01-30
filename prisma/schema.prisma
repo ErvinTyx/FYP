@@ -209,6 +209,7 @@ model rFQ {
   items             rFQItem[]
   deliveryRequests  DeliveryRequest[]
   returnRequests    ReturnRequest[]
+  rentalAgreements  RentalAgreement[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 }
@@ -411,7 +412,12 @@ model RentalAgreement {
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
+  // Link to quotation
+  rfqId    String?
+  rfq      rFQ?    @relation(fields: [rfqId], references: [id])
+
   versions AgreementVersion[]
+  deposits Deposit[]
 }
 
 model AgreementVersion {
@@ -762,4 +768,44 @@ model ScaffoldingItem {
   imageUrl   String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+// ============================================
+// DEPOSIT MODULE
+// ============================================
+
+// Deposit model for tracking security deposits with payment workflow
+model Deposit {
+  id                      String    @id @default(cuid())
+  depositNumber           String    @unique // DEP-YYYYMMDD-XXX format
+  
+  // Link to agreement
+  agreementId             String
+  agreement               RentalAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  
+  // Deposit details
+  depositAmount           Decimal   @db.Decimal(15, 2)
+  status                  String    @default("Pending Payment") // Pending Payment, Pending Approval, Paid, Rejected, Overdue, Expired
+  dueDate                 DateTime
+  
+  // Payment proof
+  paymentProofUrl         String?
+  paymentProofFileName    String?
+  paymentProofUploadedAt  DateTime?
+  paymentProofUploadedBy  String?
+  paymentSubmittedAt      DateTime?
+  
+  // Approval
+  approvedBy              String?
+  approvedAt              DateTime?
+  referenceNumber         String?   // Bank reference number entered on approval
+  
+  // Rejection
+  rejectedBy              String?
+  rejectedAt              DateTime?
+  rejectionReason         String?   @db.Text
+  
+  // Timestamps
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 }

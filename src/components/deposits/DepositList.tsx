@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Eye, FileText, Calendar, DollarSign, AlertCircle, MoreVertical, Upload } from "lucide-react";
+import { Search, Eye, FileText, Calendar, DollarSign, AlertCircle, MoreVertical, Upload, CalendarClock, XCircle, Ban } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -22,8 +22,18 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Label } from "../ui/label";
 import { DepositStatusBadge } from "./DepositStatusBadge";
 import { UploadProofModal } from "./UploadProofModal";
 import { Deposit } from "../../types/deposit";
@@ -32,20 +42,32 @@ interface DepositListProps {
   deposits: Deposit[];
   onView: (id: string) => void;
   onUploadProof?: (depositId: string, file: File) => void;
-  userRole: "Admin" | "Finance" | "Staff" | "Customer";
+  onResetDueDate?: (depositId: string, newDueDate: string) => void;
+  onMarkExpired?: (depositId: string) => void;
+  userRole: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
+  isProcessing?: boolean;
 }
 
-export function DepositList({ deposits, onView, onUploadProof, userRole }: DepositListProps) {
+export function DepositList({ deposits, onView, onUploadProof, onResetDueDate, onMarkExpired, userRole, isProcessing }: DepositListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedDepositForUpload, setSelectedDepositForUpload] = useState<Deposit | null>(null);
+  const [resetDueDateModalOpen, setResetDueDateModalOpen] = useState(false);
+  const [selectedDepositForReset, setSelectedDepositForReset] = useState<Deposit | null>(null);
+  const [newDueDate, setNewDueDate] = useState("");
+  const [confirmExpireModalOpen, setConfirmExpireModalOpen] = useState(false);
+  const [selectedDepositForExpire, setSelectedDepositForExpire] = useState<Deposit | null>(null);
 
   const filteredDeposits = deposits.filter((deposit) => {
+    const depositNumber = deposit.depositNumber || deposit.depositId || '';
+    const invoiceNo = deposit.invoiceNo || deposit.agreement?.agreementNumber || '';
+    const customerName = deposit.customerName || deposit.agreement?.hirer || '';
+    
     const matchesSearch =
-      deposit.depositId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      deposit.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      deposit.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+      depositNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customerName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || deposit.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -57,8 +79,28 @@ export function DepositList({ deposits, onView, onUploadProof, userRole }: Depos
     .filter((d) => d.status === "Paid")
     .reduce((sum, d) => sum + d.depositAmount, 0);
 
-  // Count overdue deposits
+  // Count overdue and expired deposits
   const overdueCount = deposits.filter((d) => d.status === "Overdue").length;
+  const expiredCount = deposits.filter((d) => d.status === "Expired").length;
+  
+  const canManageDeposits = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
+
+  const handleResetDueDate = () => {
+    if (selectedDepositForReset && onResetDueDate && newDueDate) {
+      onResetDueDate(selectedDepositForReset.id, newDueDate);
+      setResetDueDateModalOpen(false);
+      setSelectedDepositForReset(null);
+      setNewDueDate("");
+    }
+  };
+
+  const handleMarkExpired = () => {
+    if (selectedDepositForExpire && onMarkExpired) {
+      onMarkExpired(selectedDepositForExpire.id);
+      setConfirmExpireModalOpen(false);
+      setSelectedDepositForExpire(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -117,7 +159,7 @@ export function DepositList({ deposits, onView, onUploadProof, userRole }: Depos
 
         <Card className="border-[#E5E7EB]">
           <CardHeader className="pb-2">
-            <CardTitle className="text-[14px] text-[#6B7280]">Overdue</CardTitle>
+            <CardTitle className="text-[14px] text-[#6B7280]">Overdue / Expired</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
@@ -125,8 +167,8 @@ export function DepositList({ deposits, onView, onUploadProof, userRole }: Depos
                 <AlertCircle className="h-6 w-6 text-[#EA580C]" />
               </div>
               <div>
-                <p className="text-[#111827]">{overdueCount}</p>
-                <p className="text-[12px] text-[#EA580C]">Payment expired</p>
+                <p className="text-[#111827]">{overdueCount + expiredCount}</p>
+                <p className="text-[12px] text-[#EA580C]">{overdueCount} overdue, {expiredCount} expired</p>
               </div>
             </div>
           </CardContent>
@@ -155,6 +197,7 @@ export function DepositList({ deposits, onView, onUploadProof, userRole }: Depos
             <SelectItem value="Paid">Paid</SelectItem>
             <SelectItem value="Rejected">Rejected</SelectItem>
             <SelectItem value="Overdue">Overdue</SelectItem>
+            <SelectItem value="Expired">Expired</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -186,13 +229,18 @@ export function DepositList({ deposits, onView, onUploadProof, userRole }: Depos
                 </TableRow>
               ) : (
                 filteredDeposits.map((deposit) => {
+                  const displayInvoiceNo = deposit.invoiceNo || deposit.agreement?.agreementNumber || deposit.depositNumber || '-';
+                  const displayCustomerName = deposit.customerName || deposit.agreement?.hirer || 'Unknown';
+                  const displayLastUpdated = deposit.lastUpdated || deposit.updatedAt || deposit.createdAt;
+                  const isOverdueOrExpired = deposit.status === "Overdue" || deposit.status === "Expired";
+                  
                   return (
                     <TableRow key={deposit.id} className="h-14 hover:bg-[#F3F4F6]">
                       <TableCell className="text-[#374151]">
-                        {deposit.invoiceNo}
+                        {displayInvoiceNo}
                       </TableCell>
                       <TableCell className="text-[#374151]">
-                        {deposit.customerName}
+                        {displayCustomerName}
                       </TableCell>
                       <TableCell className="text-[#111827]">
                         RM{deposit.depositAmount.toLocaleString()}
@@ -201,17 +249,17 @@ export function DepositList({ deposits, onView, onUploadProof, userRole }: Depos
                         <DepositStatusBadge status={deposit.status} />
                       </TableCell>
                       <TableCell>
-                        <div className={deposit.status === "Overdue" ? "text-[#EA580C]" : "text-[#374151]"}>
+                        <div className={isOverdueOrExpired ? "text-[#EA580C]" : "text-[#374151]"}>
                           {new Date(deposit.dueDate).toLocaleDateString()}
                         </div>
                       </TableCell>
                       <TableCell className="text-[#374151]">
-                        {new Date(deposit.lastUpdated).toLocaleDateString()}
+                        {new Date(displayLastUpdated).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-[#F3F4F6]">
+                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-[#F3F4F6]" disabled={isProcessing}>
                               <MoreVertical className="h-4 w-4 text-[#6B7280]" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -220,27 +268,56 @@ export function DepositList({ deposits, onView, onUploadProof, userRole }: Depos
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
-                            {onUploadProof && (deposit.status === "Pending Payment" || deposit.status === "Rejected") && (() => {
-                              const isBeforeDueDate = new Date() < new Date(deposit.dueDate);
-                              const canUpload = isBeforeDueDate;
-                              
-                              return (
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    if (canUpload) {
-                                      setSelectedDepositForUpload(deposit);
-                                      setUploadModalOpen(true);
-                                    }
-                                  }}
-                                  disabled={!canUpload}
-                                  className={!canUpload ? "opacity-50 cursor-not-allowed" : ""}
-                                  title={!canUpload ? "Cannot upload new proof after due date" : ""}
-                                >
-                                  <Upload className="mr-2 h-4 w-4" />
-                                  {deposit.status === "Rejected" ? "Re-Upload Proof" : "Upload Proof"}
-                                </DropdownMenuItem>
-                              );
-                            })()}
+                            
+                            {/* Upload proof for Pending Payment, Overdue, or Rejected */}
+                            {onUploadProof && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && (
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  setSelectedDepositForUpload(deposit);
+                                  setUploadModalOpen(true);
+                                }}
+                                disabled={isProcessing}
+                              >
+                                <Upload className="mr-2 h-4 w-4" />
+                                {deposit.status === "Rejected" ? "Re-Upload Proof" : "Upload Proof"}
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {/* Admin actions for Overdue deposits */}
+                            {canManageDeposits && deposit.status === "Overdue" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                {onResetDueDate && (
+                                  <DropdownMenuItem 
+                                    onClick={() => {
+                                      setSelectedDepositForReset(deposit);
+                                      // Set default new due date to 14 days from now
+                                      const defaultDate = new Date();
+                                      defaultDate.setDate(defaultDate.getDate() + 14);
+                                      setNewDueDate(defaultDate.toISOString().split('T')[0]);
+                                      setResetDueDateModalOpen(true);
+                                    }}
+                                    disabled={isProcessing}
+                                  >
+                                    <CalendarClock className="mr-2 h-4 w-4" />
+                                    Reset Due Date
+                                  </DropdownMenuItem>
+                                )}
+                                {onMarkExpired && (
+                                  <DropdownMenuItem 
+                                    onClick={() => {
+                                      setSelectedDepositForExpire(deposit);
+                                      setConfirmExpireModalOpen(true);
+                                    }}
+                                    disabled={isProcessing}
+                                    className="text-red-600 focus:text-red-600"
+                                  >
+                                    <Ban className="mr-2 h-4 w-4" />
+                                    Mark as Expired
+                                  </DropdownMenuItem>
+                                )}
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -266,10 +343,103 @@ export function DepositList({ deposits, onView, onUploadProof, userRole }: Depos
             setUploadModalOpen(false);
             setSelectedDepositForUpload(null);
           }}
-          depositInvoiceNo={selectedDepositForUpload.invoiceNo}
+          depositInvoiceNo={selectedDepositForUpload.invoiceNo || selectedDepositForUpload.depositNumber || ''}
           isReupload={selectedDepositForUpload.status === "Rejected"}
         />
       )}
+
+      {/* Reset Due Date Modal */}
+      <Dialog open={resetDueDateModalOpen} onOpenChange={setResetDueDateModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Reset Due Date</DialogTitle>
+            <DialogDescription>
+              Set a new due date for this overdue deposit. The deposit will return to "Pending Payment" status.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="new-due-date" className="text-right">
+                New Due Date
+              </Label>
+              <Input
+                id="new-due-date"
+                type="date"
+                value={newDueDate}
+                onChange={(e) => setNewDueDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="col-span-3"
+              />
+            </div>
+            {selectedDepositForReset && (
+              <div className="text-sm text-gray-500">
+                <p>Deposit: {selectedDepositForReset.depositNumber || selectedDepositForReset.depositId}</p>
+                <p>Customer: {selectedDepositForReset.customerName || selectedDepositForReset.agreement?.hirer}</p>
+                <p>Amount: RM{selectedDepositForReset.depositAmount.toLocaleString()}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setResetDueDateModalOpen(false);
+                setSelectedDepositForReset(null);
+                setNewDueDate("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleResetDueDate}
+              disabled={!newDueDate || isProcessing}
+              className="bg-[#F15929] hover:bg-[#D14620] text-white"
+            >
+              <CalendarClock className="mr-2 h-4 w-4" />
+              Reset Due Date
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Mark as Expired Modal */}
+      <Dialog open={confirmExpireModalOpen} onOpenChange={setConfirmExpireModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Mark as Expired</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to mark this deposit as expired? This action indicates the deposit is no longer active and cannot be reversed easily.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedDepositForExpire && (
+            <div className="py-4 space-y-2 text-sm">
+              <p><strong>Deposit:</strong> {selectedDepositForExpire.depositNumber || selectedDepositForExpire.depositId}</p>
+              <p><strong>Customer:</strong> {selectedDepositForExpire.customerName || selectedDepositForExpire.agreement?.hirer}</p>
+              <p><strong>Amount:</strong> RM{selectedDepositForExpire.depositAmount.toLocaleString()}</p>
+              <p><strong>Original Due Date:</strong> {new Date(selectedDepositForExpire.dueDate).toLocaleDateString()}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setConfirmExpireModalOpen(false);
+                setSelectedDepositForExpire(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleMarkExpired}
+              disabled={isProcessing}
+              variant="destructive"
+            >
+              <Ban className="mr-2 h-4 w-4" />
+              Mark as Expired
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

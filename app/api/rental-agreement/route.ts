@@ -6,6 +6,35 @@ import prisma from '@/lib/prisma';
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 
 /**
+ * Generate a unique deposit number in format DEP-YYYYMMDD-XXX
+ */
+async function generateDepositNumber(): Promise<string> {
+  const today = new Date();
+  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  const prefix = `DEP-${dateStr}-`;
+  
+  // Find the latest deposit number for today
+  const latestDeposit = await prisma.deposit.findFirst({
+    where: {
+      depositNumber: {
+        startsWith: prefix,
+      },
+    },
+    orderBy: {
+      depositNumber: 'desc',
+    },
+  });
+  
+  let sequence = 1;
+  if (latestDeposit) {
+    const lastSequence = parseInt(latestDeposit.depositNumber.split('-')[2], 10);
+    sequence = lastSequence + 1;
+  }
+  
+  return `${prefix}${sequence.toString().padStart(3, '0')}`;
+}
+
+/**
  * GET /api/rental-agreement
  * List all rental agreements with their versions
  */
@@ -53,6 +82,12 @@ export async function GET(request: NextRequest) {
             versionNumber: 'desc',
           },
         },
+        rfq: {
+          include: {
+            items: true,
+          },
+        },
+        deposits: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -92,6 +127,30 @@ export async function GET(request: NextRequest) {
       createdBy: agreement.createdBy,
       createdAt: agreement.createdAt.toISOString(),
       updatedAt: agreement.updatedAt.toISOString(),
+      rfqId: agreement.rfqId,
+      rfq: agreement.rfq ? {
+        id: agreement.rfq.id,
+        rfqNumber: agreement.rfq.rfqNumber,
+        customerName: agreement.rfq.customerName,
+        customerEmail: agreement.rfq.customerEmail,
+        projectName: agreement.rfq.projectName,
+        totalAmount: Number(agreement.rfq.totalAmount),
+        items: agreement.rfq.items.map(item => ({
+          id: item.id,
+          scaffoldingItemName: item.scaffoldingItemName,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: Number(item.unitPrice),
+          totalPrice: Number(item.totalPrice),
+        })),
+      } : null,
+      deposits: agreement.deposits.map(d => ({
+        id: d.id,
+        depositNumber: d.depositNumber,
+        depositAmount: Number(d.depositAmount),
+        status: d.status,
+        dueDate: d.dueDate.toISOString(),
+      })),
       versions: agreement.versions.map(v => ({
         id: v.id,
         versionNumber: v.versionNumber,
@@ -161,6 +220,7 @@ export async function POST(request: NextRequest) {
       hirerNRIC,
       status,
       allowedRoles,
+      rfqId,
     } = body;
 
     // Validate required fields
@@ -207,6 +267,7 @@ export async function POST(request: NextRequest) {
         status: status || 'Draft',
         currentVersion: 1,
         createdBy: session.user.email,
+        rfqId: rfqId || null,
         versions: {
           create: {
             versionNumber: 1,
@@ -218,6 +279,7 @@ export async function POST(request: NextRequest) {
       },
       include: {
         versions: true,
+        rfq: true,
       },
     });
 
@@ -232,6 +294,12 @@ export async function POST(request: NextRequest) {
         defaultInterest: Number(newAgreement.defaultInterest),
         createdAt: newAgreement.createdAt.toISOString(),
         updatedAt: newAgreement.updatedAt.toISOString(),
+        rfq: newAgreement.rfq ? {
+          id: newAgreement.rfq.id,
+          rfqNumber: newAgreement.rfq.rfqNumber,
+          customerName: newAgreement.rfq.customerName,
+          totalAmount: Number(newAgreement.rfq.totalAmount),
+        } : null,
         versions: newAgreement.versions.map(v => ({
           ...v,
           allowedRoles: v.allowedRoles ? JSON.parse(v.allowedRoles) : [],
@@ -251,6 +319,7 @@ export async function POST(request: NextRequest) {
 /**
  * PUT /api/rental-agreement
  * Update an existing rental agreement
+ * Auto-creates deposit when signed document is uploaded and agreement has linked RFQ
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -282,9 +351,13 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Check if agreement exists
+    // Check if agreement exists with RFQ and deposits
     const existingAgreement = await prisma.rentalAgreement.findUnique({
       where: { id },
+      include: {
+        rfq: true,
+        deposits: true,
+      },
     });
 
     if (!existingAgreement) {
@@ -293,6 +366,11 @@ export async function PUT(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Check if this update includes a signed document upload (new document being added)
+    const isNewDocumentUpload = 
+      updateData.signedDocumentUrl && 
+      !existingAgreement.signedDocumentUrl;
 
     // Increment version and update
     const newVersion = existingAgreement.currentVersion + 1;
@@ -317,12 +395,47 @@ export async function PUT(request: NextRequest) {
             versionNumber: 'desc',
           },
         },
+        rfq: true,
+        deposits: true,
       },
     });
 
+    // Auto-create deposit when signed document is uploaded
+    let createdDeposit = null;
+    const rfqToUse = updatedAgreement.rfq || (updateData.rfqId ? await prisma.rFQ.findUnique({ where: { id: updateData.rfqId } }) : null);
+    
+    if (isNewDocumentUpload && rfqToUse && existingAgreement.deposits.length === 0) {
+      // Calculate deposit amount: RFQ.totalAmount × 30 × securityDeposit (months)
+      const rfqTotalAmount = Number(rfqToUse.totalAmount);
+      const securityDepositMonths = Number(updatedAgreement.securityDeposit);
+      const depositAmount = rfqTotalAmount * 30 * securityDepositMonths;
+
+      if (depositAmount > 0) {
+        // Generate deposit number
+        const depositNumber = await generateDepositNumber();
+
+        // Calculate due date (14 days from now)
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 14);
+
+        // Create deposit
+        createdDeposit = await prisma.deposit.create({
+          data: {
+            depositNumber,
+            agreementId: id,
+            depositAmount,
+            status: 'Pending Payment',
+            dueDate,
+          },
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Rental agreement updated successfully',
+      message: createdDeposit 
+        ? 'Rental agreement updated and deposit created successfully' 
+        : 'Rental agreement updated successfully',
       agreement: {
         ...updatedAgreement,
         monthlyRental: Number(updatedAgreement.monthlyRental),
@@ -334,12 +447,25 @@ export async function PUT(request: NextRequest) {
         ownerSignatureDate: updatedAgreement.ownerSignatureDate?.toISOString(),
         hirerSignatureDate: updatedAgreement.hirerSignatureDate?.toISOString(),
         signedDocumentUploadedAt: updatedAgreement.signedDocumentUploadedAt?.toISOString(),
+        rfq: updatedAgreement.rfq ? {
+          id: updatedAgreement.rfq.id,
+          rfqNumber: updatedAgreement.rfq.rfqNumber,
+          customerName: updatedAgreement.rfq.customerName,
+          totalAmount: Number(updatedAgreement.rfq.totalAmount),
+        } : null,
         versions: updatedAgreement.versions.map(v => ({
           ...v,
           allowedRoles: v.allowedRoles ? JSON.parse(v.allowedRoles) : [],
           createdAt: v.createdAt.toISOString(),
         })),
       },
+      deposit: createdDeposit ? {
+        id: createdDeposit.id,
+        depositNumber: createdDeposit.depositNumber,
+        depositAmount: Number(createdDeposit.depositAmount),
+        status: createdDeposit.status,
+        dueDate: createdDeposit.dueDate.toISOString(),
+      } : null,
     });
   } catch (error) {
     console.error('Update rental agreement error:', error);

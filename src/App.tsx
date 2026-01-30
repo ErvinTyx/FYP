@@ -581,7 +581,7 @@ export default function App() {
           onNavigateToRefunds={() => setCurrentPage("refund-management")}
         />; 
       case "manage-deposits":
-        return <ManageDepositFlow userRole={userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"} />;
+        return <ManageDepositFlow userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"} />;
       case "monthly-rental":
         return <MonthlyRentalBilling />;
       case "credit-notes":

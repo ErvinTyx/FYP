@@ -1,26 +1,65 @@
+export type DepositStatus = 'Pending Payment' | 'Pending Approval' | 'Paid' | 'Rejected' | 'Overdue' | 'Expired';
+
 export interface Deposit {
   id: string;
-  depositId: string;
-  invoiceNo: string;
-  customerName: string;
-  customerId: string;
-  agreementDocument: DepositDocument;
+  depositNumber: string;
+  agreementId: string;
   depositAmount: number;
-  status: 'Pending Payment' | 'Pending Approval' | 'Paid' | 'Rejected' | 'Overdue';
+  status: DepositStatus;
   dueDate: string;
-  lastUpdated: string;
   createdAt: string;
-  paymentProof?: DepositDocument;
+  updatedAt: string;
+  
+  // Payment proof
+  paymentProofUrl?: string;
+  paymentProofFileName?: string;
+  paymentProofUploadedAt?: string;
+  paymentProofUploadedBy?: string;
   paymentSubmittedAt?: string;
+  
+  // Approval
   approvedBy?: string;
   approvedAt?: string;
+  referenceNumber?: string; // Bank reference number entered on approval
+  
+  // Rejection
   rejectedBy?: string;
   rejectedAt?: string;
   rejectionReason?: string;
-  referenceId?: string;
+  
+  // Related agreement data (populated from API)
+  agreement?: {
+    id: string;
+    agreementNumber: string;
+    projectName: string;
+    hirer: string;
+    hirerPhone?: string;
+    owner: string;
+    monthlyRental: number;
+    securityDeposit: number;
+    signedDocumentUrl?: string;
+    rfq?: {
+      id: string;
+      rfqNumber: string;
+      customerName: string;
+      customerEmail: string;
+      totalAmount: number;
+      items?: RentalItem[];
+    };
+  };
+  
+  // Legacy fields for backwards compatibility
+  depositId?: string; // Alias for depositNumber
+  invoiceNo?: string;
+  customerName?: string;
+  customerId?: string;
+  agreementDocument?: DepositDocument;
+  paymentProof?: DepositDocument;
+  referenceId?: string; // Alias for referenceNumber
   transactionId?: string;
   isOverdue?: boolean;
   linkedToNewInvoice?: string;
+  lastUpdated?: string;
   rentalItems?: RentalItem[];
   depositReceipt?: DepositReceipt;
 }
