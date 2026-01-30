@@ -428,6 +428,7 @@ model AgreementVersion {
   allowedRoles  String?  @db.Text // JSON string of roles
   createdBy     String?
   createdAt     DateTime @default(now())
+  snapshot      Json?    // agreement state at this version (so v1 stays v1 after edit)
 
   agreementId String
   agreement   RentalAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)

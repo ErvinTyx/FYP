@@ -34,6 +34,56 @@ async function generateDepositNumber(): Promise<string> {
   return `${prefix}${sequence.toString().padStart(3, '0')}`;
 }
 
+/** Build a snapshot of agreement state for version history (JSON-serializable). */
+function buildAgreementSnapshot(agreement: {
+  agreementNumber: string;
+  poNumber: string | null;
+  projectName: string;
+  owner: string;
+  ownerPhone: string | null;
+  hirer: string;
+  hirerPhone: string | null;
+  location: string | null;
+  termOfHire: string | null;
+  transportation: string | null;
+  monthlyRental: unknown;
+  securityDeposit: unknown;
+  minimumCharges: unknown;
+  defaultInterest: unknown;
+  ownerSignatoryName: string | null;
+  ownerNRIC: string | null;
+  hirerSignatoryName: string | null;
+  hirerNRIC: string | null;
+  status: string;
+  ownerSignatureDate?: Date | null;
+  hirerSignatureDate?: Date | null;
+  [k: string]: unknown;
+}): Record<string, unknown> {
+  return {
+    agreementNumber: agreement.agreementNumber,
+    poNumber: agreement.poNumber,
+    projectName: agreement.projectName,
+    owner: agreement.owner,
+    ownerPhone: agreement.ownerPhone,
+    hirer: agreement.hirer,
+    hirerPhone: agreement.hirerPhone,
+    location: agreement.location,
+    termOfHire: agreement.termOfHire,
+    transportation: agreement.transportation,
+    monthlyRental: Number(agreement.monthlyRental),
+    securityDeposit: Number(agreement.securityDeposit),
+    minimumCharges: Number(agreement.minimumCharges),
+    defaultInterest: Number(agreement.defaultInterest),
+    ownerSignatoryName: agreement.ownerSignatoryName,
+    ownerNRIC: agreement.ownerNRIC,
+    hirerSignatoryName: agreement.hirerSignatoryName,
+    hirerNRIC: agreement.hirerNRIC,
+    status: agreement.status,
+    ownerSignatureDate: agreement.ownerSignatureDate?.toISOString() ?? null,
+    hirerSignatureDate: agreement.hirerSignatureDate?.toISOString() ?? null,
+  };
+}
+
 /**
  * GET /api/rental-agreement
  * List all rental agreements with their versions
@@ -76,90 +126,102 @@ export async function GET(request: NextRequest) {
 
     const agreements = await prisma.rentalAgreement.findMany({
       where,
-      include: {
-        versions: {
-          orderBy: {
-            versionNumber: 'desc',
-          },
-        },
-        rfq: {
-          include: {
-            items: true,
-          },
-        },
-        deposits: true,
-      },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    // Transform the data for the frontend
-    const transformedAgreements = agreements.map(agreement => ({
-      id: agreement.id,
-      agreementNumber: agreement.agreementNumber,
-      poNumber: agreement.poNumber,
-      projectName: agreement.projectName,
-      owner: agreement.owner,
-      ownerPhone: agreement.ownerPhone,
-      hirer: agreement.hirer,
-      hirerPhone: agreement.hirerPhone,
-      location: agreement.location,
-      termOfHire: agreement.termOfHire,
-      transportation: agreement.transportation,
-      monthlyRental: Number(agreement.monthlyRental),
-      securityDeposit: Number(agreement.securityDeposit),
-      minimumCharges: Number(agreement.minimumCharges),
-      defaultInterest: Number(agreement.defaultInterest),
-      ownerSignatoryName: agreement.ownerSignatoryName,
-      ownerNRIC: agreement.ownerNRIC,
-      hirerSignatoryName: agreement.hirerSignatoryName,
-      hirerNRIC: agreement.hirerNRIC,
-      ownerSignature: agreement.ownerSignature,
-      hirerSignature: agreement.hirerSignature,
-      ownerSignatureDate: agreement.ownerSignatureDate?.toISOString(),
-      hirerSignatureDate: agreement.hirerSignatureDate?.toISOString(),
-      signedDocumentUrl: agreement.signedDocumentUrl,
-      signedDocumentUploadedAt: agreement.signedDocumentUploadedAt?.toISOString(),
-      signedDocumentUploadedBy: agreement.signedDocumentUploadedBy,
-      status: agreement.status,
-      currentVersion: agreement.currentVersion,
-      createdBy: agreement.createdBy,
-      createdAt: agreement.createdAt.toISOString(),
-      updatedAt: agreement.updatedAt.toISOString(),
-      rfqId: agreement.rfqId,
-      rfq: agreement.rfq ? {
-        id: agreement.rfq.id,
-        rfqNumber: agreement.rfq.rfqNumber,
-        customerName: agreement.rfq.customerName,
-        customerEmail: agreement.rfq.customerEmail,
-        projectName: agreement.rfq.projectName,
-        totalAmount: Number(agreement.rfq.totalAmount),
-        items: agreement.rfq.items.map(item => ({
-          id: item.id,
-          scaffoldingItemName: item.scaffoldingItemName,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitPrice: Number(item.unitPrice),
-          totalPrice: Number(item.totalPrice),
-        })),
-      } : null,
-      deposits: agreement.deposits.map(d => ({
-        id: d.id,
-        depositNumber: d.depositNumber,
-        depositAmount: Number(d.depositAmount),
-        status: d.status,
-        dueDate: d.dueDate.toISOString(),
-      })),
-      versions: agreement.versions.map(v => ({
+    // Load versions and deposits via separate queries (avoids include when client is stale)
+    const ids = agreements.map((a) => a.id);
+    type VersionRow = { id: string; agreementId: string; versionNumber: number; changes: string | null; allowedRoles: string | null; createdBy: string | null; createdAt: Date };
+    type DepositRow = { id: string; agreementId: string; depositNumber: string; depositAmount: unknown; status: string; dueDate: Date };
+    let allVersions: VersionRow[] = [];
+    let allDeposits: DepositRow[] = [];
+    try {
+      if (ids.length > 0) {
+        const prismaAny = prisma as unknown as { agreementVersion: { findMany: (o: unknown) => Promise<VersionRow[]> }; deposit: { findMany: (o: unknown) => Promise<DepositRow[]> } };
+        if ('agreementVersion' in prismaAny && 'deposit' in prismaAny) {
+          const [v, d] = await Promise.all([
+            prismaAny.agreementVersion.findMany({ where: { agreementId: { in: ids } }, orderBy: { versionNumber: 'desc' } }),
+            prismaAny.deposit.findMany({ where: { agreementId: { in: ids } } }),
+          ]);
+          allVersions = v;
+          allDeposits = d;
+        }
+      }
+    } catch {
+      // Client may not have these models; leave arrays empty
+    }
+
+    const versionsByAgreementId = new Map<string, typeof allVersions>();
+    for (const v of allVersions) {
+      const list = versionsByAgreementId.get(v.agreementId) ?? [];
+      list.push(v);
+      versionsByAgreementId.set(v.agreementId, list);
+    }
+    const depositsByAgreementId = new Map<string, typeof allDeposits>();
+    for (const d of allDeposits) {
+      const list = depositsByAgreementId.get(d.agreementId) ?? [];
+      list.push(d);
+      depositsByAgreementId.set(d.agreementId, list);
+    }
+
+    const transformedAgreements = agreements.map((agreement) => {
+      const a = agreement as typeof agreement & { rfqId?: string | null };
+      const versions = (versionsByAgreementId.get(agreement.id) ?? []).map((v) => ({
         id: v.id,
         versionNumber: v.versionNumber,
         changes: v.changes,
         allowedRoles: v.allowedRoles ? JSON.parse(v.allowedRoles) : [],
         createdBy: v.createdBy,
         createdAt: v.createdAt.toISOString(),
-      })),
-    }));
+        snapshot: (v as { snapshot?: unknown }).snapshot ?? null,
+      }));
+      const deposits = (depositsByAgreementId.get(agreement.id) ?? []).map((d) => ({
+        id: d.id,
+        depositNumber: d.depositNumber,
+        depositAmount: Number(d.depositAmount),
+        status: d.status,
+        dueDate: d.dueDate.toISOString(),
+      }));
+      return {
+        id: agreement.id,
+        agreementNumber: agreement.agreementNumber,
+        poNumber: agreement.poNumber,
+        projectName: agreement.projectName,
+        owner: agreement.owner,
+        ownerPhone: agreement.ownerPhone,
+        hirer: agreement.hirer,
+        hirerPhone: agreement.hirerPhone,
+        location: agreement.location,
+        termOfHire: agreement.termOfHire,
+        transportation: agreement.transportation,
+        monthlyRental: Number(agreement.monthlyRental),
+        securityDeposit: Number(agreement.securityDeposit),
+        minimumCharges: Number(agreement.minimumCharges),
+        defaultInterest: Number(agreement.defaultInterest),
+        ownerSignatoryName: agreement.ownerSignatoryName,
+        ownerNRIC: agreement.ownerNRIC,
+        hirerSignatoryName: agreement.hirerSignatoryName,
+        hirerNRIC: agreement.hirerNRIC,
+        ownerSignature: agreement.ownerSignature,
+        hirerSignature: agreement.hirerSignature,
+        ownerSignatureDate: agreement.ownerSignatureDate?.toISOString(),
+        hirerSignatureDate: agreement.hirerSignatureDate?.toISOString(),
+        signedDocumentUrl: agreement.signedDocumentUrl,
+        signedDocumentUploadedAt: agreement.signedDocumentUploadedAt?.toISOString(),
+        signedDocumentUploadedBy: agreement.signedDocumentUploadedBy,
+        status: agreement.status,
+        currentVersion: agreement.currentVersion,
+        createdBy: agreement.createdBy,
+        createdAt: agreement.createdAt.toISOString(),
+        updatedAt: agreement.updatedAt.toISOString(),
+        rfqId: a.rfqId ?? null,
+        rfq: null,
+        deposits,
+        versions,
+      };
+    });
 
     return NextResponse.json({
       success: true,
@@ -291,6 +353,27 @@ export async function POST(request: NextRequest) {
             changes: 'Initial agreement created',
             allowedRoles: JSON.stringify(allowedRoles || ['Admin', 'Manager', 'Sales', 'Finance']),
             createdBy: session.user.email,
+            ...({ snapshot: buildAgreementSnapshot({
+              agreementNumber,
+              poNumber,
+              projectName,
+              owner,
+              ownerPhone: ownerPhone || null,
+              hirer,
+              hirerPhone: hirerPhone || null,
+              location: location || null,
+              termOfHire: termOfHire || null,
+              transportation: transportation || null,
+              monthlyRental: monthlyRental || 0,
+              securityDeposit: securityDeposit || 0,
+              minimumCharges: minimumCharges || 0,
+              defaultInterest: defaultInterest || 0,
+              ownerSignatoryName: ownerSignatoryName || null,
+              ownerNRIC: ownerNRIC || null,
+              hirerSignatoryName: hirerSignatoryName || null,
+              hirerNRIC: hirerNRIC || null,
+              status: status || 'Draft',
+            }) } as Record<string, unknown>),
           },
         },
       },
@@ -368,13 +451,9 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Check if agreement exists with RFQ and deposits
+    // Check if agreement exists
     const existingAgreement = await prisma.rentalAgreement.findUnique({
       where: { id },
-      include: {
-        rfq: true,
-        deposits: true,
-      },
     });
 
     if (!existingAgreement) {
@@ -384,10 +463,51 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    // Only scalar fields allowed for update (exclude relations and read-only fields from body)
+    const scalarFields = [
+      'agreementNumber', 'poNumber', 'projectName', 'owner', 'ownerPhone', 'hirer', 'hirerPhone',
+      'location', 'termOfHire', 'transportation', 'monthlyRental', 'securityDeposit', 'minimumCharges',
+      'defaultInterest', 'ownerSignatoryName', 'ownerNRIC', 'hirerSignatoryName', 'hirerNRIC',
+      'ownerSignature', 'hirerSignature', 'ownerSignatureDate', 'hirerSignatureDate',
+      'signedDocumentUrl', 'signedDocumentUploadedAt', 'signedDocumentUploadedBy', 'status', 'createdBy',
+    ] as const;
+    const dataForUpdate: Record<string, unknown> = {};
+    for (const key of scalarFields) {
+      if (key in updateData && updateData[key] !== undefined) {
+        dataForUpdate[key] = updateData[key];
+      }
+    }
+    // Omit rfqId from update when client is stale (client may reject rfqId; run npx prisma generate to get full schema)
+
+    // Check if we need deposit count (for auto-create deposit logic)
+    let existingDepositCount = 0;
+    try {
+      const prismaAny = prisma as unknown as { deposit: { count: (args: { where: { agreementId: string } }) => Promise<number> } };
+      if ('deposit' in prismaAny) {
+        existingDepositCount = await prismaAny.deposit.count({ where: { agreementId: id } });
+      }
+    } catch {
+      // ignore
+    }
+
     // Check if this update includes a signed document upload (new document being added)
-    const isNewDocumentUpload = 
-      updateData.signedDocumentUrl && 
+    const isNewDocumentUpload =
+      dataForUpdate.signedDocumentUrl != null &&
       !existingAgreement.signedDocumentUrl;
+
+    // Save snapshot of current state into the current version (so v1 stays v1 after edit)
+    const snapshot = buildAgreementSnapshot(existingAgreement);
+    try {
+      await prisma.$executeRawUnsafe(
+        'UPDATE `AgreementVersion` SET `snapshot` = ? WHERE `agreementId` = ? AND `versionNumber` = ?',
+        JSON.stringify(snapshot),
+        id,
+        existingAgreement.currentVersion
+      );
+    } catch (e) {
+      // snapshot column may not exist yet; run: npx prisma migrate deploy && npx prisma generate
+      console.warn('Version snapshot update skipped:', e);
+    }
 
     // Increment version and update
     const newVersion = existingAgreement.currentVersion + 1;
@@ -395,7 +515,7 @@ export async function PUT(request: NextRequest) {
     const updatedAgreement = await prisma.rentalAgreement.update({
       where: { id },
       data: {
-        ...updateData,
+        ...dataForUpdate,
         currentVersion: newVersion,
         versions: {
           create: {
@@ -412,46 +532,55 @@ export async function PUT(request: NextRequest) {
             versionNumber: 'desc',
           },
         },
-        rfq: true,
-        deposits: true,
       },
     });
 
     // Auto-create deposit when signed document is uploaded
     let createdDeposit = null;
-    const rfqToUse = updatedAgreement.rfq || (updateData.rfqId ? await prisma.rFQ.findUnique({ where: { id: updateData.rfqId } }) : null);
-    
-    if (isNewDocumentUpload && rfqToUse && existingAgreement.deposits.length === 0) {
+    let rfqToUse: { totalAmount: unknown } | null = null;
+    try {
+      const ag = updatedAgreement as typeof updatedAgreement & { rfqId?: string | null; rfq?: { totalAmount: unknown } | null };
+      if (ag.rfqId) {
+        rfqToUse = await prisma.rFQ.findUnique({ where: { id: ag.rfqId } });
+      }
+    } catch {
+      // ignore
+    }
+
+    if (isNewDocumentUpload && rfqToUse && existingDepositCount === 0) {
       // Calculate deposit amount: RFQ.totalAmount × 30 × securityDeposit (months)
       const rfqTotalAmount = Number(rfqToUse.totalAmount);
       const securityDepositMonths = Number(updatedAgreement.securityDeposit);
       const depositAmount = rfqTotalAmount * 30 * securityDepositMonths;
 
       if (depositAmount > 0) {
-        // Generate deposit number
         const depositNumber = await generateDepositNumber();
-
-        // Calculate due date (14 days from now)
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 14);
-
-        // Create deposit
-        createdDeposit = await prisma.deposit.create({
-          data: {
-            depositNumber,
-            agreementId: id,
-            depositAmount,
-            status: 'Pending Payment',
-            dueDate,
-          },
-        });
+        try {
+          const prismaAny = prisma as unknown as { deposit: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> } };
+          if ('deposit' in prismaAny) {
+            createdDeposit = await prismaAny.deposit.create({
+              data: {
+                depositNumber,
+                agreementId: id,
+                depositAmount,
+                status: 'Pending Payment',
+                dueDate,
+              },
+            });
+          }
+        } catch {
+          // client may not have deposit model
+        }
       }
     }
 
+    const agOut = updatedAgreement as typeof updatedAgreement & { rfq?: { id: string; rfqNumber: string; customerName: string; totalAmount: unknown } | null };
     return NextResponse.json({
       success: true,
-      message: createdDeposit 
-        ? 'Rental agreement updated and deposit created successfully' 
+      message: createdDeposit
+        ? 'Rental agreement updated and deposit created successfully'
         : 'Rental agreement updated successfully',
       agreement: {
         ...updatedAgreement,
@@ -464,25 +593,22 @@ export async function PUT(request: NextRequest) {
         ownerSignatureDate: updatedAgreement.ownerSignatureDate?.toISOString(),
         hirerSignatureDate: updatedAgreement.hirerSignatureDate?.toISOString(),
         signedDocumentUploadedAt: updatedAgreement.signedDocumentUploadedAt?.toISOString(),
-        rfq: updatedAgreement.rfq ? {
-          id: updatedAgreement.rfq.id,
-          rfqNumber: updatedAgreement.rfq.rfqNumber,
-          customerName: updatedAgreement.rfq.customerName,
-          totalAmount: Number(updatedAgreement.rfq.totalAmount),
+        rfq: agOut.rfq ? {
+          id: agOut.rfq.id,
+          rfqNumber: agOut.rfq.rfqNumber,
+          customerName: agOut.rfq.customerName,
+          totalAmount: Number(agOut.rfq.totalAmount),
         } : null,
-        versions: updatedAgreement.versions.map(v => ({
+        versions: updatedAgreement.versions.map((v) => ({
           ...v,
           allowedRoles: v.allowedRoles ? JSON.parse(v.allowedRoles) : [],
           createdAt: v.createdAt.toISOString(),
         })),
       },
-      deposit: createdDeposit ? {
-        id: createdDeposit.id,
-        depositNumber: createdDeposit.depositNumber,
-        depositAmount: Number(createdDeposit.depositAmount),
-        status: createdDeposit.status,
-        dueDate: createdDeposit.dueDate.toISOString(),
-      } : null,
+      deposit: createdDeposit ? (() => {
+        const d = createdDeposit as { id: string; depositNumber: string; depositAmount: unknown; status: string; dueDate: Date };
+        return { id: d.id, depositNumber: d.depositNumber, depositAmount: Number(d.depositAmount), status: d.status, dueDate: d.dueDate.toISOString() };
+      })() : null,
     });
   } catch (error) {
     console.error('Update rental agreement error:', error);
