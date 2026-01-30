@@ -31,15 +31,62 @@ export function InspectionMaintenanceModule() {
   const [damageInvoices, setDamageInvoices] = useState<DamageInvoice[]>([]);
   const [adjustments, setAdjustments] = useState<InventoryAdjustment[]>([]);
 
-  // Load data from localStorage
+  // Load data from API and localStorage
   useEffect(() => {
-    const savedReports = localStorage.getItem('conditionReports');
-    const savedSlips = localStorage.getItem('repairSlips');
+    const fetchConditionReports = async () => {
+      try {
+        const response = await fetch('/api/inspection/condition-reports', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            setConditionReports(result.data);
+            localStorage.setItem('conditionReports', JSON.stringify(result.data));
+          }
+        } else {
+          // Fallback to localStorage if API fails
+          const savedReports = localStorage.getItem('conditionReports');
+          if (savedReports) setConditionReports(JSON.parse(savedReports));
+        }
+      } catch (error) {
+        console.error('Error fetching condition reports:', error);
+        // Fallback to localStorage
+        const savedReports = localStorage.getItem('conditionReports');
+        if (savedReports) setConditionReports(JSON.parse(savedReports));
+      }
+    };
+
+    const fetchRepairSlips = async () => {
+      try {
+        const response = await fetch('/api/inspection/open-repair-slips', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data) {
+            setRepairSlips(result.data);
+            localStorage.setItem('repairSlips', JSON.stringify(result.data));
+            return;
+          }
+        }
+
+        const savedSlips = localStorage.getItem('repairSlips');
+        if (savedSlips) setRepairSlips(JSON.parse(savedSlips));
+      } catch (error) {
+        console.error('Error fetching repair slips:', error);
+        const savedSlips = localStorage.getItem('repairSlips');
+        if (savedSlips) setRepairSlips(JSON.parse(savedSlips));
+      }
+    };
+
+    fetchConditionReports();
+    fetchRepairSlips();
+
+    // Load other data from localStorage
     const savedInvoices = localStorage.getItem('damageInvoices');
     const savedAdjustments = localStorage.getItem('inventoryAdjustments');
 
-    if (savedReports) setConditionReports(JSON.parse(savedReports));
-    if (savedSlips) setRepairSlips(JSON.parse(savedSlips));
     if (savedInvoices) setDamageInvoices(JSON.parse(savedInvoices));
     if (savedAdjustments) setAdjustments(JSON.parse(savedAdjustments));
   }, []);
@@ -49,48 +96,113 @@ export function InspectionMaintenanceModule() {
     setViewMode('create-report');
   };
 
-  const handleSaveReport = (report: ConditionReport) => {
-    let updatedReports: ConditionReport[];
-    
-    if (selectedReport) {
-      updatedReports = conditionReports.map(r => r.id === report.id ? report : r);
-    } else {
-      updatedReports = [...conditionReports, report];
+  const handleSaveReport = async (report: ConditionReport) => {
+    try {
+      // Prepare data for API
+      const reportData = {
+        deliveryOrderNumber: report.deliveryOrderNumber,
+        customerName: report.customerName,
+        returnedBy: report.returnedBy,
+        returnDate: report.returnDate,
+        inspectionDate: report.inspectionDate,
+        inspectedBy: report.inspectedBy,
+        status: report.status,
+        items: report.items.map(item => ({
+          scaffoldingItemId: item.scaffoldingItemId,
+          scaffoldingItemName: item.scaffoldingItemName,
+          quantity: item.quantity,
+          quantityGood: item.quantityGood,
+          quantityRepair: item.quantityRepair,
+          quantityWriteOff: item.quantityWriteOff,
+          condition: item.condition,
+          damageDescription: item.damageDescription,
+          repairRequired: item.repairRequired,
+          estimatedRepairCost: item.estimatedRepairCost,
+          originalItemPrice: item.originalItemPrice,
+          inspectionChecklist: item.inspectionChecklist,
+          images: item.images
+        })),
+        notes: report.notes
+      };
+
+      console.log('Sending to API:', reportData);
+
+      // Determine if this is an update or create
+      const isUpdate = !!selectedReport;
+      const url = isUpdate 
+        ? `/api/inspection/condition-reports/${report.id}`
+        : '/api/inspection/condition-reports';
+      const method = isUpdate ? 'PUT' : 'POST';
+
+      // Make API call
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reportData)
+      });
+
+      console.log('Response status:', response.status);
+      const result = await response.json();
+      console.log('Response data:', result);
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to save condition report');
+      }
+
+      // Update local state with the saved report
+      let updatedReports: ConditionReport[];
+      if (isUpdate) {
+        // For updates, merge the response data with the report
+        const updatedReport = { ...report, ...result.data };
+        updatedReports = conditionReports.map(r => r.id === report.id ? updatedReport : r);
+      } else {
+        updatedReports = [...conditionReports, result.data];
+      }
+      
+      setConditionReports(updatedReports);
+      localStorage.setItem('conditionReports', JSON.stringify(updatedReports));
+      
+      setViewMode('list');
+      toast.success(isUpdate ? 'Condition report updated successfully' : 'Condition report created successfully');
+    } catch (error) {
+      console.error('Error saving condition report:', error);
+      toast.error(`Failed to save condition report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    setConditionReports(updatedReports);
-    localStorage.setItem('conditionReports', JSON.stringify(updatedReports));
-    
-    // Create inventory adjustments for damaged items
-    const newAdjustments: InventoryAdjustment[] = report.items
-      .filter(item => item.repairRequired)
-      .map(item => ({
-        id: `adj-${Date.now()}-${Math.random()}`,
-        adjustmentType: 'damage-detected' as const,
-        scaffoldingItemId: item.scaffoldingItemId,
-        scaffoldingItemName: item.scaffoldingItemName,
-        quantity: item.quantityRepair, // Only show repair quantity, not total
-        fromStatus: 'available',
-        toStatus: 'under-repair',
-        referenceId: report.rcfNumber,
-        referenceType: 'condition-report' as const,
-        adjustedBy: report.inspectedBy,
-        adjustedAt: new Date().toISOString(),
-        notes: item.damageDescription
-      }));
-    
-    if (newAdjustments.length > 0) {
-      const updatedAdjustments = [...adjustments, ...newAdjustments];
-      setAdjustments(updatedAdjustments);
-      localStorage.setItem('inventoryAdjustments', JSON.stringify(updatedAdjustments));
-    }
-    
-    setViewMode('list');
   };
 
   const handleCancelReport = () => {
     setViewMode('list');
     setSelectedReport(null);
+  };
+
+  const handleDeleteReport = async (reportId: string) => {
+    if (!confirm('Are you sure you want to delete this condition report?')) {
+      return;
+    }
+
+    try {
+      // Try to delete from database first
+      const response = await fetch(`/api/inspection/condition-reports/${reportId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        // If not found in database, it might only exist in localStorage - still allow deletion
+        if (result.message !== 'Condition report not found') {
+          throw new Error(result.message || 'Failed to delete condition report');
+        }
+      }
+
+      // Remove from local state and localStorage regardless
+      const updatedReports = conditionReports.filter(r => r.id !== reportId);
+      setConditionReports(updatedReports);
+      localStorage.setItem('conditionReports', JSON.stringify(updatedReports));
+      toast.success('Condition report deleted successfully');
+    } catch (error) {
+      console.error('Error deleting condition report:', error);
+      toast.error(`Failed to delete condition report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   const handleViewRepairSlip = (slip: OpenRepairSlip) => {
@@ -103,76 +215,205 @@ export function InspectionMaintenanceModule() {
       const report = conditionReports.find(r => r.id === reportId);
       setSelectedReport(report || null);
     }
+    setSelectedRepairSlip(null);
     setViewMode('create-repair');
   };
 
-  const handleSaveRepairSlip = (slip: OpenRepairSlip) => {
-    let updatedSlips: OpenRepairSlip[];
-    const isNewSlip = !selectedRepairSlip;
-    
-    if (selectedRepairSlip) {
-      updatedSlips = repairSlips.map(s => s.id === slip.id ? slip : s);
-    } else {
-      updatedSlips = [...repairSlips, slip];
-    }
-    
-    setRepairSlips(updatedSlips);
-    localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
-    
-    // If it's a new slip, navigate to view it
-    if (isNewSlip) {
-      setSelectedRepairSlip(slip);
+  const handleSaveRepairSlip = async (slip: OpenRepairSlip) => {
+    try {
+      const isUpdate = !!selectedRepairSlip;
+      const url = isUpdate
+        ? `/api/inspection/open-repair-slips/${slip.id}`
+        : '/api/inspection/open-repair-slips';
+      const method = isUpdate ? 'PUT' : 'POST';
+
+      // Prepare API payload (let backend generate ORP number on create)
+      const payload: any = {
+        conditionReportId: slip.conditionReportId,
+        rcfNumber: slip.rcfNumber,
+        status: slip.status,
+        priority: slip.priority,
+        assignedTo: slip.assignedTo,
+        startDate: slip.startDate,
+        completionDate: slip.completionDate,
+        estimatedCost: slip.estimatedCost,
+        actualCost: slip.actualCost,
+        repairNotes: slip.repairNotes,
+        createdBy: slip.createdBy,
+        invoiceNumber: slip.invoiceNumber,
+        damageInvoiceId: slip.damageInvoiceId,
+        inventoryLevel: slip.inventoryLevel,
+        items: slip.items?.map((item: any) => ({
+          inspectionItemId: item.inspectionItemId || null,
+          scaffoldingItemId: item.scaffoldingItemId,
+          scaffoldingItemName: item.scaffoldingItemName,
+          quantity: item.quantity,
+          quantityRepaired: item.quantityRepaired,
+          quantityRemaining: item.quantityRemaining,
+          damageType: item.damageType,
+          damageDescription: item.damageDescription,
+          repairActions: item.repairActions,
+          repairDescription: item.repairDescription,
+          repairStatus: item.repairStatus,
+          costPerUnit: item.costPerUnit,
+          totalCost: item.totalCost,
+          estimatedCostFromRFQ: item.estimatedCostFromRFQ,
+          finalCost: item.finalCost,
+          beforeImages: item.beforeImages,
+          afterImages: item.afterImages,
+          completedDate: item.completedDate,
+        })) || [],
+      };
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to save repair slip');
+      }
+
+      const savedSlip: OpenRepairSlip = result.data;
+
+      const updatedSlips = isUpdate
+        ? repairSlips.map(s => s.id === savedSlip.id ? savedSlip : s)
+        : [...repairSlips, savedSlip];
+
+      setRepairSlips(updatedSlips);
+      localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+
+      setSelectedRepairSlip(savedSlip);
       setActiveTab('repairs');
       setViewMode('view-repair');
-    } else {
-      setViewMode('list');
+      toast.success(isUpdate ? 'Repair slip updated successfully' : 'Repair slip created successfully');
+    } catch (error) {
+      console.error('Error saving repair slip:', error);
+      toast.error(`Failed to save repair slip: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
-  const handleUpdateRepairStatus = (slipId: string, status: OpenRepairSlip['status']) => {
-    const updatedSlips = repairSlips.map(slip => {
-      if (slip.id === slipId) {
-        const updated = { ...slip, status, updatedAt: new Date().toISOString() };
-        if (status === 'completed') {
-          updated.completionDate = new Date().toISOString();
-          
-          // Create inventory adjustments for completed repairs
-          const newAdjustments: InventoryAdjustment[] = slip.items
-            .filter(item => item.repairStatus === 'completed')
-            .map(item => ({
-              id: `adj-${Date.now()}-${Math.random()}`,
-              adjustmentType: 'repair-completed' as const,
-              scaffoldingItemId: item.scaffoldingItemId,
-              scaffoldingItemName: item.scaffoldingItemName,
-              quantity: item.quantity,
-              fromStatus: 'under-repair',
-              toStatus: 'available',
-              referenceId: slip.orpNumber,
-              referenceType: 'repair-slip' as const,
-              adjustedBy: 'System',
-              adjustedAt: new Date().toISOString(),
-              notes: 'Repair completed and items returned to inventory'
-            }));
-          
-          if (newAdjustments.length > 0) {
-            const updatedAdjustments = [...adjustments, ...newAdjustments];
-            setAdjustments(updatedAdjustments);
-            localStorage.setItem('inventoryAdjustments', JSON.stringify(updatedAdjustments));
-          }
-        }
-        return updated;
+  const handleUpdateRepairStatus = async (slipId: string, status: OpenRepairSlip['status']) => {
+    try {
+      const completionDate = status === 'completed' ? new Date().toISOString() : null;
+
+      const response = await fetch(`/api/inspection/open-repair-slips/${slipId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status, completionDate }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to update repair slip status');
       }
-      return slip;
-    });
-    
-    setRepairSlips(updatedSlips);
-    localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+
+      const updatedSlip: OpenRepairSlip = result.data;
+      const updatedSlips = repairSlips.map(slip => slip.id === slipId ? updatedSlip : slip);
+      setRepairSlips(updatedSlips);
+      localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+
+      if (selectedRepairSlip?.id === slipId) {
+        setSelectedRepairSlip(updatedSlip);
+      }
+
+      if (status === 'completed') {
+        const newAdjustments: InventoryAdjustment[] = (updatedSlip.items || [])
+          .filter(item => item.repairStatus === 'completed')
+          .map(item => ({
+            id: `adj-${Date.now()}-${Math.random()}`,
+            adjustmentType: 'repair-completed' as const,
+            scaffoldingItemId: item.scaffoldingItemId,
+            scaffoldingItemName: item.scaffoldingItemName,
+            quantity: item.quantity,
+            fromStatus: 'under-repair',
+            toStatus: 'available',
+            referenceId: updatedSlip.orpNumber,
+            referenceType: 'repair-slip' as const,
+            adjustedBy: 'System',
+            adjustedAt: new Date().toISOString(),
+            notes: 'Repair completed and items returned to inventory',
+          }));
+
+        if (newAdjustments.length > 0) {
+          const updatedAdjustments = [...adjustments, ...newAdjustments];
+          setAdjustments(updatedAdjustments);
+          localStorage.setItem('inventoryAdjustments', JSON.stringify(updatedAdjustments));
+        }
+      }
+    } catch (error) {
+      console.error('Error updating repair slip status:', error);
+      toast.error(`Failed to update repair status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
-  const handleUpdateRepairSlip = (updatedSlip: OpenRepairSlip) => {
-    const updatedSlips = repairSlips.map(s => s.id === updatedSlip.id ? updatedSlip : s);
-    setRepairSlips(updatedSlips);
-    localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+  const handleUpdateRepairSlip = async (updatedSlip: OpenRepairSlip) => {
+    try {
+      const payload: any = {
+        status: updatedSlip.status,
+        priority: updatedSlip.priority,
+        assignedTo: updatedSlip.assignedTo,
+        startDate: updatedSlip.startDate,
+        completionDate: updatedSlip.completionDate,
+        estimatedCost: updatedSlip.estimatedCost,
+        actualCost: updatedSlip.actualCost,
+        repairNotes: updatedSlip.repairNotes,
+        invoiceNumber: updatedSlip.invoiceNumber,
+        damageInvoiceId: updatedSlip.damageInvoiceId,
+        inventoryLevel: updatedSlip.inventoryLevel,
+        items: (updatedSlip.items || []).map((item: any) => ({
+          inspectionItemId: item.inspectionItemId || null,
+          scaffoldingItemId: item.scaffoldingItemId,
+          scaffoldingItemName: item.scaffoldingItemName,
+          quantity: item.quantity,
+          quantityRepaired: item.quantityRepaired,
+          quantityRemaining: item.quantityRemaining,
+          damageType: item.damageType,
+          damageDescription: item.damageDescription,
+          repairActions: item.repairActions,
+          repairDescription: item.repairDescription,
+          repairStatus: item.repairStatus,
+          costPerUnit: item.costPerUnit,
+          totalCost: item.totalCost,
+          estimatedCostFromRFQ: item.estimatedCostFromRFQ,
+          finalCost: item.finalCost,
+          beforeImages: item.beforeImages,
+          afterImages: item.afterImages,
+          completedDate: item.completedDate,
+        })),
+      };
+
+      const response = await fetch(`/api/inspection/open-repair-slips/${updatedSlip.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to update repair slip');
+      }
+
+      const savedSlip: OpenRepairSlip = result.data;
+      const updatedSlips = repairSlips.map(s => s.id === savedSlip.id ? savedSlip : s);
+      setRepairSlips(updatedSlips);
+      localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+
+      if (selectedRepairSlip?.id === savedSlip.id) {
+        setSelectedRepairSlip(savedSlip);
+      }
+    } catch (error) {
+      console.error('Error updating repair slip:', error);
+      const updatedSlips = repairSlips.map(s => s.id === updatedSlip.id ? updatedSlip : s);
+      setRepairSlips(updatedSlips);
+      localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+      toast.error(`Failed to update repair slip: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   const handleCreateInventoryLog = (log: InventoryAdjustment) => {
@@ -199,7 +440,7 @@ export function InspectionMaintenanceModule() {
     }
   };
 
-  const handleGenerateDamageInvoice = (repairSlipId: string) => {
+  const handleGenerateDamageInvoice = async (repairSlipId: string) => {
     const slip = repairSlips.find(s => s.id === repairSlipId);
     if (!slip) {
       toast.error('Repair slip not found');
@@ -210,7 +451,6 @@ export function InspectionMaintenanceModule() {
     const invoiceItems = slip.items
       .filter(item => item.totalCost > 0)
       .map(item => ({
-        id: `inv-item-${Date.now()}-${Math.random()}`,
         description: `${item.scaffoldingItemName} - ${item.damageDescription || 'Damage repair'}`,
         quantity: item.quantity,
         unitPrice: item.quantity > 0 ? item.totalCost / item.quantity : item.totalCost,
@@ -228,38 +468,82 @@ export function InspectionMaintenanceModule() {
     const tax = subtotal * taxRate;
     const total = subtotal + tax;
 
-    const newInvoice: DamageInvoice = {
-      id: `damage-inv-${Date.now()}`,
-      invoiceNumber: `DI-${Date.now()}`,
-      orpNumber: slip.orpNumber,
-      repairSlipId: slip.id,
-      invoiceDate: new Date().toISOString(),
-      vendor: '', // Will be filled from customer info
-      items: invoiceItems,
-      subtotal: subtotal,
-      tax: tax,
-      total: total,
-      paymentStatus: 'pending',
-      notes: `Damage charges for items in repair slip: ${slip.orpNumber}. Based on completed repairs.`,
-      createdAt: new Date().toISOString(),
-      createdFrom: 'repair-slip'
-    };
+    try {
+      // Call API to save damage invoice
+      const response = await fetch('/api/inspection/damage-invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orpNumber: slip.orpNumber,
+          invoiceDate: new Date().toISOString().split('T')[0],
+          vendor: '',
+          items: invoiceItems,
+          subtotal,
+          tax,
+          total,
+          paymentStatus: 'pending',
+          notes: `Damage charges for items in repair slip: ${slip.orpNumber}. Based on completed repairs.`
+        })
+      });
 
-    // Update repair slip with invoice link
-    const updatedSlips = repairSlips.map(s =>
-      s.id === repairSlipId ? { ...s, damageInvoiceId: newInvoice.id } : s
-    );
-    setRepairSlips(updatedSlips);
-    localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+      if (!response.ok) {
+        throw new Error('Failed to save damage invoice');
+      }
 
-    const updatedInvoices = [...damageInvoices, newInvoice];
-    setDamageInvoices(updatedInvoices);
-    localStorage.setItem('damageInvoices', JSON.stringify(updatedInvoices));
-    
-    toast.success(`Damage invoice ${newInvoice.invoiceNumber} generated successfully with RM ${total.toFixed(2)} total`);
-    
-    // Switch to invoices tab to show the generated invoice
-    setActiveTab('invoices');
+      const result = await response.json();
+      const newInvoice = result.data;
+
+      // Update local state
+      const updatedInvoices = [...damageInvoices, newInvoice];
+      setDamageInvoices(updatedInvoices);
+      localStorage.setItem('damageInvoices', JSON.stringify(updatedInvoices));
+      
+      // Update repair slip with invoice number (and damageInvoiceId for UI badge)
+      const updatedSlips = repairSlips.map(s =>
+        s.id === repairSlipId
+          ? { ...s, invoiceNumber: newInvoice.invoiceNumber, damageInvoiceId: newInvoice.id }
+          : s
+      );
+
+      // Persist invoice reference onto repair slip (so Generate Invoice is disabled reliably)
+      try {
+        const updateSlipResponse = await fetch(`/api/inspection/open-repair-slips/${repairSlipId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            invoiceNumber: newInvoice.invoiceNumber,
+            damageInvoiceId: newInvoice.id,
+          }),
+        });
+
+        const updateSlipResult = await updateSlipResponse.json();
+        if (updateSlipResponse.ok && updateSlipResult?.data) {
+          const persistedSlip: OpenRepairSlip = updateSlipResult.data;
+          const persistedSlips = repairSlips.map(s => s.id === repairSlipId ? persistedSlip : s);
+          setRepairSlips(persistedSlips);
+          localStorage.setItem('repairSlips', JSON.stringify(persistedSlips));
+          if (selectedRepairSlip?.id === repairSlipId) {
+            setSelectedRepairSlip(persistedSlip);
+          }
+        } else {
+          // Fallback to local update if persistence fails
+          setRepairSlips(updatedSlips);
+          localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+        }
+      } catch (e) {
+        setRepairSlips(updatedSlips);
+        localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
+      }
+      
+      toast.success(`Damage invoice ${newInvoice.invoiceNumber} generated and saved successfully with RM ${Number(total || 0).toFixed(2)} total`);
+      
+      // Switch to invoices tab to show the generated invoice
+      setActiveTab('invoices');
+    } catch (error) {
+      console.error('Error saving damage invoice:', error);
+      toast.error('Failed to save damage invoice to database');
+    }
   };
 
   // Calculate statistics
@@ -391,7 +675,7 @@ export function InspectionMaintenanceModule() {
               <CardTitle className="text-sm text-gray-600">Total Repair Cost</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-[#231F20]">RM {stats.totalRepairCost.toFixed(2)}</div>
+              <div className="text-[#231F20]">RM {Number(stats.totalRepairCost || 0).toFixed(2)}</div>
             </CardContent>
           </Card>
         </div>
@@ -518,6 +802,7 @@ export function InspectionMaintenanceModule() {
               setSelectedReport(report);
               setViewMode('create-report');
             }}
+            onDelete={handleDeleteReport}
             onCreateRepairSlip={handleCreateRepairSlip}
             existingRepairSlips={repairSlips}
           />
