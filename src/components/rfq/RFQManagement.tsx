@@ -453,7 +453,8 @@ export function RFQManagement() {
         }
 
         const createdRFQ = await response.json();
-        saveRfqs([...rfqs, createdRFQ.data || rfq]);
+        // Prepend new RFQ to beginning to maintain newest-first order
+        saveRfqs([createdRFQ.data || rfq, ...rfqs]);
         toast.success('RFQ created successfully');
       }
       setViewMode('list');
