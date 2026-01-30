@@ -881,3 +881,91 @@ model MonthlyRentalInvoiceItem {
   
   createdAt               DateTime  @default(now())
 }
+
+// ============================================
+// CREDIT NOTE MODULE
+// ============================================
+
+model CreditNote {
+  id                      String    @id @default(cuid())
+  creditNoteNumber        String    @unique // CN-YYYY-XXX format
+  
+  // Customer Info
+  customerName            String
+  customerId              String
+  
+  // Reference
+  originalInvoice         String
+  deliveryOrderId         String?
+  
+  // Credit Note Details
+  amount                  Decimal   @db.Decimal(15, 2)
+  reason                  String    // 'Returned Items', 'Price Adjustment', 'Service Issue', 'Damaged Goods', 'Billing Error', 'Other'
+  reasonDescription       String?   @db.Text
+  date                    DateTime
+  
+  // Status & Workflow
+  status                  String    @default("Draft") // Draft, Pending Approval, Approved, Rejected
+  
+  // Created By
+  createdBy               String
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  
+  // Approval
+  approvedBy              String?
+  approvedAt              DateTime?
+  
+  // Rejection
+  rejectedBy              String?
+  rejectedAt              DateTime?
+  rejectionReason         String?   @db.Text
+  
+  // Relations
+  items                   CreditNoteItem[]
+  attachments             CreditNoteAttachment[]
+}
+
+model CreditNoteItem {
+  id                      String    @id @default(cuid())
+  creditNoteId            String
+  creditNote              CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  
+  description             String
+  quantity                Int
+  previousPrice           Decimal   @db.Decimal(15, 2)  // Price from DO
+  currentPrice            Decimal   @db.Decimal(15, 2)  // Price from Invoice
+  unitPrice               Decimal   @db.Decimal(15, 2)  // Legacy compatibility
+  amount                  Decimal   @db.Decimal(15, 2)  // Calculated: quantity × currentPrice
+  
+  createdAt               DateTime  @default(now())
+}
+
+model CreditNoteAttachment {
+  id                      String    @id @default(cuid())
+  creditNoteId            String
+  creditNote              CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  
+  fileName                String
+  fileUrl                 String
+  fileSize                Int
+  uploadedAt              DateTime  @default(now())
+}
+
+// ============================================
+// NOTIFICATION MODULE
+// ============================================
+
+model RFQNotification {
+  id                      String    @id @default(cuid())
+  rfqId                   String
+  rfqNumber               String
+  
+  type                    String    // 'created', 'updated', 'item_added', 'item_removed', 'item_modified', 'status_changed', 'assigned'
+  message                 String
+  changes                 String?   @db.LongText  // JSON array of changes
+  
+  createdBy               String
+  createdAt               DateTime  @default(now())
+  read                    Boolean   @default(false)
+}

@@ -417,7 +417,8 @@ async function main() {
   console.log("Linking agreements to RFQs...");
 
   // Update Agreement 1 with RFQ link and signed document
-  await prisma.rentalAgreement.update({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma.rentalAgreement.update as any)({
     where: { id: agreement1.id },
     data: {
       rfqId: rfq1.id,
@@ -429,7 +430,8 @@ async function main() {
   console.log(`  - Linked ${agreement1.agreementNumber} to ${rfq1.rfqNumber}`);
 
   // Update Agreement 2 with RFQ link and signed document
-  await prisma.rentalAgreement.update({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma.rentalAgreement.update as any)({
     where: { id: agreement2.id },
     data: {
       rfqId: rfq2.id,
@@ -441,7 +443,8 @@ async function main() {
   console.log(`  - Linked ${agreement2.agreementNumber} to ${rfq2.rfqNumber}`);
 
   // Update Agreement 3 with RFQ link and signed document
-  await prisma.rentalAgreement.update({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma.rentalAgreement.update as any)({
     where: { id: agreement3.id },
     data: {
       rfqId: rfq3.id,
@@ -453,7 +456,8 @@ async function main() {
   console.log(`  - Linked ${agreement3.agreementNumber} to ${rfq3.rfqNumber}`);
 
   // Update Agreement 4 with RFQ link and signed document
-  await prisma.rentalAgreement.update({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma.rentalAgreement.update as any)({
     where: { id: agreement4.id },
     data: {
       rfqId: rfq4.id,
@@ -468,7 +472,8 @@ async function main() {
   console.log("Creating additional agreements for deposit testing...");
 
   // Agreement 5 - For Overdue deposit
-  const agreement5 = await prisma.rentalAgreement.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const agreement5 = await (prisma.rentalAgreement.create as any)({
     data: {
       agreementNumber: "RA-2026-005",
       poNumber: "PO-2026-005",
@@ -508,7 +513,8 @@ async function main() {
   console.log(`  - Agreement: ${agreement5.agreementNumber} (${agreement5.projectName})`);
 
   // Agreement 6 - For Pending Approval deposit
-  const agreement6 = await prisma.rentalAgreement.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const agreement6 = await (prisma.rentalAgreement.create as any)({
     data: {
       agreementNumber: "RA-2026-006",
       poNumber: "PO-2026-006",
@@ -678,7 +684,8 @@ async function main() {
     },
   });
   
-  const agreement7 = await prisma.rentalAgreement.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const agreement7 = await (prisma.rentalAgreement.create as any)({
     data: {
       agreementNumber: "RA-2026-007",
       poNumber: "PO-2026-007",
@@ -764,7 +771,8 @@ async function main() {
     },
   });
   
-  const agreement8 = await prisma.rentalAgreement.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const agreement8 = await (prisma.rentalAgreement.create as any)({
     data: {
       agreementNumber: "RA-2025-008",
       poNumber: "PO-2025-008",
@@ -842,7 +850,8 @@ async function main() {
     },
   });
   
-  const agreement9 = await prisma.rentalAgreement.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const agreement9 = await (prisma.rentalAgreement.create as any)({
     data: {
       agreementNumber: "RA-2026-009",
       poNumber: "PO-2026-009",
@@ -1533,6 +1542,260 @@ async function main() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (prisma as any).scaffoldingItem.create({ data: item });
     console.log(`  - Scaffolding Item: ${item.itemCode} - ${item.name}`);
+  }
+
+  // ============================================
+  // CREDIT NOTES
+  // ============================================
+  console.log("Creating sample credit notes...");
+
+  // Clear existing credit notes
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).creditNoteAttachment.deleteMany({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).creditNoteItem.deleteMany({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).creditNote.deleteMany({});
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const creditNote1 = await (prisma as any).creditNote.create({
+    data: {
+      creditNoteNumber: "CN-2024-001",
+      customerName: "Acme Construction Ltd.",
+      customerId: "CUST-001",
+      originalInvoice: "INV-2024-045",
+      amount: 750,
+      reason: "Returned Items",
+      reasonDescription: "Customer returned 5 units of steel bars due to excess inventory",
+      date: new Date("2024-11-03"),
+      status: "Approved",
+      createdBy: "John Smith",
+      approvedBy: "Jane Doe (Finance Manager)",
+      approvedAt: new Date("2024-11-03T14:30:00Z"),
+      items: {
+        create: [
+          {
+            description: "Steel Bar - 12mm x 6m",
+            quantity: 5,
+            previousPrice: 150,
+            currentPrice: 150,
+            unitPrice: 150,
+            amount: 750,
+          },
+        ],
+      },
+      attachments: {
+        create: [
+          {
+            fileName: "return_receipt.pdf",
+            fileUrl: "#",
+            fileSize: 245600,
+          },
+        ],
+      },
+    },
+  });
+  console.log(`  - Credit Note: ${creditNote1.creditNoteNumber}`);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const creditNote2 = await (prisma as any).creditNote.create({
+    data: {
+      creditNoteNumber: "CN-2024-002",
+      customerName: "BuildRight Inc.",
+      customerId: "CUST-002",
+      originalInvoice: "INV-2024-043",
+      amount: 1200,
+      reason: "Price Adjustment",
+      reasonDescription: "Volume discount applied retroactively for bulk order",
+      date: new Date("2024-11-02"),
+      status: "Pending Approval",
+      createdBy: "Sarah Johnson",
+      items: {
+        create: [
+          {
+            description: "Price adjustment for scaffolding rental",
+            quantity: 1,
+            previousPrice: 1200,
+            currentPrice: 1200,
+            unitPrice: 1200,
+            amount: 1200,
+          },
+        ],
+      },
+    },
+  });
+  console.log(`  - Credit Note: ${creditNote2.creditNoteNumber}`);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const creditNote3 = await (prisma as any).creditNote.create({
+    data: {
+      creditNoteNumber: "CN-2024-003",
+      customerName: "Metro Builders",
+      customerId: "CUST-003",
+      originalInvoice: "INV-2024-038",
+      amount: 450,
+      reason: "Service Issue",
+      reasonDescription: "Late delivery compensation",
+      date: new Date("2024-10-30"),
+      status: "Approved",
+      createdBy: "Mike Chen",
+      approvedBy: "Robert Lee (Admin)",
+      approvedAt: new Date("2024-10-30T16:45:00Z"),
+      items: {
+        create: [
+          {
+            description: "Service credit for late delivery",
+            quantity: 1,
+            previousPrice: 450,
+            currentPrice: 450,
+            unitPrice: 450,
+            amount: 450,
+          },
+        ],
+      },
+    },
+  });
+  console.log(`  - Credit Note: ${creditNote3.creditNoteNumber}`);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const creditNote4 = await (prisma as any).creditNote.create({
+    data: {
+      creditNoteNumber: "CN-2024-004",
+      customerName: "Premium Projects",
+      customerId: "CUST-004",
+      originalInvoice: "INV-2024-047",
+      amount: 2100,
+      reason: "Returned Items",
+      date: new Date("2024-11-01"),
+      status: "Draft",
+      createdBy: "Emily Wong",
+      items: {
+        create: [
+          {
+            description: "Scaffolding Tubes - 6m",
+            quantity: 10,
+            previousPrice: 180,
+            currentPrice: 180,
+            unitPrice: 180,
+            amount: 1800,
+          },
+          {
+            description: "Couplers - Standard",
+            quantity: 20,
+            previousPrice: 15,
+            currentPrice: 15,
+            unitPrice: 15,
+            amount: 300,
+          },
+        ],
+      },
+    },
+  });
+  console.log(`  - Credit Note: ${creditNote4.creditNoteNumber}`);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const creditNote5 = await (prisma as any).creditNote.create({
+    data: {
+      creditNoteNumber: "CN-2024-005",
+      customerName: "Steel Masters Co.",
+      customerId: "CUST-005",
+      originalInvoice: "INV-2024-049",
+      amount: 850,
+      reason: "Damaged Goods",
+      reasonDescription: "3 units received with minor rust damage",
+      date: new Date("2024-11-05"),
+      status: "Rejected",
+      createdBy: "Tom Williams",
+      rejectedBy: "Jane Doe (Finance Manager)",
+      rejectedAt: new Date("2024-11-05T15:20:00Z"),
+      rejectionReason: "Insufficient documentation. Please provide photos of the damaged goods and inspection report before resubmitting.",
+      items: {
+        create: [
+          {
+            description: "Steel Plates - 10mm",
+            quantity: 3,
+            previousPrice: 283.33,
+            currentPrice: 283.33,
+            unitPrice: 283.33,
+            amount: 850,
+          },
+        ],
+      },
+    },
+  });
+  console.log(`  - Credit Note: ${creditNote5.creditNoteNumber}`);
+
+  // ============================================
+  // RFQ NOTIFICATIONS
+  // ============================================
+  console.log("Creating sample RFQ notifications...");
+
+  // Clear existing notifications
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).rFQNotification.deleteMany({});
+
+  const rfqNotifications = [
+    {
+      rfqId: rfq1.id,
+      rfqNumber: rfq1.rfqNumber,
+      type: "created",
+      message: `New RFQ ${rfq1.rfqNumber} created for ${rfq1.projectName}`,
+      changes: JSON.stringify([
+        { field: "status", oldValue: null, newValue: "draft", description: "RFQ created" }
+      ]),
+      createdBy: "System",
+      read: true,
+    },
+    {
+      rfqId: rfq1.id,
+      rfqNumber: rfq1.rfqNumber,
+      type: "status_changed",
+      message: `RFQ ${rfq1.rfqNumber} status changed to Approved`,
+      changes: JSON.stringify([
+        { field: "status", oldValue: "submitted", newValue: "approved", description: "Status updated to Approved" }
+      ]),
+      createdBy: "Admin User",
+      read: true,
+    },
+    {
+      rfqId: rfq2.id,
+      rfqNumber: rfq2.rfqNumber,
+      type: "created",
+      message: `New RFQ ${rfq2.rfqNumber} created for ${rfq2.projectName}`,
+      changes: JSON.stringify([
+        { field: "status", oldValue: null, newValue: "draft", description: "RFQ created" }
+      ]),
+      createdBy: "System",
+      read: false,
+    },
+    {
+      rfqId: rfq2.id,
+      rfqNumber: rfq2.rfqNumber,
+      type: "item_added",
+      message: `New items added to RFQ ${rfq2.rfqNumber}`,
+      changes: JSON.stringify([
+        { field: "items", oldValue: "2 items", newValue: "4 items", description: "Added CRAB STANDARD 0.75M C60 and more" }
+      ]),
+      createdBy: "Sales Rep",
+      read: false,
+    },
+    {
+      rfqId: rfq3.id,
+      rfqNumber: rfq3.rfqNumber,
+      type: "created",
+      message: `New RFQ ${rfq3.rfqNumber} created for ${rfq3.projectName}`,
+      changes: JSON.stringify([
+        { field: "status", oldValue: null, newValue: "draft", description: "RFQ created" }
+      ]),
+      createdBy: "System",
+      read: false,
+    },
+  ];
+
+  for (const notification of rfqNotifications) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (prisma as any).rFQNotification.create({ data: notification });
+    console.log(`  - Notification: ${notification.type} for ${notification.rfqNumber}`);
   }
 
   console.log("Seeding completed!");
