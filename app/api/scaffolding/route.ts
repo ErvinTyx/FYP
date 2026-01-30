@@ -61,9 +61,9 @@ export async function GET(request: NextRequest) {
       itemCode: item.itemCode,
       name: item.name,
       category: item.category,
-      quantity: item.quantity,
       available: item.available,
       price: Number(item.price),
+      originPrice: item.originPrice != null ? Number(item.originPrice) : 0,
       status: item.status,
       location: item.location,
       itemStatus: item.itemStatus,
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, category, quantity, available, price, location, itemStatus, imageUrl } = body;
+    const { name, category, available, price, originPrice, location, itemStatus, imageUrl } = body;
 
     if (!name || !category) {
       return NextResponse.json(
@@ -133,11 +133,14 @@ export async function POST(request: NextRequest) {
     }
     const itemCode = `SC-${String(nextNumber).padStart(3, '0')}`;
 
-    // Determine status based on availability
+    const avail = available ?? 0;
+
+    // Determine status based on availability only (Low Stock when available < 30)
+    const LOW_STOCK_THRESHOLD = 30;
     let status = 'Available';
-    if (available === 0) {
+    if (avail === 0) {
       status = 'Out of Stock';
-    } else if (available < quantity * 0.2) {
+    } else if (avail < LOW_STOCK_THRESHOLD) {
       status = 'Low Stock';
     }
 
@@ -146,9 +149,9 @@ export async function POST(request: NextRequest) {
         itemCode,
         name,
         category,
-        quantity: quantity || 0,
-        available: available || 0,
-        price: price || 0,
+        available: avail,
+        price: price ?? 0,
+        originPrice: originPrice != null ? originPrice : 0,
         status,
         location: location || 'Warehouse A',
         itemStatus: itemStatus || 'Available',
@@ -164,9 +167,9 @@ export async function POST(request: NextRequest) {
         itemCode: scaffoldingItem.itemCode,
         name: scaffoldingItem.name,
         category: scaffoldingItem.category,
-        quantity: scaffoldingItem.quantity,
         available: scaffoldingItem.available,
         price: Number(scaffoldingItem.price),
+        originPrice: scaffoldingItem.originPrice != null ? Number(scaffoldingItem.originPrice) : 0,
         status: scaffoldingItem.status,
         location: scaffoldingItem.location,
         itemStatus: scaffoldingItem.itemStatus,
@@ -207,7 +210,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { id, name, category, quantity, available, price, location, itemStatus, imageUrl } = body;
+    const { id, name, category, available, price, originPrice, location, itemStatus, imageUrl } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -228,14 +231,14 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Determine status based on availability
-    let status = 'Available';
     const newAvailable = available !== undefined ? available : existingItem.available;
-    const newQuantity = quantity !== undefined ? quantity : existingItem.quantity;
-    
+
+    // Determine status based on availability only (Low Stock when available < 30)
+    const LOW_STOCK_THRESHOLD = 30;
+    let status = 'Available';
     if (newAvailable === 0) {
       status = 'Out of Stock';
-    } else if (newAvailable < newQuantity * 0.2) {
+    } else if (newAvailable < LOW_STOCK_THRESHOLD) {
       status = 'Low Stock';
     }
 
@@ -244,9 +247,9 @@ export async function PUT(request: NextRequest) {
       data: {
         name: name !== undefined ? name : existingItem.name,
         category: category !== undefined ? category : existingItem.category,
-        quantity: newQuantity,
         available: newAvailable,
         price: price !== undefined ? price : existingItem.price,
+        originPrice: originPrice !== undefined ? originPrice : existingItem.originPrice,
         status,
         location: location !== undefined ? location : existingItem.location,
         itemStatus: itemStatus !== undefined ? itemStatus : existingItem.itemStatus,
@@ -262,9 +265,9 @@ export async function PUT(request: NextRequest) {
         itemCode: updatedItem.itemCode,
         name: updatedItem.name,
         category: updatedItem.category,
-        quantity: updatedItem.quantity,
         available: updatedItem.available,
         price: Number(updatedItem.price),
+        originPrice: updatedItem.originPrice != null ? Number(updatedItem.originPrice) : 0,
         status: updatedItem.status,
         location: updatedItem.location,
         itemStatus: updatedItem.itemStatus,

@@ -152,3 +152,14 @@ export async function uploadInspectionPhotos(
     allowedTypes: ['image/jpeg', 'image/jpg', 'image/png'],
   });
 }
+
+/**
+ * Upload scaffolding item image
+ */
+export async function uploadScaffoldingImage(file: File): Promise<UploadResult> {
+  return uploadFile(file, {
+    folder: 'scaffolding',
+    maxSizeMB: 10,
+    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png'],
+  });
+}
