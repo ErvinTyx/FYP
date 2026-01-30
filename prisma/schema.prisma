@@ -749,17 +749,17 @@ model ReturnCompletion {
 
 // ScaffoldingItem model for inventory management
 model ScaffoldingItem {
-  id         String   @id @default(cuid())
-  itemCode   String   @unique
-  name       String
-  category   String
-  quantity   Int      @default(0)
-  available  Int      @default(0)
-  price      Decimal  @default(0)
-  status     String   @default("Available")
-  location   String?
-  itemStatus String   @default("Available")
-  imageUrl   String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  itemCode    String   @unique
+  name        String
+  category    String
+  available   Int      @default(0)
+  price       Decimal  @default(0)
+  originPrice Decimal? @default(0)
+  status      String   @default("Available")
+  location    String?
+  itemStatus  String   @default("Available")
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
