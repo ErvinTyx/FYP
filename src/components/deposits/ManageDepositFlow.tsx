@@ -450,9 +450,11 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
                 <AlertDialogTitle>Payment Approved</AlertDialogTitle>
               </div>
             </div>
-            <AlertDialogDescription className="space-y-2">
-              <p>A deposit receipt has been automatically generated and attached to this record.</p>
-              <p className="text-sm text-gray-500">You can now view and print the deposit receipt.</p>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>A deposit receipt has been automatically generated and attached to this record.</p>
+                <p className="text-gray-500">You can now view and print the deposit receipt.</p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
