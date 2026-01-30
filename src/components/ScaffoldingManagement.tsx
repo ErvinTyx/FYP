@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, Search, Edit, Upload, Package, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, Search, Edit, Upload, Package, Loader2, X } from "lucide-react";
+import { uploadScaffoldingImage } from "@/lib/upload";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -38,9 +39,9 @@ interface ScaffoldingItem {
   itemCode: string;
   name: string;
   category: string;  // Project type: CLUSTER (4.7M), CLUSTER (3.5M), BUNGALOW (5.5M), BUNGALOW (3.95M)
-  quantity: number;  // Total Quantity
   available: number; // Available Quantity
   price: number;
+  originPrice?: number;
   status: 'Available' | 'Low Stock' | 'Out of Stock';
   location: string;
   itemStatus: 'Available' | 'Unavailable';
@@ -57,14 +58,18 @@ export function ScaffoldingManagement() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ScaffoldingItem | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputEditRef = useRef<HTMLInputElement>(null);
 
   // Form state
   const [formData, setFormData] = useState({
     name: '',
     category: '',
-    quantity: 0,
     available: 0,
     price: 0,
+    originPrice: 0,
     location: '',
     itemStatus: 'Available' as ScaffoldingItem['itemStatus'],
     imageUrl: '' as string | undefined
@@ -109,9 +114,9 @@ export function ScaffoldingManagement() {
     setFormData({
       name: '',
       category: '',
-      quantity: 0,
       available: 0,
       price: 0,
+      originPrice: 0,
       location: '',
       itemStatus: 'Available',
       imageUrl: ''
@@ -134,9 +139,9 @@ export function ScaffoldingManagement() {
         body: JSON.stringify({
           name: formData.name,
           category: formData.category,
-          quantity: formData.quantity,
           available: formData.available,
           price: formData.price,
+          originPrice: formData.originPrice,
           location: formData.location,
           itemStatus: formData.itemStatus,
           imageUrl: formData.imageUrl,
@@ -166,9 +171,9 @@ export function ScaffoldingManagement() {
     setFormData({
       name: item.name,
       category: item.category,
-      quantity: item.quantity,
       available: item.available,
       price: item.price,
+      originPrice: item.originPrice ?? 0,
       location: item.location,
       itemStatus: item.itemStatus,
       imageUrl: item.imageUrl
@@ -193,9 +198,9 @@ export function ScaffoldingManagement() {
           id: selectedItem.id,
           name: formData.name,
           category: formData.category,
-          quantity: formData.quantity,
           available: formData.available,
           price: formData.price,
+          originPrice: formData.originPrice,
           location: formData.location,
           itemStatus: formData.itemStatus,
           imageUrl: formData.imageUrl,
@@ -239,6 +244,64 @@ export function ScaffoldingManagement() {
       case 'Unavailable':
         return <Badge className="bg-[#DC2626] hover:bg-[#B91C1C]">Unavailable</Badge>;
     }
+  };
+
+  const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
+  const MAX_IMAGE_SIZE_MB = 10;
+
+  const handleImageUpload = async (file: File) => {
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      toast.error('Please upload a JPG or PNG image only.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+      toast.error(`Image must be under ${MAX_IMAGE_SIZE_MB}MB.`);
+      return;
+    }
+    setIsUploadingImage(true);
+    try {
+      const result = await uploadScaffoldingImage(file);
+      if (result.success && result.url) {
+        setFormData(prev => ({ ...prev, imageUrl: result.url }));
+        toast.success('Image uploaded.');
+      } else {
+        toast.error(result.error || 'Failed to upload image.');
+      }
+    } catch {
+      toast.error('Failed to upload image.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleImageUpload(file);
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageUpload(file);
+    e.target.value = '';
+  };
+
+  const clearImage = () => {
+    setFormData(prev => ({ ...prev, imageUrl: undefined }));
   };
 
   if (loading) {
@@ -350,11 +413,15 @@ export function ScaffoldingManagement() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#6B7280] flex-1">Available:</span>
-                    <span className="text-[#111827] flex-1 text-right">{item.available} / {item.quantity}</span>
+                    <span className="text-[#111827] flex-1 text-right">{item.available}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#6B7280] flex-1">Price/Day:</span>
                     <span className="text-[#111827] flex-1 text-right">RM {item.price.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#6B7280] flex-1">Origin Price:</span>
+                    <span className="text-[#111827] flex-1 text-right">RM {(item.originPrice ?? 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#6B7280] flex-1">Location:</span>
@@ -421,18 +488,6 @@ export function ScaffoldingManagement() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="quantity">Total Quantity *</Label>
-                <Input 
-                  id="quantity" 
-                  type="number" 
-                  className="h-10" 
-                  value={formData.quantity}
-                  onChange={(e) => setFormData({...formData, quantity: parseInt(e.target.value) || 0})}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
                 <Label htmlFor="available">Available Quantity *</Label>
                 <Input 
                   id="available" 
@@ -442,6 +497,8 @@ export function ScaffoldingManagement() {
                   onChange={(e) => setFormData({...formData, available: parseInt(e.target.value) || 0})}
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="price">Price per Day (RM) *</Label>
                 <Input 
@@ -452,6 +509,18 @@ export function ScaffoldingManagement() {
                   className="h-10" 
                   value={formData.price}
                   onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value) || 0})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="originPrice">Origin Price (RM) *</Label>
+                <Input 
+                  id="originPrice" 
+                  type="number" 
+                  step="0.01"
+                  placeholder="0.00" 
+                  className="h-10" 
+                  value={formData.originPrice}
+                  onChange={(e) => setFormData({...formData, originPrice: parseFloat(e.target.value) || 0})}
                 />
               </div>
             </div>
@@ -490,10 +559,51 @@ export function ScaffoldingManagement() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="image">Item Image (Optional)</Label>
-              <div className="border-2 border-dashed border-[#D1D5DB] rounded-lg p-8 text-center hover:border-[#F15929] hover:bg-[#FEF2EE] transition-colors cursor-pointer">
-                <Upload className="h-8 w-8 text-[#6B7280] mx-auto mb-2" />
-                <p className="text-[14px] text-[#374151]">Click to upload or drag and drop</p>
-                <p className="text-[12px] text-[#6B7280]">PNG, JPG up to 10MB</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png"
+                className="hidden"
+                onChange={handleFileInputChange}
+              />
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer select-none ${
+                  isDragging
+                    ? 'border-[#F15929] bg-[#FEF2EE]'
+                    : 'border-[#D1D5DB] hover:border-[#F15929] hover:bg-[#FEF2EE]'
+                } ${isUploadingImage ? 'pointer-events-none opacity-70' : ''}`}
+              >
+                {formData.imageUrl ? (
+                  <div className="space-y-2 relative">
+                    <img src={formData.imageUrl} alt="Preview" className="max-h-40 mx-auto rounded object-contain" />
+                    <p className="text-[14px] text-[#374151]">Click or drop to replace image</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={(e) => { e.stopPropagation(); clearImage(); }}
+                    >
+                      <X className="h-4 w-4 mr-1 inline" /> Remove image
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    {isUploadingImage ? (
+                      <Loader2 className="h-8 w-8 animate-spin text-[#F15929] mx-auto mb-2" />
+                    ) : (
+                      <Upload className="h-8 w-8 text-[#6B7280] mx-auto mb-2" />
+                    )}
+                    <p className="text-[14px] text-[#374151]">
+                      {isUploadingImage ? 'Uploading...' : 'Click to upload or drag and drop'}
+                    </p>
+                    <p className="text-[12px] text-[#6B7280]">PNG, JPG up to 10MB</p>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex gap-3 pt-4">
@@ -561,18 +671,6 @@ export function ScaffoldingManagement() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="editQuantity">Total Quantity *</Label>
-                <Input 
-                  id="editQuantity" 
-                  type="number" 
-                  className="h-10" 
-                  value={formData.quantity}
-                  onChange={(e) => setFormData({...formData, quantity: parseInt(e.target.value) || 0})}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
                 <Label htmlFor="editAvailable">Available Quantity *</Label>
                 <Input 
                   id="editAvailable" 
@@ -582,6 +680,8 @@ export function ScaffoldingManagement() {
                   onChange={(e) => setFormData({...formData, available: parseInt(e.target.value) || 0})}
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="editPrice">Price per Day (RM) *</Label>
                 <Input 
@@ -592,6 +692,18 @@ export function ScaffoldingManagement() {
                   className="h-10" 
                   value={formData.price}
                   onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value) || 0})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="editOriginPrice">Origin Price (RM) *</Label>
+                <Input 
+                  id="editOriginPrice" 
+                  type="number" 
+                  step="0.01"
+                  placeholder="0.00" 
+                  className="h-10" 
+                  value={formData.originPrice}
+                  onChange={(e) => setFormData({...formData, originPrice: parseFloat(e.target.value) || 0})}
                 />
               </div>
             </div>
@@ -630,16 +742,48 @@ export function ScaffoldingManagement() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="editImage">Item Image (Optional)</Label>
-              <div className="border-2 border-dashed border-[#D1D5DB] rounded-lg p-8 text-center hover:border-[#F15929] hover:bg-[#FEF2EE] transition-colors cursor-pointer">
+              <input
+                ref={fileInputEditRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png"
+                className="hidden"
+                onChange={handleFileInputChange}
+              />
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputEditRef.current?.click()}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer select-none ${
+                  isDragging
+                    ? 'border-[#F15929] bg-[#FEF2EE]'
+                    : 'border-[#D1D5DB] hover:border-[#F15929] hover:bg-[#FEF2EE]'
+                } ${isUploadingImage ? 'pointer-events-none opacity-70' : ''}`}
+              >
                 {formData.imageUrl ? (
                   <div className="space-y-2">
-                    <img src={formData.imageUrl} alt="Preview" className="max-h-32 mx-auto rounded" />
-                    <p className="text-[14px] text-[#374151]">Click to change image</p>
+                    <img src={formData.imageUrl} alt="Preview" className="max-h-40 mx-auto rounded object-contain" />
+                    <p className="text-[14px] text-[#374151]">Click or drop to replace image</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={(e) => { e.stopPropagation(); clearImage(); }}
+                    >
+                      <X className="h-4 w-4 mr-1 inline" /> Remove image
+                    </Button>
                   </div>
                 ) : (
                   <>
-                    <Upload className="h-8 w-8 text-[#6B7280] mx-auto mb-2" />
-                    <p className="text-[14px] text-[#374151]">Click to upload or drag and drop</p>
+                    {isUploadingImage ? (
+                      <Loader2 className="h-8 w-8 animate-spin text-[#F15929] mx-auto mb-2" />
+                    ) : (
+                      <Upload className="h-8 w-8 text-[#6B7280] mx-auto mb-2" />
+                    )}
+                    <p className="text-[14px] text-[#374151]">
+                      {isUploadingImage ? 'Uploading...' : 'Click to upload or drag and drop'}
+                    </p>
                     <p className="text-[12px] text-[#6B7280]">PNG, JPG up to 10MB</p>
                   </>
                 )}
