@@ -1,8 +1,8 @@
 import { Badge } from "../ui/badge";
-import { Deposit } from "../../types/deposit";
+import { DepositStatus } from "../../types/deposit";
 
 interface DepositStatusBadgeProps {
-  status: Deposit['status'];
+  status: DepositStatus;
 }
 
 export function DepositStatusBadge({ status }: DepositStatusBadgeProps) {
@@ -35,6 +35,18 @@ export function DepositStatusBadge({ status }: DepositStatusBadgeProps) {
       return (
         <Badge className="bg-[#EA580C] hover:bg-[#C2410C] text-white">
           Overdue
+        </Badge>
+      );
+    case 'Expired':
+      return (
+        <Badge className="bg-[#6B7280] hover:bg-[#4B5563] text-white">
+          Expired
+        </Badge>
+      );
+    default:
+      return (
+        <Badge className="bg-[#9CA3AF] hover:bg-[#6B7280] text-white">
+          {status}
         </Badge>
       );
   }

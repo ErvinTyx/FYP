@@ -48,6 +48,22 @@ interface AgreementVersion {
   allowedRoles: string[];
 }
 
+interface RFQOption {
+  id: string;
+  rfqNumber: string;
+  customerName: string;
+  projectName: string;
+  totalAmount: number;
+}
+
+interface DepositInfo {
+  id: string;
+  depositNumber: string;
+  depositAmount: number;
+  status: string;
+  dueDate: string;
+}
+
 interface RentalAgreement {
   id: string;
   agreementNumber: string;
@@ -80,12 +96,16 @@ interface RentalAgreement {
   versions: AgreementVersion[];
   createdAt: string;
   createdBy: string;
+  rfqId?: string;
+  rfq?: RFQOption;
+  deposits?: DepositInfo[];
 }
 
 const userRoles = ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff'];
 
 export function RentalAgreement() {
   const [agreements, setAgreements] = useState<RentalAgreement[]>([]);
+  const [rfqOptions, setRfqOptions] = useState<RFQOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -123,10 +143,35 @@ export function RentalAgreement() {
     }
   }, []);
 
-  // Load agreements on mount
+  // Fetch RFQs from API for selection dropdown
+  const fetchRFQs = useCallback(async () => {
+    try {
+      const response = await fetch('/api/rfq');
+      const data = await response.json();
+      
+      if (data.success && data.rfqs) {
+        // Filter to only approved/confirmed RFQs that can be used for agreements
+        const availableRFQs = data.rfqs
+          .filter((rfq: { status: string }) => ['approved', 'confirmed', 'active'].includes(rfq.status?.toLowerCase()))
+          .map((rfq: { id: string; rfqNumber: string; customerName: string; projectName: string; totalAmount: number }) => ({
+            id: rfq.id,
+            rfqNumber: rfq.rfqNumber,
+            customerName: rfq.customerName,
+            projectName: rfq.projectName,
+            totalAmount: Number(rfq.totalAmount),
+          }));
+        setRfqOptions(availableRFQs);
+      }
+    } catch (error) {
+      console.error('Error fetching RFQs:', error);
+    }
+  }, []);
+
+  // Load agreements and RFQs on mount
   useEffect(() => {
     fetchAgreements();
-  }, [fetchAgreements]);
+    fetchRFQs();
+  }, [fetchAgreements, fetchRFQs]);
 
   // Form state
   const [formData, setFormData] = useState<Partial<RentalAgreement>>({
@@ -134,7 +179,8 @@ export function RentalAgreement() {
     ownerPhone: '+60 3-1234 5678',
     status: 'Draft',
     currentVersion: 1,
-    versions: []
+    versions: [],
+    rfqId: undefined,
   });
 
   const [versionAccess, setVersionAccess] = useState<string[]>(['Admin', 'Manager']);
@@ -185,6 +231,7 @@ export function RentalAgreement() {
           hirerNRIC: formData.hirerNRIC || '',
           status: 'Draft',
           allowedRoles: versionAccess,
+          rfqId: formData.rfqId || null,
         }),
       });
 
@@ -247,7 +294,8 @@ export function RentalAgreement() {
       ownerPhone: '+60 3-1234 5678',
       status: 'Draft',
       currentVersion: 1,
-      versions: []
+      versions: [],
+      rfqId: undefined,
     });
     setVersionAccess(['Admin', 'Manager']);
   };
@@ -676,6 +724,55 @@ export function RentalAgreement() {
               </div>
             </div>
 
+            {/* Linked Quotation */}
+            <div className="space-y-4">
+              <h3 className="text-[#231F20]">Linked Quotation (RFQ)</h3>
+              <div className="space-y-2">
+                <Label>Select Quotation</Label>
+                <Select
+                  value={formData.rfqId || 'none'}
+                  onValueChange={(value) => {
+                    const actualValue = value === 'none' ? undefined : value;
+                    const selectedRfq = rfqOptions.find(r => r.id === actualValue);
+                    setFormData({
+                      ...formData, 
+                      rfqId: actualValue,
+                      // Auto-fill customer name and project name from RFQ
+                      hirer: selectedRfq?.customerName || formData.hirer,
+                      projectName: selectedRfq?.projectName || formData.projectName,
+                    });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a quotation (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No linked quotation</SelectItem>
+                    {rfqOptions.map((rfq) => (
+                      <SelectItem key={rfq.id} value={rfq.id}>
+                        {rfq.rfqNumber} - {rfq.customerName} (RM{rfq.totalAmount.toLocaleString()})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[12px] text-[#6B7280]">
+                  Linking a quotation enables automatic deposit calculation when the signed agreement is uploaded.
+                  Deposit = RFQ Total × 30 days × Security Deposit Months
+                </p>
+                {formData.rfqId && rfqOptions.find(r => r.id === formData.rfqId) && (
+                  <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg p-3 mt-2">
+                    <p className="text-[14px] text-[#047857]">
+                      <strong>Selected:</strong> {rfqOptions.find(r => r.id === formData.rfqId)?.rfqNumber}
+                    </p>
+                    <p className="text-[12px] text-[#6B7280] mt-1">
+                      Customer: {rfqOptions.find(r => r.id === formData.rfqId)?.customerName} | 
+                      Total: RM{rfqOptions.find(r => r.id === formData.rfqId)?.totalAmount.toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Financial Details */}
             <div className="space-y-4">
               <h3 className="text-[#231F20]">Financial Details</h3>
@@ -897,6 +994,53 @@ export function RentalAgreement() {
                     </Select>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Linked Quotation */}
+            <div className="space-y-4">
+              <h3 className="text-[#231F20]">Linked Quotation (RFQ)</h3>
+              <div className="space-y-2">
+                <Label>Select Quotation</Label>
+                <Select
+                  value={formData.rfqId || 'none'}
+                  onValueChange={(value) => {
+                    const actualValue = value === 'none' ? undefined : value;
+                    const selectedRfq = rfqOptions.find(r => r.id === actualValue);
+                    setFormData({
+                      ...formData, 
+                      rfqId: actualValue,
+                      hirer: selectedRfq?.customerName || formData.hirer,
+                      projectName: selectedRfq?.projectName || formData.projectName,
+                    });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a quotation (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No linked quotation</SelectItem>
+                    {rfqOptions.map((rfq) => (
+                      <SelectItem key={rfq.id} value={rfq.id}>
+                        {rfq.rfqNumber} - {rfq.customerName} (RM{rfq.totalAmount.toLocaleString()})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[12px] text-[#6B7280]">
+                  Linking a quotation enables automatic deposit calculation when the signed agreement is uploaded.
+                </p>
+                {formData.rfqId && rfqOptions.find(r => r.id === formData.rfqId) && (
+                  <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg p-3 mt-2">
+                    <p className="text-[14px] text-[#047857]">
+                      <strong>Selected:</strong> {rfqOptions.find(r => r.id === formData.rfqId)?.rfqNumber}
+                    </p>
+                    <p className="text-[12px] text-[#6B7280] mt-1">
+                      Customer: {rfqOptions.find(r => r.id === formData.rfqId)?.customerName} | 
+                      Total: RM{rfqOptions.find(r => r.id === formData.rfqId)?.totalAmount.toLocaleString()}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

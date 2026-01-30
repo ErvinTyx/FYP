@@ -33,10 +33,10 @@ export function ApprovalModal({
 
   const handleApprove = () => {
     if (!referenceId.trim()) {
-      setError("Reference ID / Transaction ID is required");
+      setError("Bank Reference Number is required");
       return;
     }
-    onApprove(referenceId);
+    onApprove(referenceId.trim());
     setReferenceId("");
     setError("");
     onClose();
@@ -57,7 +57,7 @@ export function ApprovalModal({
             Approve Payment
           </DialogTitle>
           <DialogDescription>
-            Enter the transaction reference ID to approve this deposit
+            Enter the bank reference number to approve this deposit payment
           </DialogDescription>
         </DialogHeader>
 
@@ -79,11 +79,11 @@ export function ApprovalModal({
 
           <div className="space-y-2">
             <Label htmlFor="referenceId">
-              Reference ID / Transaction ID <span className="text-[#DC2626]">*</span>
+              Bank Reference Number <span className="text-[#DC2626]">*</span>
             </Label>
             <Input
               id="referenceId"
-              placeholder="Enter transaction reference ID"
+              placeholder="Enter bank transfer reference number"
               value={referenceId}
               onChange={(e) => {
                 setReferenceId(e.target.value);
@@ -91,6 +91,9 @@ export function ApprovalModal({
               }}
               className={error ? "border-[#DC2626]" : ""}
             />
+            <p className="text-[12px] text-[#6B7280]">
+              Enter the reference number from the customer's bank transfer or payment receipt
+            </p>
             {error && (
               <p className="text-[14px] text-[#DC2626]">{error}</p>
             )}

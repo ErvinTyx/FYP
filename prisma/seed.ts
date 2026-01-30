@@ -242,10 +242,12 @@ async function main() {
   });
   console.log(`  - Agreement: ${agreement4.agreementNumber} (${agreement4.projectName})`);
 
-  // Create sample RFQs (Quotations)
+  // Create sample RFQs (Quotations) FIRST - before agreements that link to them
   console.log("Creating sample RFQs (Quotations)...");
 
-  // Delete all existing RFQs for a fresh seed
+  // Delete all existing deposits and RFQs for a fresh seed
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).deposit.deleteMany({});
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (prisma as any).rFQItem.deleteMany({});
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -330,6 +332,576 @@ async function main() {
     },
   });
   console.log(`  - RFQ: ${rfq3.rfqNumber} (${rfq3.customerName})`);
+
+  // RFQ 4 - For deposit testing (Pending Payment)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq4 = await (prisma as any).rFQ.create({
+    data: {
+      rfqNumber: 'RFQ-20260125-00004',
+      customerName: 'Megah Engineering Sdn Bhd',
+      customerEmail: 'procurement@megaheng.com.my',
+      customerPhone: '+60 16-765 4321',
+      projectName: 'Setia Sky Residences Tower B',
+      projectLocation: 'Jalan Sultan Ismail, 50250 Kuala Lumpur',
+      requestedDate: new Date('2026-01-25'),
+      requiredDate: new Date('2026-02-10'),
+      status: 'approved',
+      totalAmount: 500, // RM500 daily rate
+      notes: 'Residential high-rise scaffolding',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-011', scaffoldingItemName: 'CRAB STANDARD 0.75M C60', quantity: 150, unit: 'pcs', unitPrice: 1.21, totalPrice: 181.5 },
+          { scaffoldingItemId: 'SC-012', scaffoldingItemName: 'CRAB TRIANGLE 1.5M', quantity: 100, unit: 'pcs', unitPrice: 2.78, totalPrice: 278 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantity: 50, unit: 'pcs', unitPrice: 1.30, totalPrice: 65 },
+        ],
+      },
+    },
+  });
+  console.log(`  - RFQ: ${rfq4.rfqNumber} (${rfq4.customerName})`);
+
+  // RFQ 5 - For deposit testing (Overdue)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq5 = await (prisma as any).rFQ.create({
+    data: {
+      rfqNumber: 'RFQ-20260110-00005',
+      customerName: 'Urban Construction Sdn Bhd',
+      customerEmail: 'project@urbanconstruction.com.my',
+      customerPhone: '+60 17-888 9999',
+      projectName: 'Urban Heights Condominium',
+      projectLocation: 'Jalan Ampang, 50450 Kuala Lumpur',
+      requestedDate: new Date('2026-01-10'),
+      requiredDate: new Date('2026-01-20'),
+      status: 'approved',
+      totalAmount: 350, // RM350 daily rate
+      notes: 'Condominium project scaffolding',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-003', scaffoldingItemName: 'CRAB STANDARD 1.00M C60', quantity: 100, unit: 'pcs', unitPrice: 1.46, totalPrice: 146 },
+          { scaffoldingItemId: 'SC-007', scaffoldingItemName: 'CRAB LEDGER 0.70M', quantity: 200, unit: 'pcs', unitPrice: 0.56, totalPrice: 112 },
+          { scaffoldingItemId: 'SC-015', scaffoldingItemName: 'CRAB U-HEAD C60 / 600', quantity: 50, unit: 'pcs', unitPrice: 2.07, totalPrice: 103.5 },
+        ],
+      },
+    },
+  });
+  console.log(`  - RFQ: ${rfq5.rfqNumber} (${rfq5.customerName})`);
+
+  // RFQ 6 - For deposit testing (Pending Approval)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq6 = await (prisma as any).rFQ.create({
+    data: {
+      rfqNumber: 'RFQ-20260118-00006',
+      customerName: 'BuildRight Inc.',
+      customerEmail: 'accounts@buildright.com.my',
+      customerPhone: '+60 12-555 6666',
+      projectName: 'BuildRight Office Tower',
+      projectLocation: 'Bangsar South, 59200 Kuala Lumpur',
+      requestedDate: new Date('2026-01-18'),
+      requiredDate: new Date('2026-02-01'),
+      status: 'approved',
+      totalAmount: 600, // RM600 daily rate
+      notes: 'Commercial office tower scaffolding',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-006', scaffoldingItemName: 'CRAB STANDARD 2.00M C60', quantity: 180, unit: 'pcs', unitPrice: 2.59, totalPrice: 466.2 },
+          { scaffoldingItemId: 'SC-004', scaffoldingItemName: 'CRAB LEDGER 1.50M', quantity: 120, unit: 'pcs', unitPrice: 1.12, totalPrice: 134.4 },
+        ],
+      },
+    },
+  });
+  console.log(`  - RFQ: ${rfq6.rfqNumber} (${rfq6.customerName})`);
+
+  // Link agreements to RFQs and update with signed documents for deposit creation
+  console.log("Linking agreements to RFQs...");
+
+  // Update Agreement 1 with RFQ link and signed document
+  await prisma.rentalAgreement.update({
+    where: { id: agreement1.id },
+    data: {
+      rfqId: rfq1.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2026001.pdf',
+      signedDocumentUploadedAt: new Date('2026-01-16'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+    },
+  });
+  console.log(`  - Linked ${agreement1.agreementNumber} to ${rfq1.rfqNumber}`);
+
+  // Update Agreement 2 with RFQ link and signed document
+  await prisma.rentalAgreement.update({
+    where: { id: agreement2.id },
+    data: {
+      rfqId: rfq2.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2026002.pdf',
+      signedDocumentUploadedAt: new Date('2026-01-21'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+    },
+  });
+  console.log(`  - Linked ${agreement2.agreementNumber} to ${rfq2.rfqNumber}`);
+
+  // Update Agreement 3 with RFQ link and signed document
+  await prisma.rentalAgreement.update({
+    where: { id: agreement3.id },
+    data: {
+      rfqId: rfq3.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2026003.pdf',
+      signedDocumentUploadedAt: new Date('2026-01-12'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+    },
+  });
+  console.log(`  - Linked ${agreement3.agreementNumber} to ${rfq3.rfqNumber}`);
+
+  // Update Agreement 4 with RFQ link and signed document
+  await prisma.rentalAgreement.update({
+    where: { id: agreement4.id },
+    data: {
+      rfqId: rfq4.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2026004.pdf',
+      signedDocumentUploadedAt: new Date('2026-01-26'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+    },
+  });
+  console.log(`  - Linked ${agreement4.agreementNumber} to ${rfq4.rfqNumber}`);
+
+  // Create additional agreements for deposit testing
+  console.log("Creating additional agreements for deposit testing...");
+
+  // Agreement 5 - For Overdue deposit
+  const agreement5 = await prisma.rentalAgreement.create({
+    data: {
+      agreementNumber: "RA-2026-005",
+      poNumber: "PO-2026-005",
+      projectName: "Urban Heights Condominium",
+      owner: "Power Metal & Steel Sdn Bhd",
+      ownerPhone: "+60 3-2727 8888",
+      hirer: "Urban Construction Sdn Bhd",
+      hirerPhone: "+60 17-888 9999",
+      location: "Jalan Ampang, 50450 Kuala Lumpur",
+      termOfHire: "8 months (01 Jan 2026 - 31 Aug 2026)",
+      transportation: "Included - Delivery & Collection",
+      monthlyRental: 10500,
+      securityDeposit: 2,
+      minimumCharges: 2,
+      defaultInterest: 1.5,
+      ownerSignatoryName: "Ahmad bin Abdullah",
+      ownerNRIC: "720101-01-5678",
+      hirerSignatoryName: "David Wong",
+      hirerNRIC: "880225-14-7654",
+      status: "Active",
+      currentVersion: 1,
+      createdBy: "superadmin@powermetalsteel.com",
+      rfqId: rfq5.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2026005.pdf',
+      signedDocumentUploadedAt: new Date('2026-01-11'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+      versions: {
+        create: {
+          versionNumber: 1,
+          changes: "Initial agreement created",
+          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales", "Finance"]),
+          createdBy: "superadmin@powermetalsteel.com",
+        },
+      },
+    },
+  });
+  console.log(`  - Agreement: ${agreement5.agreementNumber} (${agreement5.projectName})`);
+
+  // Agreement 6 - For Pending Approval deposit
+  const agreement6 = await prisma.rentalAgreement.create({
+    data: {
+      agreementNumber: "RA-2026-006",
+      poNumber: "PO-2026-006",
+      projectName: "BuildRight Office Tower",
+      owner: "Power Metal & Steel Sdn Bhd",
+      ownerPhone: "+60 3-2727 8888",
+      hirer: "BuildRight Inc.",
+      hirerPhone: "+60 12-555 6666",
+      location: "Bangsar South, 59200 Kuala Lumpur",
+      termOfHire: "10 months (01 Feb 2026 - 30 Nov 2026)",
+      transportation: "Included - Delivery Only",
+      monthlyRental: 18000,
+      securityDeposit: 3,
+      minimumCharges: 3,
+      defaultInterest: 2.0,
+      ownerSignatoryName: "Ahmad bin Abdullah",
+      ownerNRIC: "720101-01-5678",
+      hirerSignatoryName: "James Tan",
+      hirerNRIC: "790610-10-3456",
+      status: "Active",
+      currentVersion: 1,
+      createdBy: "superadmin@powermetalsteel.com",
+      rfqId: rfq6.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2026006.pdf',
+      signedDocumentUploadedAt: new Date('2026-01-19'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+      versions: {
+        create: {
+          versionNumber: 1,
+          changes: "Initial agreement created",
+          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales", "Finance"]),
+          createdBy: "superadmin@powermetalsteel.com",
+        },
+      },
+    },
+  });
+  console.log(`  - Agreement: ${agreement6.agreementNumber} (${agreement6.projectName})`);
+
+  // Create sample deposits
+  console.log("Creating sample deposits...");
+
+  // Calculate due dates
+  const today = new Date();
+  const twoWeeksFromNow = new Date(today);
+  twoWeeksFromNow.setDate(today.getDate() + 14);
+  
+  const oneWeekAgo = new Date(today);
+  oneWeekAgo.setDate(today.getDate() - 7);
+  
+  const twoWeeksAgo = new Date(today);
+  twoWeeksAgo.setDate(today.getDate() - 14);
+
+  // Deposit 1 - PAID (Agreement 1 - ABC Construction)
+  // Deposit Amount = RFQ totalAmount × 30 × securityDeposit = 25000 × 30 × 2 = RM 1,500,000
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposit1 = await (prisma as any).deposit.create({
+    data: {
+      depositNumber: 'DEP-20260117-001',
+      agreementId: agreement1.id,
+      depositAmount: 1500000,
+      status: 'Paid',
+      dueDate: new Date('2026-01-30'),
+      paymentProofUrl: '/uploads/payment-proofs/payment_proof_dep001.pdf',
+      paymentProofFileName: 'Bank_Transfer_Receipt_ABC.pdf',
+      paymentProofUploadedAt: new Date('2026-01-20'),
+      paymentProofUploadedBy: 'project@abcconstruction.com.my',
+      paymentSubmittedAt: new Date('2026-01-20'),
+      approvedBy: 'finance@powermetalsteel.com',
+      approvedAt: new Date('2026-01-21'),
+      referenceNumber: 'MBB-2026012100123456',
+    },
+  });
+  console.log(`  - Deposit: ${deposit1.depositNumber} (PAID - ${rfq1.customerName})`);
+
+  // Deposit 2 - PAID (Agreement 2 - XYZ Development)
+  // Deposit Amount = 38000 × 30 × 3 = RM 3,420,000
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposit2 = await (prisma as any).deposit.create({
+    data: {
+      depositNumber: 'DEP-20260122-001',
+      agreementId: agreement2.id,
+      depositAmount: 3420000,
+      status: 'Paid',
+      dueDate: new Date('2026-02-04'),
+      paymentProofUrl: '/uploads/payment-proofs/payment_proof_dep002.pdf',
+      paymentProofFileName: 'CIMB_Transfer_XYZ.pdf',
+      paymentProofUploadedAt: new Date('2026-01-25'),
+      paymentProofUploadedBy: 'ops@xyzdevelopment.com.my',
+      paymentSubmittedAt: new Date('2026-01-25'),
+      approvedBy: 'finance@powermetalsteel.com',
+      approvedAt: new Date('2026-01-26'),
+      referenceNumber: 'CIMB-2026012600789012',
+    },
+  });
+  console.log(`  - Deposit: ${deposit2.depositNumber} (PAID - ${rfq2.customerName})`);
+
+  // Deposit 3 - PENDING PAYMENT (Agreement 4 - Megah Engineering)
+  // Deposit Amount = 500 × 30 × 2 = RM 30,000
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposit3 = await (prisma as any).deposit.create({
+    data: {
+      depositNumber: 'DEP-20260127-001',
+      agreementId: agreement4.id,
+      depositAmount: 30000,
+      status: 'Pending Payment',
+      dueDate: twoWeeksFromNow,
+    },
+  });
+  console.log(`  - Deposit: ${deposit3.depositNumber} (PENDING PAYMENT - ${rfq4.customerName})`);
+
+  // Deposit 4 - OVERDUE (Agreement 5 - Urban Construction)
+  // Deposit Amount = 350 × 30 × 2 = RM 21,000
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposit4 = await (prisma as any).deposit.create({
+    data: {
+      depositNumber: 'DEP-20260112-001',
+      agreementId: agreement5.id,
+      depositAmount: 21000,
+      status: 'Overdue',
+      dueDate: oneWeekAgo,
+    },
+  });
+  console.log(`  - Deposit: ${deposit4.depositNumber} (OVERDUE - ${rfq5.customerName})`);
+
+  // Deposit 5 - PENDING APPROVAL (Agreement 6 - BuildRight)
+  // Deposit Amount = 600 × 30 × 3 = RM 54,000
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposit5 = await (prisma as any).deposit.create({
+    data: {
+      depositNumber: 'DEP-20260120-001',
+      agreementId: agreement6.id,
+      depositAmount: 54000,
+      status: 'Pending Approval',
+      dueDate: new Date('2026-02-02'),
+      paymentProofUrl: '/uploads/payment-proofs/payment_proof_dep005.pdf',
+      paymentProofFileName: 'HLB_Transfer_BuildRight.pdf',
+      paymentProofUploadedAt: new Date('2026-01-28'),
+      paymentProofUploadedBy: 'accounts@buildright.com.my',
+      paymentSubmittedAt: new Date('2026-01-28'),
+    },
+  });
+  console.log(`  - Deposit: ${deposit5.depositNumber} (PENDING APPROVAL - ${rfq6.customerName})`);
+
+  // Deposit 6 - REJECTED (Need to create another agreement)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq7 = await (prisma as any).rFQ.create({
+    data: {
+      rfqNumber: 'RFQ-20260105-00007',
+      customerName: 'Premium Projects Sdn Bhd',
+      customerEmail: 'finance@premiumprojects.com.my',
+      customerPhone: '+60 16-345 6789',
+      projectName: 'Premium Plaza Commercial Center',
+      projectLocation: 'Jalan Bukit Bintang, 55100 Kuala Lumpur',
+      requestedDate: new Date('2026-01-05'),
+      requiredDate: new Date('2026-01-15'),
+      status: 'approved',
+      totalAmount: 420,
+      notes: 'Commercial center scaffolding',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-003', scaffoldingItemName: 'CRAB STANDARD 1.00M C60', quantity: 120, unit: 'pcs', unitPrice: 1.46, totalPrice: 175.2 },
+          { scaffoldingItemId: 'SC-005', scaffoldingItemName: 'CRAB BRACE H2 X L1.50M', quantity: 100, unit: 'pcs', unitPrice: 1.50, totalPrice: 150 },
+          { scaffoldingItemId: 'SC-012', scaffoldingItemName: 'CRAB TRIANGLE 1.5M', quantity: 50, unit: 'pcs', unitPrice: 2.78, totalPrice: 139 },
+        ],
+      },
+    },
+  });
+  
+  const agreement7 = await prisma.rentalAgreement.create({
+    data: {
+      agreementNumber: "RA-2026-007",
+      poNumber: "PO-2026-007",
+      projectName: "Premium Plaza Commercial Center",
+      owner: "Power Metal & Steel Sdn Bhd",
+      ownerPhone: "+60 3-2727 8888",
+      hirer: "Premium Projects Sdn Bhd",
+      hirerPhone: "+60 16-345 6789",
+      location: "Jalan Bukit Bintang, 55100 Kuala Lumpur",
+      termOfHire: "6 months (15 Jan 2026 - 14 Jul 2026)",
+      transportation: "Excluded - Self Collection",
+      monthlyRental: 12600,
+      securityDeposit: 2,
+      minimumCharges: 2,
+      defaultInterest: 1.5,
+      ownerSignatoryName: "Ahmad bin Abdullah",
+      ownerNRIC: "720101-01-5678",
+      hirerSignatoryName: "Michael Ooi",
+      hirerNRIC: "830715-10-9876",
+      status: "Active",
+      currentVersion: 1,
+      createdBy: "superadmin@powermetalsteel.com",
+      rfqId: rfq7.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2026007.pdf',
+      signedDocumentUploadedAt: new Date('2026-01-08'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+      versions: {
+        create: {
+          versionNumber: 1,
+          changes: "Initial agreement created",
+          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales", "Finance"]),
+          createdBy: "superadmin@powermetalsteel.com",
+        },
+      },
+    },
+  });
+
+  // Deposit 6 - REJECTED
+  // Deposit Amount = 420 × 30 × 2 = RM 25,200
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposit6 = await (prisma as any).deposit.create({
+    data: {
+      depositNumber: 'DEP-20260109-001',
+      agreementId: agreement7.id,
+      depositAmount: 25200,
+      status: 'Rejected',
+      dueDate: new Date('2026-01-22'),
+      paymentProofUrl: '/uploads/payment-proofs/payment_proof_dep006_rejected.jpg',
+      paymentProofFileName: 'Blurry_Screenshot.jpg',
+      paymentProofUploadedAt: new Date('2026-01-15'),
+      paymentProofUploadedBy: 'finance@premiumprojects.com.my',
+      paymentSubmittedAt: new Date('2026-01-15'),
+      rejectedBy: 'finance@powermetalsteel.com',
+      rejectedAt: new Date('2026-01-16'),
+      rejectionReason: 'The payment proof image is blurry and the transaction details are not visible. Please upload a clearer image showing the full transaction details including date, amount, and reference number.',
+    },
+  });
+  console.log(`  - Deposit: ${deposit6.depositNumber} (REJECTED - Premium Projects)`);
+
+  // Deposit 7 - EXPIRED
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq8 = await (prisma as any).rFQ.create({
+    data: {
+      rfqNumber: 'RFQ-20251215-00008',
+      customerName: 'Metro Builders Sdn Bhd',
+      customerEmail: 'accounts@metrobuilders.com.my',
+      customerPhone: '+60 13-777 8888',
+      projectName: 'Metro Shopping Mall Extension',
+      projectLocation: 'Jalan Tun Razak, 50400 Kuala Lumpur',
+      requestedDate: new Date('2025-12-15'),
+      requiredDate: new Date('2025-12-25'),
+      status: 'approved',
+      totalAmount: 280,
+      notes: 'Shopping mall extension project',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-001', scaffoldingItemName: 'CRAB BASIC STANDARD C60', quantity: 200, unit: 'pcs', unitPrice: 0.59, totalPrice: 118 },
+          { scaffoldingItemId: 'SC-007', scaffoldingItemName: 'CRAB LEDGER 0.70M', quantity: 150, unit: 'pcs', unitPrice: 0.56, totalPrice: 84 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantity: 60, unit: 'pcs', unitPrice: 1.30, totalPrice: 78 },
+        ],
+      },
+    },
+  });
+  
+  const agreement8 = await prisma.rentalAgreement.create({
+    data: {
+      agreementNumber: "RA-2025-008",
+      poNumber: "PO-2025-008",
+      projectName: "Metro Shopping Mall Extension",
+      owner: "Power Metal & Steel Sdn Bhd",
+      ownerPhone: "+60 3-2727 8888",
+      hirer: "Metro Builders Sdn Bhd",
+      hirerPhone: "+60 13-777 8888",
+      location: "Jalan Tun Razak, 50400 Kuala Lumpur",
+      termOfHire: "4 months (01 Jan 2026 - 30 Apr 2026)",
+      transportation: "Included - Delivery & Collection",
+      monthlyRental: 8400,
+      securityDeposit: 2,
+      minimumCharges: 1,
+      defaultInterest: 1.5,
+      ownerSignatoryName: "Ahmad bin Abdullah",
+      ownerNRIC: "720101-01-5678",
+      hirerSignatoryName: "Robert Chen",
+      hirerNRIC: "750920-14-5432",
+      status: "Terminated",
+      currentVersion: 1,
+      createdBy: "superadmin@powermetalsteel.com",
+      rfqId: rfq8.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2025008.pdf',
+      signedDocumentUploadedAt: new Date('2025-12-18'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+      versions: {
+        create: {
+          versionNumber: 1,
+          changes: "Initial agreement created",
+          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales", "Finance"]),
+          createdBy: "superadmin@powermetalsteel.com",
+        },
+      },
+    },
+  });
+
+  // Deposit 7 - EXPIRED
+  // Deposit Amount = 280 × 30 × 2 = RM 16,800
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposit7 = await (prisma as any).deposit.create({
+    data: {
+      depositNumber: 'DEP-20251219-001',
+      agreementId: agreement8.id,
+      depositAmount: 16800,
+      status: 'Expired',
+      dueDate: new Date('2026-01-02'),
+    },
+  });
+  console.log(`  - Deposit: ${deposit7.depositNumber} (EXPIRED - Metro Builders)`);
+
+  // Deposit 8 - Another PENDING PAYMENT (for variety)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rfq9 = await (prisma as any).rFQ.create({
+    data: {
+      rfqNumber: 'RFQ-20260128-00009',
+      customerName: 'Sunrise Holdings Sdn Bhd',
+      customerEmail: 'procurement@sunriseholdings.com.my',
+      customerPhone: '+60 19-123 4567',
+      projectName: 'Sunrise Business Park Tower A',
+      projectLocation: 'Mont Kiara, 50480 Kuala Lumpur',
+      requestedDate: new Date('2026-01-28'),
+      requiredDate: new Date('2026-02-10'),
+      status: 'approved',
+      totalAmount: 550,
+      notes: 'Business park development',
+      createdBy: 'superadmin@powermetalsteel.com',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-006', scaffoldingItemName: 'CRAB STANDARD 2.00M C60', quantity: 150, unit: 'pcs', unitPrice: 2.59, totalPrice: 388.5 },
+          { scaffoldingItemId: 'SC-008', scaffoldingItemName: 'CRAB LEDGER 1.00M', quantity: 100, unit: 'pcs', unitPrice: 0.77, totalPrice: 77 },
+          { scaffoldingItemId: 'SC-015', scaffoldingItemName: 'CRAB U-HEAD C60 / 600', quantity: 40, unit: 'pcs', unitPrice: 2.07, totalPrice: 82.8 },
+        ],
+      },
+    },
+  });
+  
+  const agreement9 = await prisma.rentalAgreement.create({
+    data: {
+      agreementNumber: "RA-2026-009",
+      poNumber: "PO-2026-009",
+      projectName: "Sunrise Business Park Tower A",
+      owner: "Power Metal & Steel Sdn Bhd",
+      ownerPhone: "+60 3-2727 8888",
+      hirer: "Sunrise Holdings Sdn Bhd",
+      hirerPhone: "+60 19-123 4567",
+      location: "Mont Kiara, 50480 Kuala Lumpur",
+      termOfHire: "12 months (01 Feb 2026 - 31 Jan 2027)",
+      transportation: "Included - Delivery Only",
+      monthlyRental: 16500,
+      securityDeposit: 3,
+      minimumCharges: 3,
+      defaultInterest: 2.0,
+      ownerSignatoryName: "Ahmad bin Abdullah",
+      ownerNRIC: "720101-01-5678",
+      hirerSignatoryName: "Jennifer Lim",
+      hirerNRIC: "860430-10-2468",
+      status: "Active",
+      currentVersion: 1,
+      createdBy: "superadmin@powermetalsteel.com",
+      rfqId: rfq9.id,
+      signedDocumentUrl: '/uploads/agreements/signed_agreement_ra2026009.pdf',
+      signedDocumentUploadedAt: new Date('2026-01-29'),
+      signedDocumentUploadedBy: 'superadmin@powermetalsteel.com',
+      versions: {
+        create: {
+          versionNumber: 1,
+          changes: "Initial agreement created",
+          allowedRoles: JSON.stringify(["Admin", "Manager", "Sales", "Finance"]),
+          createdBy: "superadmin@powermetalsteel.com",
+        },
+      },
+    },
+  });
+
+  // Deposit 8 - PENDING PAYMENT (newer)
+  // Deposit Amount = 550 × 30 × 3 = RM 49,500
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deposit8 = await (prisma as any).deposit.create({
+    data: {
+      depositNumber: 'DEP-20260129-001',
+      agreementId: agreement9.id,
+      depositAmount: 49500,
+      status: 'Pending Payment',
+      dueDate: new Date('2026-02-12'),
+    },
+  });
+  console.log(`  - Deposit: ${deposit8.depositNumber} (PENDING PAYMENT - Sunrise Holdings)`);
+
+  console.log("Deposit sample data created successfully!");
+  console.log("  Summary:");
+  console.log("  - 2 PAID deposits");
+  console.log("  - 2 PENDING PAYMENT deposits");
+  console.log("  - 1 PENDING APPROVAL deposit");
+  console.log("  - 1 REJECTED deposit");
+  console.log("  - 1 OVERDUE deposit");
+  console.log("  - 1 EXPIRED deposit");
 
   // Create sample delivery requests linked to RFQs
   console.log("Creating sample delivery requests...");

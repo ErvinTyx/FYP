@@ -471,6 +471,134 @@ If you have any questions, please contact our support team.
 }
 
 /**
+ * Send a deposit rejection email to notify customer their payment proof was rejected
+ */
+export async function sendDepositRejectionEmail(
+  customerEmail: string,
+  customerName: string,
+  depositNumber: string,
+  rejectionReason: string,
+  depositAmount: number
+): Promise<boolean> {
+  const fromAddress = process.env.SMTP_FROM || 'noreply@powermetalsteel.com';
+  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+  const depositUrl = `${baseUrl}/deposits`;
+  
+  // Format the deposit amount with currency
+  const formattedAmount = new Intl.NumberFormat('en-MY', {
+    style: 'currency',
+    currency: 'MYR',
+  }).format(depositAmount);
+  
+  const mailOptions = {
+    from: `"Power Metal & Steel" <${fromAddress}>`,
+    to: customerEmail,
+    subject: `Deposit Payment Rejected - ${depositNumber}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Deposit Payment Rejected</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f4f4f5;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 24px;">Power Metal & Steel</h1>
+              <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Deposit Payment Update</p>
+            </div>
+            <div style="background: white; padding: 40px 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h2 style="color: #111827; margin: 0 0 20px 0; font-size: 20px;">
+                Hello, ${customerName}
+              </h2>
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 20px 0;">
+                We regret to inform you that your payment proof for the security deposit has been reviewed and was not approved at this time.
+              </p>
+              
+              <div style="background: #F3F4F6; border-radius: 8px; padding: 20px; margin: 0 0 20px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="color: #6B7280; padding: 8px 0; font-size: 14px;">Deposit Number:</td>
+                    <td style="color: #111827; padding: 8px 0; font-size: 14px; font-weight: 600; text-align: right;">${depositNumber}</td>
+                  </tr>
+                  <tr>
+                    <td style="color: #6B7280; padding: 8px 0; font-size: 14px;">Amount:</td>
+                    <td style="color: #111827; padding: 8px 0; font-size: 14px; font-weight: 600; text-align: right;">${formattedAmount}</td>
+                  </tr>
+                </table>
+              </div>
+              
+              <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 8px; padding: 20px; margin: 0 0 25px 0;">
+                <p style="color: #991B1B; margin: 0 0 10px 0; font-weight: 600; font-size: 14px;">
+                  Reason for rejection:
+                </p>
+                <p style="color: #7F1D1D; margin: 0; font-size: 14px; line-height: 1.5;">
+                  ${rejectionReason}
+                </p>
+              </div>
+              
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 25px 0;">
+                Please review the reason above and submit a new payment proof with the correct information. You can do this by logging into your account.
+              </p>
+              
+              <div style="text-align: center; margin: 0 0 25px 0;">
+                <a href="${depositUrl}" style="display: inline-block; background: #1E40AF; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">
+                  Upload New Payment Proof
+                </a>
+              </div>
+              
+              <div style="background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 16px; margin: 0 0 25px 0;">
+                <p style="color: #92400E; margin: 0; font-size: 14px;">
+                  <strong>Important:</strong> Please ensure your payment proof clearly shows the transaction details including the reference number, amount, and date.
+                </p>
+              </div>
+              
+              <p style="color: #6B7280; line-height: 1.6; margin: 0 0 15px 0; font-size: 14px;">
+                If you have any questions or need assistance, please contact our support team.
+              </p>
+              
+              <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
+              <p style="color: #9CA3AF; font-size: 12px; margin: 0; text-align: center;">
+                This is an automated message from Power Metal & Steel. Please do not reply to this email.
+              </p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `,
+    text: `
+Power Metal & Steel - Deposit Payment Rejected
+
+Hello, ${customerName}
+
+We regret to inform you that your payment proof for the security deposit has been reviewed and was not approved at this time.
+
+Deposit Number: ${depositNumber}
+Amount: ${formattedAmount}
+
+Reason for rejection:
+${rejectionReason}
+
+Please review the reason above and submit a new payment proof with the correct information. You can do this by logging into your account at:
+${depositUrl}
+
+Important: Please ensure your payment proof clearly shows the transaction details including the reference number, amount, and date.
+
+If you have any questions or need assistance, please contact our support team.
+    `.trim(),
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    console.error('Failed to send deposit rejection email:', error);
+    return false;
+  }
+}
+
+/**
  * Send a delivery OTP verification email to customer
  */
 export async function sendDeliveryOTPEmail(

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DepositList } from "./DepositList";
 import { DepositDetails } from "./DepositDetails";
 import { DepositReceiptPrint } from "./DepositReceiptPrint";
-import { Deposit, DepositDocument, DepositReceipt, RentalItem } from "../../types/deposit";
+import { Deposit, DepositReceipt } from "../../types/deposit";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { FileText } from "lucide-react";
 import { RotateCcw } from "lucide-react";
@@ -22,290 +22,84 @@ import { uploadPaymentProof } from "@/lib/upload";
 
 type View = "list" | "details" | "receipt";
 
-// Mock data - in a real app, this would come from an API
-const initialDeposits: Deposit[] = [
-  {
-    id: "7",
-    depositId: "DEP-2024-007",
-    invoiceNo: "INV-2024-051",
-    customerName: "Sunrise Holdings",
-    customerId: "CUST-007",
-    agreementDocument: {
-      id: "doc-7",
-      fileName: "rental_agreement_sunrise.pdf",
-      fileUrl: "#",
-      fileSize: 485632,
-      fileType: "application/pdf",
-      uploadedAt: "2024-12-05T08:20:00Z",
-    },
-    depositAmount: 10800,
-    status: "Pending Payment",
-    dueDate: "2025-12-25",
-    lastUpdated: "2024-12-09T08:15:00Z",
-    createdAt: "2024-12-05T08:20:00Z",
-  },
-  {
-    id: "3",
-    depositId: "DEP-2024-003",
-    invoiceNo: "INV-2024-047",
-    customerName: "Metro Builders",
-    customerId: "CUST-003",
-    agreementDocument: {
-      id: "doc-3",
-      fileName: "rental_agreement_metro.pdf",
-      fileUrl: "#",
-      fileSize: 498688,
-      fileType: "application/pdf",
-      uploadedAt: "2024-11-08T14:00:00Z",
-    },
-    depositAmount: 18500,
-    status: "Pending Payment",
-    dueDate: "2025-12-25",
-    lastUpdated: "2024-12-09T10:30:00Z",
-    createdAt: "2024-11-08T14:00:00Z",
-  },
-  {
-    id: "1",
-    depositId: "DEP-2024-001",
-    invoiceNo: "INV-2024-045",
-    customerName: "Acme Construction Ltd.",
-    customerId: "CUST-001",
-    agreementDocument: {
-      id: "doc-1",
-      fileName: "rental_agreement_acme.pdf",
-      fileUrl: "#",
-      fileSize: 524288,
-      fileType: "application/pdf",
-      uploadedAt: "2024-11-01T09:00:00Z",
-    },
-    depositAmount: 15000,
-    status: "Paid",
-    dueDate: "2024-11-15",
-    lastUpdated: "2024-11-10T14:30:00Z",
-    createdAt: "2024-11-01T09:00:00Z",
-    paymentProof: {
-      id: "proof-1",
-      fileName: "payment_receipt_acme.jpg",
-      fileUrl: "#",
-      fileSize: 245600,
-      fileType: "image/jpeg",
-      uploadedAt: "2024-11-08T10:15:00Z",
-    },
-    paymentSubmittedAt: "2024-11-08T10:15:00Z",
-    approvedBy: "Jane Doe (Finance Manager)",
-    approvedAt: "2024-11-10T14:30:00Z",
-    referenceId: "TXN-2024-ACM-15000",
-    rentalItems: [
-      {
-        id: 'dep-item-1',
-        itemName: 'Standard Frame 1.8m x 1.2m',
-        quantity: 50,
-        unitPrice: 15.00,
-        totalPrice: 750.00,
-      },
-      {
-        id: 'dep-item-2',
-        itemName: 'Cross Brace 1.8m',
-        quantity: 100,
-        unitPrice: 8.00,
-        totalPrice: 800.00,
-      },
-      {
-        id: 'dep-item-3',
-        itemName: 'Base Jack (Adjustable)',
-        quantity: 60,
-        unitPrice: 12.00,
-        totalPrice: 720.00,
-      },
-    ],
-    depositReceipt: {
-      id: 'rcpt-1',
-      receiptNumber: 'RCP-DEP-2024-001',
-      receiptDate: '2024-11-10T14:30:00Z',
-      generatedAt: '2024-11-10T14:30:00Z',
-    },
-  },
-  {
-    id: "2",
-    depositId: "DEP-2024-002",
-    invoiceNo: "INV-2024-046",
-    customerName: "BuildRight Inc.",
-    customerId: "CUST-002",
-    agreementDocument: {
-      id: "doc-2",
-      fileName: "rental_agreement_buildright.pdf",
-      fileUrl: "#",
-      fileSize: 612352,
-      fileType: "application/pdf",
-      uploadedAt: "2024-11-05T11:20:00Z",
-    },
-    depositAmount: 22000,
-    status: "Pending Approval",
-    dueDate: "2024-11-20",
-    lastUpdated: "2024-11-12T09:45:00Z",
-    createdAt: "2024-11-05T11:20:00Z",
-    paymentProof: {
-      id: "proof-2",
-      fileName: "bank_transfer_proof.pdf",
-      fileUrl: "#",
-      fileSize: 189440,
-      fileType: "application/pdf",
-      uploadedAt: "2024-11-12T09:45:00Z",
-    },
-    paymentSubmittedAt: "2024-11-12T09:45:00Z",
-  },
-  {
-    id: "4",
-    depositId: "DEP-2024-004",
-    invoiceNo: "INV-2024-048",
-    customerName: "Premium Projects",
-    customerId: "CUST-004",
-    agreementDocument: {
-      id: "doc-4",
-      fileName: "rental_agreement_premium.pdf",
-      fileUrl: "#",
-      fileSize: 551936,
-      fileType: "application/pdf",
-      uploadedAt: "2024-11-10T16:30:00Z",
-    },
-    depositAmount: 12750,
-    status: "Rejected",
-    dueDate: "2024-11-18",
-    lastUpdated: "2024-11-15T11:20:00Z",
-    createdAt: "2024-11-10T16:30:00Z",
-    paymentProof: {
-      id: "proof-4",
-      fileName: "payment_screenshot.jpg",
-      fileUrl: "#",
-      fileSize: 152600,
-      fileType: "image/jpeg",
-      uploadedAt: "2024-11-14T08:30:00Z",
-    },
-    paymentSubmittedAt: "2024-11-14T08:30:00Z",
-    rejectedBy: "Robert Lee (Admin)",
-    rejectedAt: "2024-11-15T11:20:00Z",
-    rejectionReason: "The payment proof image is unclear and the transaction details are not visible. Please upload a clearer image showing the full transaction details including date, amount, and reference number.",
-  },
-  {
-    id: "5",
-    depositId: "DEP-2024-005",
-    invoiceNo: "INV-2024-049",
-    customerName: "Steel Masters Co.",
-    customerId: "CUST-005",
-    agreementDocument: {
-      id: "doc-5",
-      fileName: "rental_agreement_steelmasters.pdf",
-      fileUrl: "#",
-      fileSize: 478208,
-      fileType: "application/pdf",
-      uploadedAt: "2024-11-02T10:00:00Z",
-    },
-    depositAmount: 31200,
-    status: "Pending Payment",
-    dueDate: "2024-11-27",
-    lastUpdated: "2024-11-02T10:00:00Z",
-    createdAt: "2024-11-02T10:00:00Z",
-  },
-  {
-    id: "6",
-    depositId: "DEP-2024-006",
-    invoiceNo: "INV-2024-050",
-    customerName: "Urban Construction",
-    customerId: "CUST-006",
-    agreementDocument: {
-      id: "doc-6",
-      fileName: "rental_agreement_urban.pdf",
-      fileUrl: "#",
-      fileSize: 522240,
-      fileType: "application/pdf",
-      uploadedAt: "2024-10-28T13:15:00Z",
-    },
-    depositAmount: 9500,
-    status: "Pending Payment",
-    dueDate: "2024-11-10",
-    lastUpdated: "2024-10-28T13:15:00Z",
-    createdAt: "2024-10-28T13:15:00Z",
-  },
-];
-
 interface ManageDepositFlowProps {
-  userRole?: "Admin" | "Finance" | "Staff" | "Customer";
+  userRole?: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
 }
 
 export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps) {
   const [currentView, setCurrentView] = useState<View>("list");
-  const [deposits, setDeposits] = useState<Deposit[]>(initialDeposits);
+  const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
   const [showGenerateInvoiceDialog, setShowGenerateInvoiceDialog] = useState(false);
   const [depositToGenerateInvoice, setDepositToGenerateInvoice] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [approvedDepositId, setApprovedDepositId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem("deposits");
-    if (stored) {
-      try {
-        const parsedDeposits = JSON.parse(stored);
-        // Only use stored data if it has the same structure
-        if (parsedDeposits && parsedDeposits.length > 0) {
-          setDeposits(parsedDeposits);
-        } else {
-          // Reset to initial if stored data is invalid
-          setDeposits(initialDeposits);
-        }
-      } catch (e) {
-        console.error("Failed to load deposits from storage");
-        setDeposits(initialDeposits);
+  // Fetch deposits from API
+  const fetchDeposits = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const response = await fetch('/api/deposit');
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to fetch deposits');
       }
-    } else {
-      // No stored data, use initial
-      setDeposits(initialDeposits);
+      
+      // Transform API data to match frontend interface
+      const transformedDeposits: Deposit[] = data.deposits.map((d: Deposit) => ({
+        ...d,
+        // Map API fields to legacy fields for backwards compatibility
+        depositId: d.depositNumber,
+        customerName: d.agreement?.hirer || 'Unknown Customer',
+        customerId: d.agreement?.id || '',
+        invoiceNo: d.agreement?.agreementNumber || '',
+        agreementDocument: d.agreement?.signedDocumentUrl ? {
+          id: `doc-${d.id}`,
+          fileName: 'Signed Agreement',
+          fileUrl: d.agreement.signedDocumentUrl,
+          fileSize: 0,
+          fileType: 'application/pdf',
+          uploadedAt: d.createdAt,
+        } : undefined,
+        paymentProof: d.paymentProofUrl ? {
+          id: `proof-${d.id}`,
+          fileName: d.paymentProofFileName || 'Payment Proof',
+          fileUrl: d.paymentProofUrl,
+          fileSize: 0,
+          fileType: 'application/pdf',
+          uploadedAt: d.paymentProofUploadedAt || d.createdAt,
+        } : undefined,
+        referenceId: d.referenceNumber,
+        lastUpdated: d.updatedAt,
+        rentalItems: d.agreement?.rfq?.items?.map((item: { id: string; scaffoldingItemName: string; quantity: number; unitPrice: number; totalPrice: number }) => ({
+          id: item.id,
+          itemName: item.scaffoldingItemName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+        })) || [],
+      }));
+      
+      setDeposits(transformedDeposits);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch deposits';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
-  // Save to localStorage when deposits change
+  // Load deposits on mount
   useEffect(() => {
-    localStorage.setItem("deposits", JSON.stringify(deposits));
-  }, [deposits]);
-
-  // Check for overdue deposits automatically
-  useEffect(() => {
-    const checkOverdue = () => {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      
-      const updatedDeposits = deposits.map((deposit) => {
-        if (deposit.status === "Pending Payment" && !deposit.paymentProof) {
-          const dueDate = new Date(deposit.dueDate);
-          dueDate.setHours(0, 0, 0, 0);
-          
-          if (dueDate < now) {
-            return {
-              ...deposit,
-              status: "Overdue" as const,
-              isOverdue: true,
-              lastUpdated: new Date().toISOString(),
-            };
-          }
-        }
-        return deposit;
-      });
-
-      // Check if any deposits were updated
-      const hasChanges = updatedDeposits.some((d, i) => d.status !== deposits[i].status);
-      if (hasChanges) {
-        setDeposits(updatedDeposits);
-      }
-    };
-
-    // Check immediately
-    checkOverdue();
-
-    // Check every minute
-    const interval = setInterval(checkOverdue, 60000);
-    return () => clearInterval(interval);
-  }, [deposits]);
+    fetchDeposits();
+  }, [fetchDeposits]);
 
   const selectedDeposit = selectedDepositId
     ? deposits.find((d) => d.id === selectedDepositId)
@@ -322,105 +116,193 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
   };
 
   const handleSubmitPayment = async (depositId: string, file: File) => {
-    const now = new Date().toISOString();
+    try {
+      setIsProcessing(true);
+      
+      // Upload file to server
+      toast.info('Uploading payment proof...');
+      const uploadResult = await uploadPaymentProof(file);
+      
+      if (!uploadResult.success || !uploadResult.url) {
+        throw new Error(uploadResult.error || 'Failed to upload payment proof');
+      }
 
-    // Upload file to server
-    toast.info('Uploading payment proof...');
-    const result = await uploadPaymentProof(file);
-    
-    if (!result.success || !result.url) {
-      toast.error(result.error || 'Failed to upload payment proof');
-      return;
+      // Update deposit via API
+      const response = await fetch('/api/deposit', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: depositId,
+          action: 'upload-proof',
+          paymentProofUrl: uploadResult.url,
+          paymentProofFileName: file.name,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to submit payment proof');
+      }
+
+      const deposit = deposits.find(d => d.id === depositId);
+      if (deposit?.status === "Rejected") {
+        toast.success("Payment proof re-submitted for approval");
+      } else {
+        toast.success("Payment proof submitted successfully");
+      }
+      
+      // Refresh deposits
+      await fetchDeposits();
+      setCurrentView("list");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to submit payment';
+      toast.error(errorMessage);
+    } finally {
+      setIsProcessing(false);
     }
-
-    // Create document with server URL
-    const paymentProof: DepositDocument = {
-      id: `proof-${Date.now()}`,
-      fileName: file.name,
-      fileUrl: result.url, // Use server URL instead of blob URL
-      fileSize: file.size,
-      fileType: file.type,
-      uploadedAt: now,
-    };
-
-    setDeposits(
-      deposits.map((d) =>
-        d.id === depositId
-          ? {
-              ...d,
-              status: "Pending Approval",
-              paymentProof,
-              paymentSubmittedAt: now,
-              lastUpdated: now,
-              // Clear rejection info if re-uploading
-              rejectedBy: undefined,
-              rejectedAt: undefined,
-              rejectionReason: undefined,
-            }
-          : d
-      )
-    );
-
-    const deposit = deposits.find(d => d.id === depositId);
-    if (deposit?.status === "Rejected") {
-      toast.success("Payment proof re-submitted for approval");
-    } else {
-      toast.success("Payment proof submitted successfully");
-    }
-    setCurrentView("list");
   };
 
-  const handleApprove = (depositId: string, referenceId: string) => {
-    const now = new Date().toISOString();
-    
-    // Generate deposit receipt
-    const receiptNumber = `RCP-${deposits.find(d => d.id === depositId)?.depositId || 'DEP-XXXX'}`;
-    const depositReceipt: DepositReceipt = {
-      id: `rcpt-${Date.now()}`,
-      receiptNumber,
-      receiptDate: now,
-      generatedAt: now,
-    };
-    
-    setDeposits(
-      deposits.map((d) =>
-        d.id === depositId
-          ? {
-              ...d,
-              status: "Paid",
-              approvedBy: "Current User (Admin)",
-              approvedAt: now,
-              lastUpdated: now,
-              referenceId: referenceId,
-              depositReceipt,
-            }
-          : d
-      )
-    );
-    toast.success("Payment approved successfully");
-    setApprovedDepositId(depositId);
-    setShowSuccessModal(true);
-    setCurrentView("list");
+  const handleApprove = async (depositId: string, referenceNumber: string) => {
+    try {
+      setIsProcessing(true);
+      
+      const response = await fetch('/api/deposit', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: depositId,
+          action: 'approve',
+          referenceNumber,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to approve deposit');
+      }
+
+      toast.success("Payment approved successfully");
+      setApprovedDepositId(depositId);
+      setShowSuccessModal(true);
+      
+      // Refresh deposits
+      await fetchDeposits();
+      setCurrentView("list");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to approve payment';
+      toast.error(errorMessage);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handleReject = (depositId: string, reason: string) => {
-    const now = new Date().toISOString();
-    setDeposits(
-      deposits.map((d) =>
-        d.id === depositId
-          ? {
-              ...d,
-              status: "Rejected",
-              rejectedBy: "Current User (Admin)",
-              rejectedAt: now,
-              rejectionReason: reason,
-              lastUpdated: now,
-            }
-          : d
-      )
-    );
-    toast.error("Payment rejected");
-    setCurrentView("list");
+  const handleReject = async (depositId: string, reason: string) => {
+    try {
+      setIsProcessing(true);
+      
+      const response = await fetch('/api/deposit', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: depositId,
+          action: 'reject',
+          rejectionReason: reason,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to reject deposit');
+      }
+
+      toast.error("Payment rejected - notification sent to customer");
+      
+      // Refresh deposits
+      await fetchDeposits();
+      setCurrentView("list");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to reject payment';
+      toast.error(errorMessage);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleResetDueDate = async (depositId: string, newDueDate: string) => {
+    try {
+      setIsProcessing(true);
+      
+      const response = await fetch('/api/deposit', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: depositId,
+          action: 'reset-due-date',
+          newDueDate,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to reset due date');
+      }
+
+      toast.success("Due date reset successfully");
+      
+      // Refresh deposits
+      await fetchDeposits();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to reset due date';
+      toast.error(errorMessage);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleMarkExpired = async (depositId: string) => {
+    try {
+      setIsProcessing(true);
+      
+      const response = await fetch('/api/deposit', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: depositId,
+          action: 'mark-expired',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to mark as expired');
+      }
+
+      toast.success("Deposit marked as expired");
+      
+      // Refresh deposits
+      await fetchDeposits();
+      setCurrentView("list");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to mark as expired';
+      toast.error(errorMessage);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleGenerateNewInvoice = (depositId: string) => {
@@ -428,30 +310,12 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
     setShowGenerateInvoiceDialog(true);
   };
 
-  const confirmGenerateInvoice = () => {
+  const confirmGenerateInvoice = async () => {
     if (!depositToGenerateInvoice) return;
 
-    const deposit = deposits.find((d) => d.id === depositToGenerateInvoice);
-    if (!deposit) return;
-
-    // Generate new invoice number
-    const newInvoiceNo = `INV-2024-${String(Date.now()).slice(-3)}`;
-
-    // Update the old deposit to link to new invoice
-    setDeposits(
-      deposits.map((d) =>
-        d.id === depositToGenerateInvoice
-          ? {
-              ...d,
-              linkedToNewInvoice: newInvoiceNo,
-              lastUpdated: new Date().toISOString(),
-            }
-          : d
-      )
-    );
-
-    // In a real app, this would create a new invoice and deposit record
-    toast.success(`New invoice ${newInvoiceNo} generated successfully`);
+    // In a real implementation, this would call an API to generate a new invoice
+    // For now, we just show a success message
+    toast.success(`New invoice generation requested - feature coming soon`);
     setShowGenerateInvoiceDialog(false);
     setDepositToGenerateInvoice(null);
     setCurrentView("list");
@@ -462,11 +326,33 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
     setCurrentView("receipt");
   };
 
-  const handleResetData = () => {
-    localStorage.removeItem("deposits");
-    setDeposits(initialDeposits);
-    toast.success("Data reset to sample deposits");
+  const handleRefresh = () => {
+    fetchDeposits();
+    toast.success("Deposits refreshed");
   };
+
+  // Show loading state
+  if (isLoading && deposits.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-[#F15929]" />
+        <span className="ml-2 text-gray-600">Loading deposits...</span>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && deposits.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 space-y-4">
+        <p className="text-red-500">{error}</p>
+        <Button onClick={fetchDeposits} variant="outline">
+          <RotateCcw className="mr-2 h-4 w-4" />
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -480,12 +366,17 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
             </p>
           </div>
           <Button
-            onClick={handleResetData}
+            onClick={handleRefresh}
             variant="outline"
             className="border-[#D1D5DB] text-[#374151] hover:bg-[#F3F4F6]"
+            disabled={isLoading}
           >
-            <RotateCcw className="mr-2 h-4 w-4" />
-            Reset Sample Data
+            {isLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="mr-2 h-4 w-4" />
+            )}
+            Refresh
           </Button>
         </div>
       )}
@@ -496,7 +387,10 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
           deposits={deposits}
           onView={handleView}
           onUploadProof={handleSubmitPayment}
+          onResetDueDate={handleResetDueDate}
+          onMarkExpired={handleMarkExpired}
           userRole={userRole}
+          isProcessing={isProcessing}
         />
       )}
 
@@ -509,7 +403,10 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
           onReject={handleReject}
           onGenerateNewInvoice={handleGenerateNewInvoice}
           onPrintReceipt={handlePrintReceipt}
+          onResetDueDate={handleResetDueDate}
+          onMarkExpired={handleMarkExpired}
           userRole={userRole}
+          isProcessing={isProcessing}
         />
       )}
 
