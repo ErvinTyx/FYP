@@ -211,6 +211,7 @@ export async function GET(request: NextRequest) {
         signedDocumentUrl: agreement.signedDocumentUrl,
         signedDocumentUploadedAt: agreement.signedDocumentUploadedAt?.toISOString(),
         signedDocumentUploadedBy: agreement.signedDocumentUploadedBy,
+        signedStatus: (agreement as { signedStatus?: string | null }).signedStatus ?? null,
         status: agreement.status,
         currentVersion: agreement.currentVersion,
         createdBy: agreement.createdBy,
@@ -469,7 +470,7 @@ export async function PUT(request: NextRequest) {
       'location', 'termOfHire', 'transportation', 'monthlyRental', 'securityDeposit', 'minimumCharges',
       'defaultInterest', 'ownerSignatoryName', 'ownerNRIC', 'hirerSignatoryName', 'hirerNRIC',
       'ownerSignature', 'hirerSignature', 'ownerSignatureDate', 'hirerSignatureDate',
-      'signedDocumentUrl', 'signedDocumentUploadedAt', 'signedDocumentUploadedBy', 'status', 'createdBy',
+      'signedDocumentUrl', 'signedDocumentUploadedAt', 'signedDocumentUploadedBy', 'signedStatus', 'status', 'createdBy',
     ] as const;
     const dataForUpdate: Record<string, unknown> = {};
     for (const key of scalarFields) {
@@ -494,6 +495,10 @@ export async function PUT(request: NextRequest) {
     const isNewDocumentUpload =
       dataForUpdate.signedDocumentUrl != null &&
       !existingAgreement.signedDocumentUrl;
+
+    if (isNewDocumentUpload) {
+      dataForUpdate.signedStatus = 'completed';
+    }
 
     // Save snapshot of current state into the current version (so v1 stays v1 after edit)
     const snapshot = buildAgreementSnapshot(existingAgreement);

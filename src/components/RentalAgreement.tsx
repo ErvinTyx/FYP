@@ -97,6 +97,7 @@ interface RentalAgreement {
   signedDocumentUrl?: string;
   signedDocumentUploadedAt?: string;
   signedDocumentUploadedBy?: string;
+  signedStatus?: string | null;
   status: 'Draft' | 'Active' | 'Expired' | 'Terminated';
   currentVersion: number;
   versions: AgreementVersion[];

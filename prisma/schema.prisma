@@ -406,6 +406,7 @@ model RentalAgreement {
   signedDocumentUrl        String?
   signedDocumentUploadedAt DateTime?
   signedDocumentUploadedBy String?
+  signedStatus             String?   // "completed" when signed file uploaded, null by default
   status                   String    @default("Draft")
   currentVersion           Int       @default(1)
   createdBy                String?
