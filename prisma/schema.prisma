@@ -785,6 +785,8 @@ model ScaffoldingDamageRepair {
   updatedAt             DateTime       @updatedAt
 
   @@index([scaffoldingItemId])
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 }
 
 // ============================================
@@ -983,4 +985,8 @@ model RFQNotification {
   createdBy               String
   createdAt               DateTime  @default(now())
   read                    Boolean   @default(false)
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 }

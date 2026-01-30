@@ -49,6 +49,7 @@ interface AgreementVersion {
 }
 
 <<<<<<< Updated upstream
+
 interface RFQOption {
   id: string;
   rfqNumber: string;
@@ -184,6 +185,60 @@ export function RentalAgreement() {
     fetchAgreements();
     fetchRFQs();
   }, [fetchAgreements, fetchRFQs]);
+
+  // Fetch RFQs when create dialog opens (for project selector)
+  const fetchRfqs = useCallback(async () => {
+    try {
+      setRfqLoading(true);
+      const response = await fetch('/api/rfq');
+      const data = await response.json();
+      if (data.success && Array.isArray(data.data)) {
+        setRfqList(data.data.map((r: { id: string; projectName: string; customerName: string; customerPhone: string; projectLocation: string }) => ({
+          id: r.id,
+          projectName: r.projectName,
+          customerName: r.customerName,
+          customerPhone: r.customerPhone ?? '',
+          projectLocation: r.projectLocation ?? '',
+        })));
+      }
+    } catch (err) {
+      console.error('Error fetching RFQs:', err);
+      toast.error('Failed to load projects');
+    } finally {
+      setRfqLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isCreateDialogOpen) fetchRfqs();
+  }, [isCreateDialogOpen, fetchRfqs]);
+
+  // Fetch RFQs when create dialog opens (for project selector)
+  const fetchRfqs = useCallback(async () => {
+    try {
+      setRfqLoading(true);
+      const response = await fetch('/api/rfq');
+      const data = await response.json();
+      if (data.success && Array.isArray(data.data)) {
+        setRfqList(data.data.map((r: { id: string; projectName: string; customerName: string; customerPhone: string; projectLocation: string }) => ({
+          id: r.id,
+          projectName: r.projectName,
+          customerName: r.customerName,
+          customerPhone: r.customerPhone ?? '',
+          projectLocation: r.projectLocation ?? '',
+        })));
+      }
+    } catch (err) {
+      console.error('Error fetching RFQs:', err);
+      toast.error('Failed to load projects');
+    } finally {
+      setRfqLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isCreateDialogOpen) fetchRfqs();
+  }, [isCreateDialogOpen, fetchRfqs]);
 
   // Fetch RFQs when create dialog opens (for project selector)
   const fetchRfqs = useCallback(async () => {
