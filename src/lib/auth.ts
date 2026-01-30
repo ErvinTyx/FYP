@@ -131,18 +131,22 @@ try {
   ],
   callbacks: {
     async jwt({ token, user }) {
-      // Session timeout: 15 minutes in milliseconds
-      const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
+      // Session timeout: 15 minutes in milliseconds (idle timeout)
+      const SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
       
       if (user) {
+        // Initial login - set user data and timestamps
         token.id = user.id;
         token.firstName = user.firstName;
         token.lastName = user.lastName;
         token.roles = user.roles;
-        // Store the login timestamp - only set on initial login
         token.loginAt = Date.now();
-        token.expiresAt = Date.now() + SESSION_MAX_AGE_MS;
       }
+      
+      // IDLE-BASED EXPIRATION: Extend session on every request/activity
+      // This creates a sliding window - session only expires after 15 min of inactivity
+      token.expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS;
+      token.lastActivity = Date.now();
       
       return token;
     },

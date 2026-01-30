@@ -87,7 +87,7 @@ export function SessionExpiredPage({
           {/* Security Notice */}
           <div className="mt-6 p-4 bg-[#F3F4F6] rounded-lg">
             <p className="text-xs text-[#6B7280] text-center">
-              For your security, sessions automatically expire after 15 minutes.
+              For your security, sessions automatically expire after 15 minutes of inactivity.
             </p>
           </div>
         </div>
