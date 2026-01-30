@@ -906,6 +906,12 @@ async function main() {
   // Create sample delivery requests linked to RFQs
   console.log("Creating sample delivery requests...");
 
+  // Delete monthly rental invoices first (they reference delivery requests)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).monthlyRentalInvoiceItem.deleteMany({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).monthlyRentalInvoice.deleteMany({});
+
   // Delete all existing delivery requests for a fresh seed
   await prisma.deliveryRequest.deleteMany({});
 
@@ -1109,6 +1115,196 @@ async function main() {
     },
   });
   console.log(`  - Return Request: ${return4.requestId}`);
+
+  // Create sample monthly rental invoices
+  console.log("Creating sample monthly rental invoices...");
+
+  // Note: Monthly rental invoices are already deleted before delivery requests above
+
+  // Calculate dates for invoices
+  const invoiceToday = new Date();
+  const invoiceOneWeekFromNow = new Date(invoiceToday);
+  invoiceOneWeekFromNow.setDate(invoiceToday.getDate() + 7);
+  const invoiceOneWeekAgo = new Date(invoiceToday);
+  invoiceOneWeekAgo.setDate(invoiceToday.getDate() - 7);
+
+  // Invoice 1 - PAID (Delivery 1 - ABC Construction)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mriInvoice1 = await (prisma as any).monthlyRentalInvoice.create({
+    data: {
+      invoiceNumber: 'MRI-20260115-001',
+      deliveryRequestId: delivery1.id,
+      customerName: 'ABC Construction Sdn Bhd',
+      customerEmail: 'project@abcconstruction.com.my',
+      customerPhone: '+60 12-345 6789',
+      billingMonth: 1,
+      billingYear: 2026,
+      billingStartDate: new Date('2026-01-01'),
+      billingEndDate: new Date('2026-01-31'),
+      daysInPeriod: 31,
+      baseAmount: 19902, // 100*0.59*31 + 200*2.59*31 + 50*1.30*31 = 1829+16058+2015
+      overdueCharges: 0,
+      totalAmount: 19902,
+      status: 'Paid',
+      dueDate: new Date('2026-01-22'),
+      paymentProofUrl: '/uploads/payment-proofs/mri_payment_001.pdf',
+      paymentProofFileName: 'Bank_Transfer_ABC_Jan2026.pdf',
+      paymentProofUploadedAt: new Date('2026-01-18'),
+      paymentProofUploadedBy: 'project@abcconstruction.com.my',
+      approvedBy: 'finance@powermetalsteel.com',
+      approvedAt: new Date('2026-01-19'),
+      referenceNumber: 'MBB-2026011900456789',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-001', scaffoldingItemName: 'CRAB BASIC STANDARD C60', quantityBilled: 100, unitPrice: 0.59, daysCharged: 31, lineTotal: 1829 },
+          { scaffoldingItemId: 'SC-006', scaffoldingItemName: 'CRAB STANDARD 2.00M C60', quantityBilled: 200, unitPrice: 2.59, daysCharged: 31, lineTotal: 16058 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantityBilled: 50, unitPrice: 1.30, daysCharged: 31, lineTotal: 2015 },
+        ],
+      },
+    },
+  });
+  console.log(`  - Invoice: ${mriInvoice1.invoiceNumber} (PAID - ABC Construction)`);
+
+  // Invoice 2 - PENDING APPROVAL (Delivery 2 - XYZ Development)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mriInvoice2 = await (prisma as any).monthlyRentalInvoice.create({
+    data: {
+      invoiceNumber: 'MRI-20260120-001',
+      deliveryRequestId: delivery2.id,
+      customerName: 'XYZ Development Sdn Bhd',
+      customerEmail: 'ops@xyzdevelopment.com.my',
+      customerPhone: '+60 11-222 3333',
+      billingMonth: 1,
+      billingYear: 2026,
+      billingStartDate: new Date('2026-01-01'),
+      billingEndDate: new Date('2026-01-31'),
+      daysInPeriod: 31,
+      baseAmount: 14954.4, // 200*1.21*31 + 150*0.56*31 + 80*1.30*31 + 40*1.31*31 = 7502+2604+3224+1624.4
+      overdueCharges: 0,
+      totalAmount: 14954.4,
+      status: 'Pending Approval',
+      dueDate: new Date('2026-01-27'),
+      paymentProofUrl: '/uploads/payment-proofs/mri_payment_002.jpg',
+      paymentProofFileName: 'CIMB_Transfer_XYZ.jpg',
+      paymentProofUploadedAt: new Date('2026-01-26'),
+      paymentProofUploadedBy: 'ops@xyzdevelopment.com.my',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-011', scaffoldingItemName: 'CRAB STANDARD 0.75M C60', quantityBilled: 200, unitPrice: 1.21, daysCharged: 31, lineTotal: 7502 },
+          { scaffoldingItemId: 'SC-007', scaffoldingItemName: 'CRAB LEDGER 0.70M', quantityBilled: 150, unitPrice: 0.56, daysCharged: 31, lineTotal: 2604 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantityBilled: 80, unitPrice: 1.30, daysCharged: 31, lineTotal: 3224 },
+          { scaffoldingItemId: 'SC-009', scaffoldingItemName: 'CRAB BRACE H2 X L0.70M', quantityBilled: 40, unitPrice: 1.31, daysCharged: 31, lineTotal: 1624.4 },
+        ],
+      },
+    },
+  });
+  console.log(`  - Invoice: ${mriInvoice2.invoiceNumber} (PENDING APPROVAL - XYZ Development)`);
+
+  // Invoice 3 - PENDING PAYMENT (newly generated)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mriInvoice3 = await (prisma as any).monthlyRentalInvoice.create({
+    data: {
+      invoiceNumber: 'MRI-20260125-001',
+      deliveryRequestId: delivery1.id,
+      customerName: 'ABC Construction Sdn Bhd',
+      customerEmail: 'project@abcconstruction.com.my',
+      customerPhone: '+60 12-345 6789',
+      billingMonth: 2,
+      billingYear: 2026,
+      billingStartDate: new Date('2026-02-01'),
+      billingEndDate: new Date('2026-02-28'),
+      daysInPeriod: 28,
+      baseAmount: 17976, // 100*0.59*28 + 200*2.59*28 + 50*1.30*28 = 1652+14504+1820
+      overdueCharges: 0,
+      totalAmount: 17976,
+      status: 'Pending Payment',
+      dueDate: invoiceOneWeekFromNow,
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-001', scaffoldingItemName: 'CRAB BASIC STANDARD C60', quantityBilled: 100, unitPrice: 0.59, daysCharged: 28, lineTotal: 1652 },
+          { scaffoldingItemId: 'SC-006', scaffoldingItemName: 'CRAB STANDARD 2.00M C60', quantityBilled: 200, unitPrice: 2.59, daysCharged: 28, lineTotal: 14504 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantityBilled: 50, unitPrice: 1.30, daysCharged: 28, lineTotal: 1820 },
+        ],
+      },
+    },
+  });
+  console.log(`  - Invoice: ${mriInvoice3.invoiceNumber} (PENDING PAYMENT - ABC Construction Feb)`);
+
+  // Invoice 4 - OVERDUE
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mriInvoice4 = await (prisma as any).monthlyRentalInvoice.create({
+    data: {
+      invoiceNumber: 'MRI-20260110-001',
+      deliveryRequestId: delivery2.id,
+      customerName: 'XYZ Development Sdn Bhd',
+      customerEmail: 'ops@xyzdevelopment.com.my',
+      customerPhone: '+60 11-222 3333',
+      billingMonth: 12,
+      billingYear: 2025,
+      billingStartDate: new Date('2025-12-01'),
+      billingEndDate: new Date('2025-12-31'),
+      daysInPeriod: 31,
+      baseAmount: 14954.4, // 200*1.21*31 + 150*0.56*31 + 80*1.30*31 + 40*1.31*31 = 7502+2604+3224+1624.4
+      overdueCharges: 224.32, // 1.5% of base amount = 14954.4 * 0.015
+      totalAmount: 15178.72, // 14954.4 + 224.32
+      status: 'Overdue',
+      dueDate: invoiceOneWeekAgo,
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-011', scaffoldingItemName: 'CRAB STANDARD 0.75M C60', quantityBilled: 200, unitPrice: 1.21, daysCharged: 31, lineTotal: 7502 },
+          { scaffoldingItemId: 'SC-007', scaffoldingItemName: 'CRAB LEDGER 0.70M', quantityBilled: 150, unitPrice: 0.56, daysCharged: 31, lineTotal: 2604 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantityBilled: 80, unitPrice: 1.30, daysCharged: 31, lineTotal: 3224 },
+          { scaffoldingItemId: 'SC-009', scaffoldingItemName: 'CRAB BRACE H2 X L0.70M', quantityBilled: 40, unitPrice: 1.31, daysCharged: 31, lineTotal: 1624.4 },
+        ],
+      },
+    },
+  });
+  console.log(`  - Invoice: ${mriInvoice4.invoiceNumber} (OVERDUE - XYZ Development Dec 2025)`);
+
+  // Invoice 5 - REJECTED (blurry payment proof)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mriInvoice5 = await (prisma as any).monthlyRentalInvoice.create({
+    data: {
+      invoiceNumber: 'MRI-20260112-001',
+      deliveryRequestId: delivery1.id,
+      customerName: 'ABC Construction Sdn Bhd',
+      customerEmail: 'project@abcconstruction.com.my',
+      customerPhone: '+60 12-345 6789',
+      billingMonth: 12,
+      billingYear: 2025,
+      billingStartDate: new Date('2025-12-01'),
+      billingEndDate: new Date('2025-12-31'),
+      daysInPeriod: 31,
+      baseAmount: 19902, // 100*0.59*31 + 200*2.59*31 + 50*1.30*31 = 1829+16058+2015
+      overdueCharges: 0,
+      totalAmount: 19902,
+      status: 'Rejected',
+      dueDate: new Date('2026-01-05'),
+      paymentProofUrl: '/uploads/payment-proofs/mri_payment_rejected.jpg',
+      paymentProofFileName: 'Blurry_Screenshot.jpg',
+      paymentProofUploadedAt: new Date('2026-01-03'),
+      paymentProofUploadedBy: 'project@abcconstruction.com.my',
+      rejectedBy: 'finance@powermetalsteel.com',
+      rejectedAt: new Date('2026-01-04'),
+      rejectionReason: 'Payment proof image is unclear. Please upload a clearer screenshot showing the full transaction details including date, amount, and bank reference number.',
+      items: {
+        create: [
+          { scaffoldingItemId: 'SC-001', scaffoldingItemName: 'CRAB BASIC STANDARD C60', quantityBilled: 100, unitPrice: 0.59, daysCharged: 31, lineTotal: 1829 },
+          { scaffoldingItemId: 'SC-006', scaffoldingItemName: 'CRAB STANDARD 2.00M C60', quantityBilled: 200, unitPrice: 2.59, daysCharged: 31, lineTotal: 16058 },
+          { scaffoldingItemId: 'SC-014', scaffoldingItemName: 'CRAB JACK BASE C60 / 600', quantityBilled: 50, unitPrice: 1.30, daysCharged: 31, lineTotal: 2015 },
+        ],
+      },
+    },
+  });
+  console.log(`  - Invoice: ${mriInvoice5.invoiceNumber} (REJECTED - ABC Construction Dec 2025)`);
+
+  console.log("Monthly rental invoice sample data created successfully!");
+  console.log("  Summary:");
+  console.log("  - 1 PAID invoice");
+  console.log("  - 1 PENDING APPROVAL invoice");
+  console.log("  - 1 PENDING PAYMENT invoice");
+  console.log("  - 1 OVERDUE invoice");
+  console.log("  - 1 REJECTED invoice");
 
   // Create scaffolding items
   console.log("Creating scaffolding items...");

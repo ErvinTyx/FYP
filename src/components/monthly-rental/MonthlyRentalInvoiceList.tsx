@@ -31,7 +31,7 @@ interface MonthlyRentalInvoiceListProps {
   invoices: MonthlyRentalInvoice[];
   onView: (id: string) => void;
   onEditPayment?: (id: string) => void;
-  userRole: 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  userRole: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
 }
 
 export function MonthlyRentalInvoiceList({ invoices, onView, onEditPayment, userRole }: MonthlyRentalInvoiceListProps) {
@@ -39,23 +39,16 @@ export function MonthlyRentalInvoiceList({ invoices, onView, onEditPayment, user
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const filteredInvoices = invoices.filter(invoice => {
+    const deliveryRequestId = invoice.deliveryRequest?.requestId || '';
     const matchesSearch = 
       invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       invoice.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      invoice.deliveryOrderNumber.toLowerCase().includes(searchQuery.toLowerCase());
+      deliveryRequestId.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter;
     
     return matchesSearch && matchesStatus;
   });
-
-  const isBeforeDueDate = (dueDate: string) => {
-    const now = new Date();
-    const due = new Date(dueDate);
-    now.setHours(0, 0, 0, 0);
-    due.setHours(0, 0, 0, 0);
-    return now <= due;
-  };
 
   const getStatusBadge = (status: MonthlyRentalInvoice['status']) => {
     switch (status) {
@@ -85,7 +78,7 @@ export function MonthlyRentalInvoiceList({ invoices, onView, onEditPayment, user
     overdue: invoices.filter(inv => inv.status === 'Overdue').length,
     totalRevenue: invoices
       .filter(inv => inv.status === 'Paid')
-      .reduce((sum, inv) => sum + inv.grandTotal, 0),
+      .reduce((sum, inv) => sum + inv.totalAmount, 0),
   };
 
   return (
@@ -222,12 +215,12 @@ export function MonthlyRentalInvoiceList({ invoices, onView, onEditPayment, user
                     <TableCell className="text-[#111827]">
                       {invoice.customerName}
                     </TableCell>
-                    <TableCell className="text-[#374151]">{invoice.deliveryOrderNumber}</TableCell>
+                    <TableCell className="text-[#374151]">{invoice.deliveryRequest?.requestId || invoice.invoiceNumber}</TableCell>
                     <TableCell className="text-[#374151]">
-                      Month {invoice.billingMonth}
+                      {invoice.billingMonth}/{invoice.billingYear}
                     </TableCell>
                     <TableCell className="text-[#111827]">
-                      RM {invoice.grandTotal.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      RM {invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>
                     <TableCell className="text-[#374151]">
                       <div className="flex items-center gap-1">
@@ -254,13 +247,12 @@ export function MonthlyRentalInvoiceList({ invoices, onView, onEditPayment, user
                             <Eye className="h-4 w-4 mr-2" />
                             View Details
                           </DropdownMenuItem>
-                          {invoice.status === 'Pending Payment' && onEditPayment && (
+                          {(invoice.status === 'Pending Payment' || invoice.status === 'Rejected' || invoice.status === 'Overdue') && onEditPayment && (
                             <DropdownMenuItem
                               onClick={() => onEditPayment(invoice.id)}
-                              disabled={!isBeforeDueDate(invoice.dueDate)}
                             >
                               <Edit className="h-4 w-4 mr-2" />
-                              Edit Payment Details / Replace Proof
+                              {invoice.status === 'Rejected' ? 'Re-upload Payment Proof' : 'Upload Payment Proof'}
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>

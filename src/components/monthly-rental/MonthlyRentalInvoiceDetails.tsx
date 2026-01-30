@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Upload, Check, X, FileText, AlertCircle, Calendar, User, Package, PackageCheck, Info } from 'lucide-react';
+import { ArrowLeft, Upload, Check, X, FileText, AlertCircle, Calendar, Info, ExternalLink, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -16,7 +16,6 @@ import {
 } from '../ui/table';
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -31,10 +30,11 @@ interface MonthlyRentalInvoiceDetailsProps {
   invoice: MonthlyRentalInvoice;
   onBack: () => void;
   onSubmitPayment: (invoiceId: string, file: File) => void;
-  onApprove: (invoiceId: string, transactionReferenceId: string) => void;
+  onApprove: (invoiceId: string, referenceNumber: string) => void;
   onReject: (invoiceId: string, reason: string) => void;
   onMarkAsReturned: (invoiceId: string) => void;
-  userRole: 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  userRole: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  isProcessing?: boolean;
 }
 
 export function MonthlyRentalInvoiceDetails({
@@ -45,13 +45,16 @@ export function MonthlyRentalInvoiceDetails({
   onReject,
   onMarkAsReturned,
   userRole,
+  isProcessing = false,
 }: MonthlyRentalInvoiceDetailsProps) {
   const [paymentFile, setPaymentFile] = useState<File | null>(null);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
-  const [transactionReferenceId, setTransactionReferenceId] = useState('');
+  const [referenceNumber, setReferenceNumber] = useState('');
+  const [referenceNumberError, setReferenceNumberError] = useState('');
+  const [rejectionReasonError, setRejectionReasonError] = useState('');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -69,22 +72,40 @@ export function MonthlyRentalInvoiceDetails({
   };
 
   const handleApprove = () => {
-    if (!transactionReferenceId.trim()) {
-      toast.error('Please provide a transaction reference ID');
+    if (!referenceNumber.trim()) {
+      setReferenceNumberError('Bank reference number is required');
       return;
     }
 
+    setReferenceNumberError('');
     setIsApprovalModalOpen(false);
-    onApprove(invoice.id, transactionReferenceId);
-    setTransactionReferenceId('');
+    onApprove(invoice.id, referenceNumber);
+    setReferenceNumber('');
+  };
+
+  const handleApprovalModalClose = (open: boolean) => {
+    setIsApprovalModalOpen(open);
+    if (!open) {
+      setReferenceNumberError('');
+      setReferenceNumber('');
+    }
+  };
+
+  const handleRejectionModalClose = (open: boolean) => {
+    setIsRejectionModalOpen(open);
+    if (!open) {
+      setRejectionReasonError('');
+      setRejectionReason('');
+    }
   };
 
   const handleReject = () => {
     if (!rejectionReason.trim()) {
-      toast.error('Please provide a rejection reason');
+      setRejectionReasonError('Rejection reason is required');
       return;
     }
 
+    setRejectionReasonError('');
     setIsRejectionModalOpen(false);
     onReject(invoice.id, rejectionReason);
     setRejectionReason('');
@@ -107,8 +128,6 @@ export function MonthlyRentalInvoiceDetails({
         return <Badge className="bg-red-600 hover:bg-red-700 text-white text-base px-4 py-1">Rejected</Badge>;
       case 'Overdue':
         return <Badge className="bg-orange-600 hover:bg-orange-700 text-white text-base px-4 py-1">Overdue</Badge>;
-      case 'Completed':
-        return <Badge className="bg-gray-600 hover:bg-gray-700 text-white text-base px-4 py-1">Completed</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
@@ -116,40 +135,38 @@ export function MonthlyRentalInvoiceDetails({
 
   const isBeforeDueDate = new Date() < new Date(invoice.dueDate);
   
-  // Consolidated upload permission - allow upload for Pending Payment, Rejected, or Overdue
-  const canUploadProof = (invoice.status === 'Pending Payment' || 
+  // Can upload proof for Pending Payment, Rejected, or Overdue
+  // For Rejected/Overdue, allow re-uploading even if previous proof exists
+  const canUploadProof = invoice.status === 'Pending Payment' || 
                           invoice.status === 'Rejected' || 
-                          invoice.status === 'Overdue') &&
-                         !invoice.paymentProof; // Only show if no proof uploaded yet
+                          invoice.status === 'Overdue';
   
-  const canApproveReject = (userRole === 'Admin' || userRole === 'Finance') && 
+  const canApproveReject = (userRole === 'super_user' || userRole === 'Admin' || userRole === 'Finance') && 
     invoice.status === 'Pending Approval';
 
-  // Calculate overdue charges
-  const calculateOverdueCharges = () => {
-    // Check if invoice was overdue when payment was submitted
-    const now = new Date();
-    const dueDate = new Date(invoice.dueDate);
-    
-    // Calculate months late based on current date or payment submission date
-    const referenceDate = invoice.paymentSubmittedAt ? new Date(invoice.paymentSubmittedAt) : now;
-    const monthsDiff = (referenceDate.getFullYear() - dueDate.getFullYear()) * 12 + (referenceDate.getMonth() - dueDate.getMonth());
-    const monthsLate = Math.max(0, monthsDiff);
-    
-    // Only apply charges if payment was late
-    if (monthsLate === 0) {
-      return { monthsLate: 0, overdueCharge: 0, totalWithOverdue: invoice.grandTotal };
-    }
-    
-    // Formula: Interest = Outstanding Balance × Monthly Rate × Number of Months Late
-    const overdueCharge = invoice.grandTotal * invoice.defaultInterestRate * monthsLate;
-    const totalWithOverdue = invoice.grandTotal + overdueCharge;
-    
-    return { monthsLate, overdueCharge, totalWithOverdue };
-  };
+  // Get default interest rate from agreement or use default
+  const defaultInterestRate = invoice.agreement?.defaultInterest || 1.5;
 
-  const { monthsLate, overdueCharge, totalWithOverdue } = calculateOverdueCharges();
-  const hasOverdueCharges = overdueCharge > 0;
+  // Calculate months late - show if overdue OR if there are overdue charges (even after payment uploaded)
+  const calculateMonthsLate = () => {
+    // If there are overdue charges, calculate the months based on the charges
+    if (invoice.overdueCharges > 0 && invoice.baseAmount > 0) {
+      // Reverse calculate: overdueCharges = baseAmount * (rate/100) * months
+      // months = overdueCharges / (baseAmount * rate/100)
+      const rate = defaultInterestRate / 100;
+      const months = Math.round(invoice.overdueCharges / (invoice.baseAmount * rate));
+      return Math.max(1, months); // At least 1 month if there are charges
+    }
+    // If currently overdue, calculate from current date
+    if (invoice.status === 'Overdue') {
+      const now = new Date();
+      const dueDate = new Date(invoice.dueDate);
+      const msPerMonth = 30 * 24 * 60 * 60 * 1000;
+      return Math.max(1, Math.ceil((now.getTime() - dueDate.getTime()) / msPerMonth));
+    }
+    return 0;
+  };
+  const monthsLate = calculateMonthsLate();
 
   return (
     <div className="space-y-6">
@@ -160,6 +177,7 @@ export function MonthlyRentalInvoiceDetails({
             variant="outline"
             onClick={onBack}
             className="h-10"
+            disabled={isProcessing}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
@@ -176,38 +194,43 @@ export function MonthlyRentalInvoiceDetails({
       {invoice.status === 'Overdue' && (
         <Card className="border-orange-500 bg-orange-50">
           <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-6 w-6 text-orange-600" />
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-6 w-6 text-orange-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="text-orange-900">Payment Overdue</p>
-                <p className="text-sm text-orange-700 mt-1">
-                  This invoice is past its due date. Overdue charges of <span className="font-semibold">RM {overdueCharge.toFixed(2)}</span> ({monthsLate} {monthsLate === 1 ? 'month' : 'months'} late) have been applied.
+                <p className="text-orange-900 font-semibold">Payment Overdue - {monthsLate} {monthsLate === 1 ? 'Month' : 'Months'} Late</p>
+                <p className="text-sm text-orange-700 mt-2">
+                  This invoice was due on <span className="font-medium">{new Date(invoice.dueDate).toLocaleDateString()}</span> and is now <span className="font-semibold">{monthsLate} {monthsLate === 1 ? 'month' : 'months'}</span> overdue.
                 </p>
-                <p className="text-sm text-orange-700 mt-1">
-                  Total amount due: <span className="font-semibold">RM {totalWithOverdue.toFixed(2)}</span>
+                
+                {/* Overdue Calculation Breakdown */}
+                <div className="mt-3 bg-white/60 rounded-md p-3 border border-orange-200">
+                  <p className="text-xs text-orange-800 font-medium mb-2">Overdue Charges Calculation:</p>
+                  <div className="text-sm text-orange-700 space-y-1">
+                    <div className="flex justify-between">
+                      <span>Base Amount:</span>
+                      <span>RM {invoice.baseAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Interest Rate:</span>
+                      <span>{defaultInterestRate.toFixed(1)}% per month</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Months Late:</span>
+                      <span>{monthsLate} {monthsLate === 1 ? 'month' : 'months'}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-orange-300 pt-1 mt-1">
+                      <span className="font-medium">Overdue Charges:</span>
+                      <span className="font-semibold">RM {invoice.overdueCharges.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <p className="text-xs text-orange-600 italic mt-1">
+                      Formula: RM {invoice.baseAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })} × {defaultInterestRate.toFixed(1)}% × {monthsLate} = RM {invoice.overdueCharges.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-orange-800 mt-3 font-semibold">
+                  Total Amount Due: <span className="text-orange-900">RM {invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
                 </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Auto-Generated Notice */}
-      {invoice.isAutoGenerated && (
-        <Card className="border-blue-500 bg-blue-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <FileText className="h-5 w-5 text-blue-600" />
-              <div>
-                <p className="text-blue-900">
-                  {invoice.notes}
-                </p>
-                {invoice.itemsReturned && (
-                  <p className="text-sm text-green-700 mt-2 flex items-center gap-2">
-                    <PackageCheck className="h-4 w-4" />
-                    Rental items returned. No further billing will occur.
-                  </p>
-                )}
               </div>
             </div>
           </CardContent>
@@ -245,18 +268,24 @@ export function MonthlyRentalInvoiceDetails({
               <p className="text-sm text-gray-600">Customer Name</p>
               <p className="text-[#231F20]">{invoice.customerName}</p>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Customer ID</p>
-              <p className="text-[#231F20]">{invoice.customerId}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Address</p>
-              <p className="text-[#231F20]">{invoice.customerAddress}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Contact</p>
-              <p className="text-[#231F20]">{invoice.customerContact}</p>
-            </div>
+            {invoice.customerEmail && (
+              <div>
+                <p className="text-sm text-gray-600">Email</p>
+                <p className="text-[#231F20]">{invoice.customerEmail}</p>
+              </div>
+            )}
+            {invoice.customerPhone && (
+              <div>
+                <p className="text-sm text-gray-600">Phone</p>
+                <p className="text-[#231F20]">{invoice.customerPhone}</p>
+              </div>
+            )}
+            {invoice.deliveryRequest?.deliveryAddress && (
+              <div>
+                <p className="text-sm text-gray-600">Delivery Address</p>
+                <p className="text-[#231F20]">{invoice.deliveryRequest.deliveryAddress}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -266,21 +295,25 @@ export function MonthlyRentalInvoiceDetails({
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <p className="text-sm text-gray-600">Delivery Order (DO)</p>
-              <p className="text-[#231F20]">{invoice.deliveryOrderNumber}</p>
+              <p className="text-sm text-gray-600">Delivery Request</p>
+              <p className="text-[#231F20]">{invoice.deliveryRequest?.requestId || '-'}</p>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Agreement ID</p>
-              <p className="text-[#231F20]">{invoice.agreementId}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Billing Month</p>
-              <p className="text-[#231F20]">Month {invoice.billingMonth} of rental contract</p>
-            </div>
+            {invoice.agreement && (
+              <div>
+                <p className="text-sm text-gray-600">Agreement</p>
+                <p className="text-[#231F20]">{invoice.agreement.agreementNumber}</p>
+              </div>
+            )}
             <div>
               <p className="text-sm text-gray-600">Billing Period</p>
               <p className="text-[#231F20]">
-                {new Date(invoice.billingPeriodStart).toLocaleDateString()} - {new Date(invoice.billingPeriodEnd).toLocaleDateString()}
+                {invoice.billingMonth}/{invoice.billingYear} ({invoice.daysInPeriod} days)
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600">Period Dates</p>
+              <p className="text-[#231F20]">
+                {new Date(invoice.billingStartDate).toLocaleDateString()} - {new Date(invoice.billingEndDate).toLocaleDateString()}
               </p>
             </div>
             <div>
@@ -288,23 +321,23 @@ export function MonthlyRentalInvoiceDetails({
               <p className="text-[#231F20] flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-gray-400" />
                 {new Date(invoice.dueDate).toLocaleDateString()}
+                {!isBeforeDueDate && invoice.status !== 'Paid' && (
+                  <Badge variant="destructive" className="ml-2">Past Due</Badge>
+                )}
               </p>
             </div>
             <div className="pt-2 border-t">
               <div className="flex items-center gap-2">
-                <p className="text-sm text-[#444444] font-medium">Default Interest (Per Month)</p>
+                <p className="text-sm text-[#444444] font-medium">Default Interest Rate</p>
                 <div className="group relative">
                   <Info className="h-4 w-4 text-gray-400 cursor-help" />
                   <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                    Default interest rate specified in the rental agreement. Applied when payments are overdue.
+                    Interest rate applied for late payments as specified in the rental agreement.
                   </div>
                 </div>
               </div>
               <p className="text-[#444444] font-semibold mt-1">
-                {(invoice.defaultInterestRate * 100).toFixed(1)}% per month
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Overdue charges will be calculated automatically based on the default interest rate.
+                {defaultInterestRate.toFixed(1)}% per month
               </p>
             </div>
           </CardContent>
@@ -314,7 +347,7 @@ export function MonthlyRentalInvoiceDetails({
       {/* Rental Items Table */}
       <Card className="border-[#E5E7EB]">
         <CardHeader>
-          <CardTitle className="text-[16px]">Rental Items</CardTitle>
+          <CardTitle className="text-[16px]">Billed Items</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -323,20 +356,18 @@ export function MonthlyRentalInvoiceDetails({
                 <TableHead>Item Name</TableHead>
                 <TableHead className="text-right">Quantity</TableHead>
                 <TableHead className="text-right">Unit Price (RM)</TableHead>
-                <TableHead className="text-center">Rental Duration</TableHead>
-                <TableHead className="text-right">Monthly Rate (RM)</TableHead>
-                <TableHead className="text-right">Total (RM)</TableHead>
+                <TableHead className="text-center">Days Charged</TableHead>
+                <TableHead className="text-right">Line Total (RM)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoice.rentalItems.map((item) => (
+              {invoice.items.map((item) => (
                 <TableRow key={item.id} className="hover:bg-[#F3F4F6]">
-                  <TableCell className="text-[#231F20]">{item.itemName}</TableCell>
-                  <TableCell className="text-right">{item.quantity}</TableCell>
+                  <TableCell className="text-[#231F20]">{item.scaffoldingItemName}</TableCell>
+                  <TableCell className="text-right">{item.quantityBilled}</TableCell>
                   <TableCell className="text-right">{item.unitPrice.toFixed(2)}</TableCell>
-                  <TableCell className="text-center">{item.rentalDuration}</TableCell>
-                  <TableCell className="text-right">{item.monthlyRate.toFixed(2)}</TableCell>
-                  <TableCell className="text-right">{item.totalPrice.toFixed(2)}</TableCell>
+                  <TableCell className="text-center">{item.daysCharged}</TableCell>
+                  <TableCell className="text-right">{item.lineTotal.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -345,77 +376,62 @@ export function MonthlyRentalInvoiceDetails({
           {/* Totals */}
           <div className="mt-6 border-t pt-4 space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-600">Subtotal:</span>
-              <span className="text-[#231F20]">RM {invoice.subtotal.toFixed(2)}</span>
+              <span className="text-gray-600">Base Amount:</span>
+              <span className="text-[#231F20]">RM {invoice.baseAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
             </div>
-            {invoice.taxRate > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Tax ({(invoice.taxRate * 100).toFixed(0)}%):</span>
-                <span className="text-[#231F20]">RM {invoice.taxAmount.toFixed(2)}</span>
-              </div>
-            )}
             
-            {/* Overdue Charges Section */}
-            {hasOverdueCharges && (
-              <div className="bg-orange-50 border border-orange-200 rounded-md p-3 space-y-2 my-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <AlertCircle className="h-4 w-4 text-orange-600" />
-                  <span className="text-sm font-medium text-orange-900">Overdue Charges</span>
-                </div>
-                <div className="text-sm space-y-1 text-gray-700">
-                  <div className="flex justify-between">
-                    <span>Outstanding Balance:</span>
-                    <span>RM {invoice.grandTotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Monthly Interest Rate:</span>
-                    <span>{(invoice.defaultInterestRate * 100).toFixed(1)}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Months Late:</span>
-                    <span>{monthsLate} {monthsLate === 1 ? 'month' : 'months'}</span>
-                  </div>
-                  <div className="flex justify-between border-t border-orange-300 pt-1 mt-1">
-                    <span className="font-medium text-orange-900">Overdue Charge:</span>
-                    <span className="font-medium text-orange-900">RM {overdueCharge.toFixed(2)}</span>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2 italic">
-                    Calculation: RM {invoice.grandTotal.toFixed(2)} × {(invoice.defaultInterestRate * 100).toFixed(1)}% × {monthsLate} {monthsLate === 1 ? 'month' : 'months'}
-                  </p>
-                </div>
+            {invoice.overdueCharges > 0 && (
+              <div className="flex justify-between text-orange-600">
+                <span>Overdue Charges ({monthsLate} {monthsLate === 1 ? 'month' : 'months'} @ {defaultInterestRate.toFixed(1)}%):</span>
+                <span>+ RM {invoice.overdueCharges.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
               </div>
             )}
             
             <div className="flex justify-between border-t pt-2">
-              <span className="text-[#231F20]">{hasOverdueCharges ? 'Original Amount:' : 'Grand Total:'}</span>
-              <span className={hasOverdueCharges ? "text-[#231F20]" : "text-[#F15929]"}>RM {invoice.grandTotal.toFixed(2)}</span>
+              <span className="text-[#231F20] font-semibold">Total Amount:</span>
+              <span className="text-[#F15929] font-semibold">RM {invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
             </div>
-            
-            {hasOverdueCharges && (
-              <div className="flex justify-between border-t pt-2 bg-red-50 -mx-4 px-4 py-2">
-                <span className="text-red-900 font-semibold">Total Amount Due (with overdue charges):</span>
-                <span className="text-red-600 font-semibold">RM {totalWithOverdue.toFixed(2)}</span>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Payment Proof Upload (Customer View) */}
+      {/* Payment Proof Upload */}
       {canUploadProof && (
-        <Card className="border-[#F15929]">
+        <Card className={invoice.status === 'Rejected' ? "border-red-500" : invoice.status === 'Overdue' ? "border-orange-500" : "border-[#F15929]"}>
           <CardHeader>
-            <CardTitle className="text-[16px]">Submit Payment Proof</CardTitle>
+            <CardTitle className="text-[16px]">
+              {invoice.status === 'Rejected' 
+                ? 'Re-upload Payment Proof' 
+                : invoice.status === 'Overdue' 
+                  ? 'Submit Payment Proof (Overdue)' 
+                  : 'Submit Payment Proof'}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {invoice.status === 'Overdue' && (
+              <div className="bg-orange-50 border border-orange-200 rounded-md p-3 text-sm text-orange-700">
+                <p className="font-medium">This invoice is overdue.</p>
+                <p className="mt-1">You can still submit payment. Overdue charges of <span className="font-semibold">RM {invoice.overdueCharges.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span> have been applied.</p>
+                <p className="mt-1">Total amount due: <span className="font-semibold">RM {invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span></p>
+              </div>
+            )}
+            {invoice.status === 'Rejected' && invoice.paymentProofUrl && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+                <p className="font-medium">Your previous payment proof was rejected.</p>
+                <p className="mt-1">Please upload a new payment proof that clearly shows the transaction details.</p>
+              </div>
+            )}
             <div>
-              <Label htmlFor="paymentProof">Upload Payment Receipt/Screenshot</Label>
+              <Label htmlFor="paymentProof">
+                {invoice.status === 'Rejected' ? 'Upload New Payment Receipt/Screenshot' : 'Upload Payment Receipt/Screenshot'}
+              </Label>
               <Input
                 id="paymentProof"
                 type="file"
                 accept="image/*,.pdf"
                 onChange={handleFileChange}
                 className="mt-2"
+                disabled={isProcessing}
               />
               {paymentFile && (
                 <p className="text-sm text-green-600 mt-2">
@@ -425,57 +441,80 @@ export function MonthlyRentalInvoiceDetails({
             </div>
             <Button
               onClick={handleSubmitPayment}
-              disabled={!paymentFile}
+              disabled={!paymentFile || isProcessing}
               className="bg-[#F15929] hover:bg-[#D14620] text-white"
             >
-              <Upload className="h-4 w-4 mr-2" />
-              Submit Payment Proof
+              {isProcessing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 mr-2" />
+              )}
+              {invoice.status === 'Rejected' ? 'Re-submit Payment Proof' : 'Submit Payment Proof'}
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Payment Proof Review (Admin/Finance View) */}
-      {invoice.paymentProof && (
-        <Card className="border-[#E5E7EB]">
+      {/* Payment Proof Review */}
+      {invoice.paymentProofUrl && (
+        <Card className={invoice.status === 'Rejected' ? "border-red-200 bg-red-50/30" : "border-[#E5E7EB]"}>
           <CardHeader>
-            <CardTitle className="text-[16px]">Payment Proof</CardTitle>
+            <CardTitle className="text-[16px]">
+              {invoice.status === 'Rejected' ? 'Previous Payment Proof (Rejected)' : 'Payment Proof'}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-gray-600">File Name</p>
-                <p className="text-[#231F20]">{invoice.paymentProof.fileName}</p>
+                <p className="text-[#231F20]">{invoice.paymentProofFileName || 'Payment Proof'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Uploaded At</p>
                 <p className="text-[#231F20]">
-                  {new Date(invoice.paymentProof.uploadedAt).toLocaleString()}
+                  {invoice.paymentProofUploadedAt 
+                    ? new Date(invoice.paymentProofUploadedAt).toLocaleString() 
+                    : '-'}
                 </p>
               </div>
+              {invoice.paymentProofUploadedBy && (
+                <div>
+                  <p className="text-sm text-gray-600">Uploaded By</p>
+                  <p className="text-[#231F20]">{invoice.paymentProofUploadedBy}</p>
+                </div>
+              )}
             </div>
-            <Button variant="outline" asChild>
-              <a href={invoice.paymentProof.fileUrl} target="_blank" rel="noopener noreferrer">
-                <FileText className="h-4 w-4 mr-2" />
-                View Document
-              </a>
-            </Button>
 
+            <div className="pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => window.open(invoice.paymentProofUrl!, '_blank')}
+                className="mr-2"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                View Payment Proof
+              </Button>
+            </div>
+
+            {/* Approve/Reject Actions for Admin/Finance */}
             {canApproveReject && (
-              <div className="flex gap-3 pt-4 border-t">
-                <Button
-                  onClick={() => setIsApprovalModalOpen(true)}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                >
-                  <Check className="h-4 w-4 mr-2" />
-                  Approve Payment
-                </Button>
+              <div className="pt-4 border-t flex gap-3">
                 <Button
                   onClick={() => setIsRejectionModalOpen(true)}
-                  variant="destructive"
+                  variant="outline"
+                  className="border-red-500 text-red-600 hover:bg-red-50"
+                  disabled={isProcessing}
                 >
                   <X className="h-4 w-4 mr-2" />
                   Reject Payment
+                </Button>
+                <Button
+                  onClick={() => setIsApprovalModalOpen(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={isProcessing}
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Approve Payment
                 </Button>
               </div>
             )}
@@ -483,171 +522,123 @@ export function MonthlyRentalInvoiceDetails({
         </Card>
       )}
 
-      {/* Paid Status Info */}
-      {invoice.status === 'Paid' && (
+      {/* Approval Information (for Paid invoices) */}
+      {invoice.status === 'Paid' && invoice.approvedAt && (
         <Card className="border-green-500 bg-green-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Check className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="text-green-900">Payment Approved</p>
-                  <p className="text-sm text-green-700">
-                    Approved by {invoice.approvedBy} on {new Date(invoice.approvedAt || '').toLocaleDateString()}
-                  </p>
-                  {invoice.transactionReferenceId && (
-                    <p className="text-sm text-green-700 mt-1">
-                      Transaction Reference: {invoice.transactionReferenceId}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Mark Items as Returned (Admin only) */}
-      {(userRole === 'Admin' || userRole === 'Staff') && invoice.status === 'Paid' && !invoice.itemsReturned && (
-        <Card className="border-[#E5E7EB]">
           <CardHeader>
-            <CardTitle className="text-[16px]">Item Return Management</CardTitle>
+            <CardTitle className="text-[16px] text-green-800">Payment Approved</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">
-              When rental items are returned, mark them as returned to stop automatic monthly billing and set the invoice status to "Completed".
-            </p>
-            <Button
-              onClick={() => setIsReturnModalOpen(true)}
-              variant="outline"
-              className="border-[#F15929] text-[#F15929] hover:bg-[#FFF7F5]"
-            >
-              <PackageCheck className="h-4 w-4 mr-2" />
-              Mark Items as Returned
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Completed Status Info */}
-      {invoice.status === 'Completed' && (
-        <Card className="border-gray-500 bg-gray-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <PackageCheck className="h-5 w-5 text-gray-600" />
-                <div>
-                  <p className="text-gray-900">Rental Completed</p>
-                  <p className="text-sm text-gray-700">
-                    Items were returned on {new Date(invoice.returnedAt || '').toLocaleDateString()}
-                  </p>
-                  <p className="text-sm text-gray-700 mt-1">
-                    No further invoices will be generated for this contract.
-                  </p>
-                </div>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-600">Approved By</p>
+                <p className="text-[#231F20]">{invoice.approvedBy || '-'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Approved At</p>
+                <p className="text-[#231F20]">{new Date(invoice.approvedAt).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Bank Reference Number</p>
+                <p className="text-[#231F20] font-mono">{invoice.referenceNumber || '-'}</p>
               </div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Approval Confirmation Dialog */}
-      <AlertDialog open={isApprovalModalOpen} onOpenChange={setIsApprovalModalOpen}>
+      {/* Approval Modal */}
+      <AlertDialog open={isApprovalModalOpen} onOpenChange={handleApprovalModalClose}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Approve Payment</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to approve this payment? The invoice status will be updated to "Paid".
+              Please enter the bank reference number to approve this payment.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {hasOverdueCharges && (
-            <div className="bg-orange-50 border border-orange-200 rounded-md p-3 space-y-1">
-              <p className="text-sm font-medium text-orange-900">Note: Overdue Charges Applied</p>
-              <div className="text-sm text-gray-700 space-y-1">
-                <div className="flex justify-between">
-                  <span>Original Amount:</span>
-                  <span>RM {invoice.grandTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Overdue Charge ({monthsLate} {monthsLate === 1 ? 'month' : 'months'} × {(invoice.defaultInterestRate * 100).toFixed(1)}%):</span>
-                  <span>RM {overdueCharge.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between border-t border-orange-300 pt-1 font-medium text-orange-900">
-                  <span>Total Paid:</span>
-                  <span>RM {totalWithOverdue.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          )}
           <div className="py-4">
-            <Label htmlFor="transactionReferenceId">Transaction Reference ID</Label>
+            <Label htmlFor="referenceNumber">
+              Bank Reference Number <span className="text-red-500">*</span>
+            </Label>
             <Input
-              id="transactionReferenceId"
-              type="text"
-              value={transactionReferenceId}
-              onChange={(e) => setTransactionReferenceId(e.target.value)}
-              className="mt-2"
-              placeholder="Enter transaction reference ID"
+              id="referenceNumber"
+              value={referenceNumber}
+              onChange={(e) => {
+                setReferenceNumber(e.target.value);
+                if (referenceNumberError) setReferenceNumberError('');
+              }}
+              placeholder="Enter bank reference number"
+              className={`mt-2 ${referenceNumberError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
             />
+            {referenceNumberError && (
+              <p className="text-sm text-red-500 mt-1">{referenceNumberError}</p>
+            )}
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <Button
               onClick={handleApprove}
               className="bg-green-600 hover:bg-green-700 text-white"
+              disabled={isProcessing}
             >
               Approve
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Rejection Dialog */}
-      <AlertDialog open={isRejectionModalOpen} onOpenChange={setIsRejectionModalOpen}>
+      {/* Rejection Modal */}
+      <AlertDialog open={isRejectionModalOpen} onOpenChange={handleRejectionModalClose}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Reject Payment</AlertDialogTitle>
             <AlertDialogDescription>
-              Please provide a reason for rejecting this payment. The customer will need to resubmit.
+              Please provide a reason for rejecting this payment. The customer will be notified via email.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-4">
+            <Label htmlFor="rejectionReason">
+              Rejection Reason <span className="text-red-500">*</span>
+            </Label>
             <Textarea
-              placeholder="Enter rejection reason..."
+              id="rejectionReason"
               value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-              className="min-h-[100px]"
+              onChange={(e) => {
+                setRejectionReason(e.target.value);
+                if (rejectionReasonError) setRejectionReasonError('');
+              }}
+              placeholder="Enter the reason for rejection"
+              className={`mt-2 ${rejectionReasonError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+              rows={4}
             />
+            {rejectionReasonError && (
+              <p className="text-sm text-red-500 mt-1">{rejectionReasonError}</p>
+            )}
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setRejectionReason('')}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <Button
               onClick={handleReject}
               className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={isProcessing}
             >
               Reject
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Return Confirmation Dialog */}
+      {/* Return Modal */}
       <AlertDialog open={isReturnModalOpen} onOpenChange={setIsReturnModalOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Mark Items as Returned</AlertDialogTitle>
             <AlertDialogDescription>
-              This will stop all future automatic billing for this contract. Are you sure the rental items have been returned and verified?
+              Items return is managed through the Return Request module. Please create a return request for this delivery.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleMarkAsReturned}
-              className="bg-[#F15929] hover:bg-[#D14620] text-white"
-            >
-              Confirm Return
-            </AlertDialogAction>
+            <AlertDialogCancel>Close</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -418,6 +418,7 @@ model RentalAgreement {
 
   versions AgreementVersion[]
   deposits Deposit[]
+  monthlyInvoices MonthlyRentalInvoice[]
 }
 
 model AgreementVersion {
@@ -451,6 +452,7 @@ model DeliveryRequest {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   sets            DeliverySet[]
+  monthlyInvoices MonthlyRentalInvoice[]
 }
 
 // Main Delivery Set table - only id, status, and basic info
@@ -808,4 +810,74 @@ model Deposit {
   // Timestamps
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
+}
+
+// Monthly Rental Billing
+model MonthlyRentalInvoice {
+  id                      String    @id @default(cuid())
+  invoiceNumber           String    @unique  // MRI-YYYYMMDD-XXX
+  
+  // Links
+  deliveryRequestId       String
+  deliveryRequest         DeliveryRequest @relation(fields: [deliveryRequestId], references: [id])
+  agreementId             String?
+  agreement               RentalAgreement? @relation(fields: [agreementId], references: [id])
+  
+  // Customer Info (snapshot)
+  customerName            String
+  customerEmail           String?
+  customerPhone           String?
+  
+  // Billing Period
+  billingMonth            Int       // 1-12
+  billingYear             Int
+  billingStartDate        DateTime
+  billingEndDate          DateTime
+  daysInPeriod            Int
+  
+  // Amount Calculation
+  baseAmount              Decimal   @db.Decimal(15, 2)  // items × unitPrice × days
+  overdueCharges          Decimal   @default(0) @db.Decimal(15, 2)
+  totalAmount             Decimal   @db.Decimal(15, 2)
+  
+  // Status & Payment
+  status                  String    @default("Pending Payment") // Pending Payment, Pending Approval, Paid, Rejected, Overdue
+  dueDate                 DateTime
+  
+  // Payment Proof
+  paymentProofUrl         String?
+  paymentProofFileName    String?
+  paymentProofUploadedAt  DateTime?
+  paymentProofUploadedBy  String?
+  
+  // Approval
+  approvedBy              String?
+  approvedAt              DateTime?
+  referenceNumber         String?
+  
+  // Rejection
+  rejectedBy              String?
+  rejectedAt              DateTime?
+  rejectionReason         String?   @db.Text
+  
+  // Invoice Items (snapshot of what was billed)
+  items                   MonthlyRentalInvoiceItem[]
+  
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+}
+
+model MonthlyRentalInvoiceItem {
+  id                      String    @id @default(cuid())
+  invoiceId               String
+  invoice                 MonthlyRentalInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  scaffoldingItemId       String
+  scaffoldingItemName     String
+  quantityBilled          Int       // quantity still out at billing time
+  unitPrice               Decimal   @db.Decimal(15, 2)
+  daysCharged             Int
+  lineTotal               Decimal   @db.Decimal(15, 2)  // qty × unitPrice × days
+  
+  createdAt               DateTime  @default(now())
 }
