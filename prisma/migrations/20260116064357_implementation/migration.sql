@@ -119,6 +119,9 @@ CREATE TABLE `rFQ` (
 CREATE TABLE `rFQItem` (
     `id` VARCHAR(191) NOT NULL,
     `rfqId` VARCHAR(191) NOT NULL,
+    `setName` VARCHAR(191) NOT NULL DEFAULT 'Set 1',
+    `deliverDate` DATETIME(3) NULL,
+    `returnDate` DATETIME(3) NULL,
     `scaffoldingItemId` VARCHAR(191) NOT NULL,
     `scaffoldingItemName` VARCHAR(191) NOT NULL,
     `quantity` INTEGER NOT NULL,

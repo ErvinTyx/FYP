@@ -218,6 +218,9 @@ model rFQItem {
   id                    String     @id @default(cuid())
   rfqId                 String
   rfq                   rFQ        @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  setName               String     @default("Set 1")
+  deliverDate           DateTime?
+  returnDate            DateTime?
   scaffoldingItemId     String
   scaffoldingItemName   String
   quantity              Int
@@ -227,6 +230,8 @@ model rFQItem {
   notes                 String?    @db.Text
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
+
+  @@index([rfqId], map: "rFQItem_rfqId_fkey")
 }
 
 // Inspection & Maintenance Module - Condition Report

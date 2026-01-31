@@ -8,6 +8,10 @@ export interface ScaffoldingItem {
 
 export interface RFQItem {
   id: string;
+  rfqId?: string;
+  setName: string;
+  deliverDate: string;
+  returnDate: string;
   scaffoldingItemId: string;
   scaffoldingItemName: string;
   quantity: number;
@@ -15,6 +19,13 @@ export interface RFQItem {
   unitPrice: number;
   totalPrice: number;
   notes?: string;
+}
+
+export interface RFQSet {
+  setName: string;
+  deliverDate: string;
+  returnDate: string;
+  items: RFQItem[];
 }
 
 export interface RFQ {

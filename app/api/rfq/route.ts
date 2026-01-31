@@ -28,6 +28,7 @@ function generateRFQNumber(): string {
  */
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json();
     const {
       customerName,
       customerEmail,
@@ -41,7 +42,11 @@ export async function POST(request: NextRequest) {
       notes,
       createdBy,
       items,
-    } = await request.json();
+    } = body;
+
+    // Debug logging
+    console.log('[RFQ API] POST body:', JSON.stringify(body, null, 2));
+    console.log('[RFQ API] Items received:', items?.length || 0, 'items');
 
     // Validate required fields
     if (!customerName || !customerEmail || !projectName || !createdBy) {
@@ -66,6 +71,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate requiredDate >= requestedDate
+    const reqDate = requestedDate ? new Date(requestedDate) : new Date();
+    const reqByDate = requiredDate ? new Date(requiredDate) : new Date();
+    if (reqByDate < reqDate) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Required date must be on or after the requested date',
+        },
+        { status: 400 }
+      );
+    }
+
     // Create RFQ with transaction
     const result = await prisma.$transaction(async (tx) => {
       const rfqNumber = generateRFQNumber();
@@ -79,8 +97,8 @@ export async function POST(request: NextRequest) {
           customerPhone: customerPhone || '',
           projectName,
           projectLocation: projectLocation || '',
-          requestedDate: requestedDate ? new Date(requestedDate) : new Date(),
-          requiredDate: requiredDate ? new Date(requiredDate) : new Date(),
+          requestedDate: reqDate,
+          requiredDate: reqByDate,
           status: status || 'draft',
           totalAmount: totalAmount || 0,
           notes: notes || '',
@@ -93,6 +111,9 @@ export async function POST(request: NextRequest) {
         await tx.rFQItem.createMany({
           data: items.map((item: any) => ({
             rfqId: rfq.id,
+            setName: item.setName || 'Set 1',
+            deliverDate: item.deliverDate ? new Date(item.deliverDate) : null,
+            returnDate: item.returnDate ? new Date(item.returnDate) : null,
             scaffoldingItemId: item.scaffoldingItemId || '',
             scaffoldingItemName: item.scaffoldingItemName || '',
             quantity: item.quantity || 0,

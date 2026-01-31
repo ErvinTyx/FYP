@@ -147,25 +147,30 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       });
 
       // Update items if provided
-      if (items && Array.isArray(items) && items.length > 0) {
+      if (items && Array.isArray(items)) {
         // Delete existing items
         await tx.rFQItem.deleteMany({
           where: { rfqId },
         });
 
         // Create new items
-        await tx.rFQItem.createMany({
-          data: items.map((item: any) => ({
-            rfqId,
-            scaffoldingItemId: item.scaffoldingItemId || '',
-            scaffoldingItemName: item.scaffoldingItemName || '',
-            quantity: item.quantity || 0,
-            unit: item.unit || '',
-            unitPrice: item.unitPrice || 0,
-            totalPrice: item.totalPrice || 0,
-            notes: item.notes || '',
-          })),
-        });
+        if (items.length > 0) {
+          await tx.rFQItem.createMany({
+            data: items.map((item: any) => ({
+              rfqId,
+              setName: item.setName || 'Set 1',
+              deliverDate: item.deliverDate ? new Date(item.deliverDate) : null,
+              returnDate: item.returnDate ? new Date(item.returnDate) : null,
+              scaffoldingItemId: item.scaffoldingItemId || '',
+              scaffoldingItemName: item.scaffoldingItemName || '',
+              quantity: item.quantity || 0,
+              unit: item.unit || '',
+              unitPrice: item.unitPrice || 0,
+              totalPrice: item.totalPrice || 0,
+              notes: item.notes || '',
+            })),
+          });
+        }
       }
 
       // Return updated RFQ with items
@@ -233,17 +238,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Delete RFQ and items with transaction
-    await prisma.$transaction(async (tx) => {
-      // Delete associated items first
-      await tx.rFQItem.deleteMany({
-        where: { rfqId },
-      });
-
-      // Delete RFQ
-      await tx.rFQ.delete({
-        where: { id: rfqId },
-      });
+    // Delete RFQ (sets and items will cascade delete)
+    await prisma.rFQ.delete({
+      where: { id: rfqId },
     });
 
     return NextResponse.json(
