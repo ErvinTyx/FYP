@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Save, Upload, X, Image as ImageIcon, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Upload, X, Image as ImageIcon, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -22,25 +22,41 @@ interface ScaffoldingItem {
   imageUrl?: string;
 }
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select';
+// Select component removed - items come from return request only
 import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
 import { uploadInspectionPhotos } from '@/lib/upload';
 
+// Interface for return request items to auto-populate
+interface ReturnRequestItemData {
+  id: string;
+  name: string;
+  scaffoldingItemId?: string;
+  quantity: number;
+  quantityReturned: number;
+}
+
 interface ConditionReportFormProps {
   report: ConditionReport | null;
   onSave: (report: ConditionReport) => void;
   onCancel: () => void;
+  // Optional: Auto-populate from return request
+  returnRequestItems?: ReturnRequestItemData[];
+  returnRequestId?: string;
+  customerName?: string;
+  agreementNo?: string;
 }
 
-export function ConditionReportForm({ report, onSave, onCancel }: ConditionReportFormProps) {
+export function ConditionReportForm({ 
+  report, 
+  onSave, 
+  onCancel,
+  returnRequestItems,
+  returnRequestId,
+  customerName: propCustomerName,
+  agreementNo 
+}: ConditionReportFormProps) {
   const [formData, setFormData] = useState({
     rcfNumber: '',
     deliveryOrderNumber: '',
@@ -56,6 +72,9 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
   const [items, setItems] = useState<InspectionItem[]>([]);
   const [scaffoldingItems, setScaffoldingItems] = useState<ScaffoldingItem[]>([]);
   const [loadingScaffoldingItems, setLoadingScaffoldingItems] = useState(true);
+  
+  // Store original return quantities for validation
+  const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
 
   // Fetch scaffolding items from API
   useEffect(() => {
@@ -83,6 +102,62 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
     fetchScaffoldingItems();
   }, []);
 
+  // Auto-populate items from return request
+  useEffect(() => {
+    if (returnRequestItems && returnRequestItems.length > 0 && !report && scaffoldingItems.length > 0) {
+      // Build quantity map for validation
+      const quantityMap: Record<string, number> = {};
+      
+      const autoItems: InspectionItem[] = returnRequestItems.map((returnItem, index) => {
+        // Find matching scaffolding item
+        const scaffoldingItem = scaffoldingItems.find(
+          (s: ScaffoldingItem) => s.id === returnItem.scaffoldingItemId || s.name === returnItem.name
+        );
+        
+        const returnedQty = returnItem.quantityReturned || returnItem.quantity;
+        quantityMap[returnItem.scaffoldingItemId || returnItem.name] = returnedQty;
+        
+        return {
+          id: `item-${Date.now()}-${index}`,
+          scaffoldingItemId: returnItem.scaffoldingItemId || scaffoldingItem?.id || '',
+          scaffoldingItemName: returnItem.name || scaffoldingItem?.name || '',
+          quantity: returnedQty,
+          quantityGood: returnedQty, // Default all to good, user can adjust
+          quantityRepair: 0,
+          quantityWriteOff: 0,
+          condition: 'good' as const,
+          damageDescription: '',
+          images: [],
+          repairRequired: false,
+          estimatedRepairCost: 0,
+          originalItemPrice: scaffoldingItem?.price || 0,
+          inspectionChecklist: {
+            structuralIntegrity: false,
+            surfaceCondition: false,
+            connectionsSecure: false,
+            noCorrosion: false,
+            safetyCompliance: false,
+            completeParts: false,
+          }
+        };
+      });
+      
+      setItems(autoItems);
+      setReturnQuantities(quantityMap);
+      
+      // Also set customer name and agreement number if provided
+      if (propCustomerName || agreementNo) {
+        setFormData(prev => ({
+          ...prev,
+          customerName: propCustomerName || prev.customerName,
+          deliveryOrderNumber: agreementNo || prev.deliveryOrderNumber,
+        }));
+      }
+      
+      toast.success(`${autoItems.length} item(s) auto-populated from return request`);
+    }
+  }, [returnRequestItems, report, scaffoldingItems, propCustomerName, agreementNo]);
+
   useEffect(() => {
     if (report) {
       setFormData({
@@ -100,36 +175,7 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
     }
   }, [report]);
 
-  const addItem = () => {
-    const newItem: InspectionItem = {
-      id: `item-${Date.now()}`,
-      scaffoldingItemId: '',
-      scaffoldingItemName: '',
-      quantity: 0,
-      quantityGood: 0,
-      quantityRepair: 0,
-      quantityWriteOff: 0,
-      condition: 'good',
-      damageDescription: '',
-      images: [],
-      repairRequired: false,
-      estimatedRepairCost: 0,
-      originalItemPrice: 0,
-      inspectionChecklist: {
-        structuralIntegrity: false,
-        surfaceCondition: false,
-        connectionsSecure: false,
-        noCorrosion: false,
-        safetyCompliance: false,
-        completeParts: false,
-      }
-    };
-    setItems([...items, newItem]);
-  };
-
-  const removeItem = (id: string) => {
-    setItems(items.filter(item => item.id !== id));
-  };
+  // Items are auto-populated from return request only - no manual add/remove
 
   const updateItem = (id: string, field: keyof InspectionItem, value: any) => {
     setItems(items.map(item => {
@@ -145,9 +191,19 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
           }
         }
         
-        // Auto-calculate total quantity
+        // Auto-calculate total quantity with validation
         if (field === 'quantityGood' || field === 'quantityRepair' || field === 'quantityWriteOff') {
-          updated.quantity = (updated.quantityGood || 0) + (updated.quantityRepair || 0) + (updated.quantityWriteOff || 0);
+          const newTotal = (updated.quantityGood || 0) + (updated.quantityRepair || 0) + (updated.quantityWriteOff || 0);
+          
+          // Validate against return quantity if available
+          const maxQuantity = returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || item.quantity;
+          
+          if (newTotal > maxQuantity) {
+            toast.error(`Total quantity (${newTotal}) cannot exceed returned quantity (${maxQuantity})`);
+            return item; // Don't update if exceeds limit
+          }
+          
+          updated.quantity = newTotal;
           
           // Auto-set repair required and calculate costs
           updated.repairRequired = (updated.quantityRepair || 0) > 0 || (updated.quantityWriteOff || 0) > 0;
@@ -421,56 +477,35 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle>Inspection Items</CardTitle>
-            <Button onClick={addItem} size="sm" className="bg-[#F15929] hover:bg-[#d94d1f]">
-              <Plus className="size-4 mr-2" />
-              Add Item
-            </Button>
+            <Badge className="bg-blue-100 text-blue-700">
+              {items.length} item(s) from Return Request
+            </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {items.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              No items added yet. Click &quot;Add Item&quot; to start inspection.
+              <p>No items to inspect.</p>
+              <p className="text-sm mt-2">Items are automatically loaded from the Return Request.</p>
             </div>
           ) : (
             items.map((item, index) => (
               <div key={item.id} className="p-4 border rounded-lg space-y-4 bg-gray-50">
                 <div className="flex justify-between items-start">
                   <h4 className="text-[#231F20]">Item {index + 1}</h4>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeItem(item.id)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <Badge variant="outline" className="whitespace-nowrap">
+                    From Return
+                  </Badge>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2 space-y-2">
-                    <Label>Scaffolding Item *</Label>
-                    <Select
-                      value={item.scaffoldingItemId}
-                      onValueChange={(value) => updateItem(item.id, 'scaffoldingItemId', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select item type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {loadingScaffoldingItems ? (
-                          <SelectItem value="loading" disabled>Loading...</SelectItem>
-                        ) : scaffoldingItems.length === 0 ? (
-                          <SelectItem value="no-items" disabled>No items available</SelectItem>
-                        ) : (
-                          scaffoldingItems.filter((scaffoldItem: ScaffoldingItem) => scaffoldItem.id).map((scaffoldItem: ScaffoldingItem) => (
-                            <SelectItem key={scaffoldItem.id} value={scaffoldItem.id}>
-                              {scaffoldItem.name}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                    <Label>Scaffolding Item</Label>
+                    <Input
+                      value={item.scaffoldingItemName || 'Unknown Item'}
+                      disabled
+                      className="bg-gray-100 font-medium"
+                    />
                   </div>
 
                   <div className="space-y-2">
@@ -487,7 +522,14 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Total Quantity</Label>
+                    <Label>
+                      Total Quantity
+                      {returnRequestItems && (
+                        <span className="text-xs text-blue-600 ml-2">
+                          (Max: {returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || item.quantity})
+                        </span>
+                      )}
+                    </Label>
                     <Input
                       type="number"
                       value={item.quantity}
@@ -498,38 +540,57 @@ export function ConditionReportForm({ report, onSave, onCancel }: ConditionRepor
                 </div>
 
                 {/* Quantity Breakdown */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-white rounded border">
-                  <div className="space-y-2">
-                    <Label className="text-green-600">Good</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={item.quantityGood || 0}
-                      onChange={(e) => updateItem(item.id, 'quantityGood', parseInt(e.target.value) || 0)}
-                      placeholder="0"
-                    />
-                  </div>
+                <div className="p-3 bg-white rounded border">
+                  {/* Show max quantity if from return request */}
+                  {(() => {
+                    const maxQty = returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName];
+                    const currentTotal = (item.quantityGood || 0) + (item.quantityRepair || 0) + (item.quantityWriteOff || 0);
+                    return maxQty ? (
+                      <div className={`mb-3 p-2 rounded text-sm ${currentTotal === maxQty ? 'bg-green-50 text-green-700' : currentTotal > maxQty ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
+                        <span className="font-medium">Returned Quantity: {maxQty}</span>
+                        <span className="ml-3">|</span>
+                        <span className="ml-3">Inspected: {currentTotal}</span>
+                        <span className="ml-3">|</span>
+                        <span className="ml-3">Remaining: {maxQty - currentTotal}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-green-600">Good</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || undefined}
+                        value={item.quantityGood || 0}
+                        onChange={(e) => updateItem(item.id, 'quantityGood', parseInt(e.target.value) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-orange-600">Need Repair</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={item.quantityRepair || 0}
-                      onChange={(e) => updateItem(item.id, 'quantityRepair', parseInt(e.target.value) || 0)}
-                      placeholder="0"
-                    />
-                  </div>
+                    <div className="space-y-2">
+                      <Label className="text-orange-600">Need Repair</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || undefined}
+                        value={item.quantityRepair || 0}
+                        onChange={(e) => updateItem(item.id, 'quantityRepair', parseInt(e.target.value) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-red-600">Write Off</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={item.quantityWriteOff || 0}
-                      onChange={(e) => updateItem(item.id, 'quantityWriteOff', parseInt(e.target.value) || 0)}
-                      placeholder="0"
-                    />
+                    <div className="space-y-2">
+                      <Label className="text-red-600">Write Off</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || undefined}
+                        value={item.quantityWriteOff || 0}
+                        onChange={(e) => updateItem(item.id, 'quantityWriteOff', parseInt(e.target.value) || 0)}
+                        placeholder="0"
+                      />
+                    </div>
                   </div>
                 </div>
 

@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
-import { ClipboardCheck, Wrench, FileText, Plus, Filter, Search } from 'lucide-react';
+import { ClipboardCheck, Wrench, FileText, Plus, Filter, Search, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { ConditionReportList } from './ConditionReportList';
 import { ConditionReportForm } from './ConditionReportForm';
 import { RepairSlipList } from './RepairSlipList';
@@ -18,13 +25,30 @@ import { ConditionReport, OpenRepairSlip, DamageInvoice, InventoryAdjustment } f
 import { toast } from 'sonner';
 
 type ViewMode = 'list' | 'create-report' | 'view-repair' | 'create-repair' | 'print-repair' | 'maintenance';
+type SourceFilter = 'all' | 'from-return' | 'manual';
+
+// Interface for return request items
+interface ReturnRequestItemData {
+  id: string;
+  name: string;
+  scaffoldingItemId?: string;
+  quantity: number;
+  quantityReturned: number;
+}
 
 export function InspectionMaintenanceModule() {
   const [activeTab, setActiveTab] = useState('reports');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all'); // Added: Filter reports by source
   const [selectedReport, setSelectedReport] = useState<ConditionReport | null>(null);
   const [selectedRepairSlip, setSelectedRepairSlip] = useState<OpenRepairSlip | null>(null);
+  
+  // State for return request data when creating report from return
+  const [selectedReturnRequestItems, setSelectedReturnRequestItems] = useState<ReturnRequestItemData[] | undefined>(undefined);
+  const [selectedReturnRequestId, setSelectedReturnRequestId] = useState<string | undefined>(undefined);
+  const [selectedReturnCustomerName, setSelectedReturnCustomerName] = useState<string | undefined>(undefined);
+  const [selectedReturnAgreementNo, setSelectedReturnAgreementNo] = useState<string | undefined>(undefined);
 
   const [conditionReports, setConditionReports] = useState<ConditionReport[]>([]);
   const [repairSlips, setRepairSlips] = useState<OpenRepairSlip[]>([]);
@@ -93,6 +117,26 @@ export function InspectionMaintenanceModule() {
 
   const handleCreateReport = () => {
     setSelectedReport(null);
+    // Clear return request data for manual creation
+    setSelectedReturnRequestItems(undefined);
+    setSelectedReturnRequestId(undefined);
+    setSelectedReturnCustomerName(undefined);
+    setSelectedReturnAgreementNo(undefined);
+    setViewMode('create-report');
+  };
+
+  // Create condition report from return request with auto-populated items
+  const handleCreateReportFromReturn = (
+    returnRequestId: string,
+    customerName: string,
+    agreementNo: string,
+    items: ReturnRequestItemData[]
+  ) => {
+    setSelectedReport(null);
+    setSelectedReturnRequestId(returnRequestId);
+    setSelectedReturnCustomerName(customerName);
+    setSelectedReturnAgreementNo(agreementNo);
+    setSelectedReturnRequestItems(items);
     setViewMode('create-report');
   };
 
@@ -162,6 +206,36 @@ export function InspectionMaintenanceModule() {
       setConditionReports(updatedReports);
       localStorage.setItem('conditionReports', JSON.stringify(updatedReports));
       
+      // Create inventory adjustments for write-off items (log only, no inventory update)
+      const writeOffItems = report.items.filter(item => item.quantityWriteOff > 0);
+      if (writeOffItems.length > 0) {
+        const newAdjustments: InventoryAdjustment[] = writeOffItems.map(item => ({
+          id: `adj-writeoff-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          adjustmentType: 'scrapped' as const,
+          scaffoldingItemId: item.scaffoldingItemId,
+          scaffoldingItemName: item.scaffoldingItemName,
+          quantity: item.quantityWriteOff,
+          fromStatus: 'returned',
+          toStatus: 'written-off',
+          referenceId: result.data.rcfNumber || report.rcfNumber,
+          referenceType: 'condition-report' as const,
+          adjustedBy: report.inspectedBy || 'System',
+          adjustedAt: new Date().toISOString(),
+          notes: `Write-off from inspection: ${item.damageDescription || 'Beyond repair - requires replacement'}`,
+        }));
+
+        // Add to local state
+        const updatedAdjustments = [...adjustments, ...newAdjustments];
+        setAdjustments(updatedAdjustments);
+        localStorage.setItem('inventoryAdjustments', JSON.stringify(updatedAdjustments));
+        
+        // Show toast about write-off logging
+        toast.info(`${writeOffItems.length} item(s) logged for write-off review`, {
+          description: 'Check Inventory Log for details. Manual inventory update required.',
+          duration: 5000,
+        });
+      }
+      
       setViewMode('list');
       toast.success(isUpdate ? 'Condition report updated successfully' : 'Condition report created successfully');
     } catch (error) {
@@ -173,6 +247,11 @@ export function InspectionMaintenanceModule() {
   const handleCancelReport = () => {
     setViewMode('list');
     setSelectedReport(null);
+    // Clear return request data
+    setSelectedReturnRequestItems(undefined);
+    setSelectedReturnRequestId(undefined);
+    setSelectedReturnCustomerName(undefined);
+    setSelectedReturnAgreementNo(undefined);
   };
 
   const handleDeleteReport = async (reportId: string) => {
@@ -550,6 +629,7 @@ export function InspectionMaintenanceModule() {
   const stats = {
     totalReports: conditionReports.length,
     pendingReports: conditionReports.filter(r => r.status === 'pending').length,
+    fromReturns: conditionReports.filter(r => r.isFromReturn || r.returnRequestId).length, // Added: Count reports from returns
     openRepairs: repairSlips.filter(s => s.status === 'open' || s.status === 'in-repair').length,
     completedRepairs: repairSlips.filter(s => s.status === 'completed').length,
     totalRepairCost: repairSlips.reduce((sum, s) => sum + s.actualCost, 0),
@@ -572,6 +652,10 @@ export function InspectionMaintenanceModule() {
         report={selectedReport}
         onSave={handleSaveReport}
         onCancel={handleCancelReport}
+        returnRequestItems={selectedReturnRequestItems}
+        returnRequestId={selectedReturnRequestId}
+        customerName={selectedReturnCustomerName}
+        agreementNo={selectedReturnAgreementNo}
       />
     );
   }
@@ -758,17 +842,42 @@ export function InspectionMaintenanceModule() {
         </Card>
       </div>
 
-      {/* Search */}
+      {/* Search and Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-gray-400" />
-            <Input
-              placeholder="Search by RCF number, DO number, or customer name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-gray-400" />
+              <Input
+                placeholder="Search by RCF number, DO number, or customer name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {/* Source Filter - only show on Condition Reports tab */}
+            {activeTab === 'reports' && (
+              <div className="w-full md:w-48">
+                <Select value={sourceFilter} onValueChange={(value: SourceFilter) => setSourceFilter(value)}>
+                  <SelectTrigger>
+                    <div className="flex items-center gap-2">
+                      <Filter className="size-4 text-gray-400" />
+                      <SelectValue placeholder="Filter by source" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sources</SelectItem>
+                    <SelectItem value="from-return">
+                      <div className="flex items-center gap-2">
+                        <RotateCcw className="size-3" />
+                        From Returns
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="manual">Manual Entry</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -798,6 +907,7 @@ export function InspectionMaintenanceModule() {
           <ConditionReportList
             reports={conditionReports}
             searchQuery={searchQuery}
+            sourceFilter={sourceFilter}
             onEdit={(report) => {
               setSelectedReport(report);
               setViewMode('create-report');

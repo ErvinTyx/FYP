@@ -252,6 +252,10 @@ model ConditionReport {
   openRepairSlips       OpenRepairSlip[]
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
+  
+  // Link to Return Request (auto-created from return workflow)
+  returnRequestId       String?               @unique
+  returnRequest         ReturnRequest?        @relation(fields: [returnRequestId], references: [id], onDelete: SetNull)
 }
 
 model InspectionItem {
@@ -633,19 +637,35 @@ model ReturnRequest {
   rcf              ReturnRCF?
   notification     ReturnNotification?
   completion       ReturnCompletion?
+  
+  // Link to Inspection Module - auto-created Condition Report
+  conditionReport  ConditionReport?
 }
 
 model ReturnRequestItem {
-  id                String        @id @default(cuid())
+  id                String                 @id @default(cuid())
   name              String
-  quantity          Int
-  quantityReturned  Int           @default(0)
-  itemStatus        String        @default("Good")
-  statusBreakdown   Json?         // { "Good": 5, "Damaged": 2, "Repairable": 1, ... }
+  quantity          Int                    // Original quantity from rental agreement
+  quantityReturned  Int                    @default(0) // Total quantity being returned
   notes             String?
   scaffoldingItemId String?
   returnRequestId   String
-  returnRequest     ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  returnRequest     ReturnRequest          @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  conditions        ReturnItemCondition[]  // Normalized breakdown by condition status (Good, Damaged, Replace)
+}
+
+// Stores quantity breakdown by condition status for each return item
+// e.g., Item A: 5 Good, 3 Damaged, 2 Replace
+model ReturnItemCondition {
+  id                  String            @id @default(cuid())
+  returnRequestItemId String
+  returnRequestItem   ReturnRequestItem @relation(fields: [returnRequestItemId], references: [id], onDelete: Cascade)
+  status              String            // "Good", "Damaged", "Replace"
+  quantity            Int               @default(0)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([returnRequestItemId, status]) // One record per status per item
 }
 
 // Step 1: Schedule/Approval

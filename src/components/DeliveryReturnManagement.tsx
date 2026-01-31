@@ -1287,7 +1287,7 @@ export default function DeliveryReturnManagement({
                   <p className="text-sm text-gray-600">Reason: {request.reason}</p>
                   {request.scheduledDate && (
                     <div className="flex items-center space-x-2 text-sm text-gray-600">
-                      <Calendar className="size-4" />
+                      <CalendarIcon className="size-4" />
                       <span>Scheduled: {request.scheduledDate}</span>
                     </div>
                   )}

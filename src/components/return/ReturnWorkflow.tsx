@@ -469,7 +469,10 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
         notes: itemNotes[item.id] || undefined,
       };
     });
-    
+    // #region agent log
+    const first = updatedItems?.[0];
+    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ReturnWorkflow.tsx:handleCompleteInspection',message:'updatedItems before onSave',data:{itemCount:updatedItems?.length,firstItem:first?{id:first.id,name:first.name,statusBreakdown:first.statusBreakdown}:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     // Generate GRN
     const grnNumber = `GRN-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
     
@@ -513,8 +516,13 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     
     setIsSaving(true);
     try {
-      await onSave(updatedData as Return); // Save to database
+      await onSave(updatedData as Return); // Save to database - this also auto-creates condition report
       toast.success(`RCF ${rcfNumber} generated`);
+      // Show additional toast about condition report creation
+      toast.success('Condition Report created in Inspection & Maintenance module', {
+        description: 'Items are now ready for detailed inspection',
+        duration: 5000,
+      });
       setIsRCFDialogOpen(false);
       
       if (formData.transportationType === 'Transportation Needed') {
@@ -538,8 +546,13 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     
     setIsSaving(true);
     try {
-      await onSave(updatedData as Return); // Save to database
+      await onSave(updatedData as Return); // Save to database - this also auto-creates condition report
       toast.info('RCF skipped');
+      // Show additional toast about condition report creation
+      toast.success('Condition Report created in Inspection & Maintenance module', {
+        description: 'Items are now ready for detailed inspection',
+        duration: 5000,
+      });
       setIsRCFDialogOpen(false);
       
       if (formData.transportationType === 'Transportation Needed') {
@@ -1355,19 +1368,25 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               </Button>
             </div>
 
-            {/* Summary of Items by Status */}
+            {/* Summary of Items: Good / Damage / Repair counts for each item */}
             <div className="space-y-2">
               <Label>Items Summary</Label>
-              {formData.items?.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-sm text-[#231F20]">{item.name}</p>
+              {formData.items?.map((item) => {
+                const bd = item.statusBreakdown;
+                const good = bd?.Good ?? 0;
+                const damage = bd?.Damaged ?? 0;
+                const repair = bd?.Replace ?? 0;
+                return (
+                  <div key={item.id} className="flex flex-col gap-2 p-3 border rounded-lg">
+                    <p className="text-sm font-medium text-[#231F20]">{item.name}</p>
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                      <span className="flex items-center gap-1"><CheckCircle2 className="size-3.5 text-green-600" /> Good: <strong>{good}</strong></span>
+                      <span className="flex items-center gap-1"><AlertCircle className="size-3.5 text-red-600" /> Damage: <strong>{damage}</strong></span>
+                      <span className="flex items-center gap-1"><PackageX className="size-3.5 text-amber-600" /> Repair: <strong>{repair}</strong></span>
+                    </div>
                   </div>
-                  <div>
-                    {getItemStatusBadge(item.status)}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="flex gap-2">

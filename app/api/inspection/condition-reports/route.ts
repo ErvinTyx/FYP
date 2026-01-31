@@ -25,6 +25,7 @@ function generateRCFNumber(): string {
 /**
  * POST /api/inspection/condition-reports
  * Create a new condition report in the database
+ * Supports linking to a ReturnRequest via returnRequestId for auto-creation from return workflow
  */
 export async function POST(request: NextRequest) {
   try {
@@ -38,6 +39,8 @@ export async function POST(request: NextRequest) {
       status,
       items,
       notes,
+      returnRequestId, // Optional: Link to return request for auto-created reports
+      rcfNumber: providedRcfNumber, // Optional: Use provided RCF number from return workflow
     } = await request.json();
 
     // Validate required fields
@@ -51,9 +54,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if a condition report already exists for this return request (prevent duplicates)
+    if (returnRequestId) {
+      const existingReport = await prisma.conditionReport.findUnique({
+        where: { returnRequestId },
+      });
+      
+      if (existingReport) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'A condition report already exists for this return request',
+            existingReportId: existingReport.id,
+            existingRcfNumber: existingReport.rcfNumber,
+          },
+          { status: 409 } // Conflict
+        );
+      }
+    }
+
     // Create condition report with transaction
     const result = await prisma.$transaction(async (tx) => {
-      const rcfNumber = generateRCFNumber();
+      // Use provided RCF number or generate new one
+      const rcfNumber = providedRcfNumber || generateRCFNumber();
 
       // Calculate totals from items
       let totalItemsInspected = 0;
@@ -74,7 +97,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Create Condition Report header
+      // Create Condition Report header with optional return request link
       const conditionReport = await tx.conditionReport.create({
         data: {
           rcfNumber,
@@ -92,6 +115,7 @@ export async function POST(request: NextRequest) {
           totalDamaged,
           totalRepairCost: parseFloat(totalRepairCost.toString()),
           notes: notes || '',
+          returnRequestId: returnRequestId || null, // Link to return request if provided
         },
       });
 
@@ -115,12 +139,45 @@ export async function POST(request: NextRequest) {
             images: JSON.stringify(item.images || []),
           })),
         });
+        
+        // Create inventory adjustment records for write-off items (log only)
+        const writeOffItems = items.filter((item: any) => (item.quantityWriteOff || 0) > 0);
+        if (writeOffItems.length > 0) {
+          await tx.inventoryAdjustment.createMany({
+            data: writeOffItems.map((item: any) => ({
+              adjustmentType: 'write-off-pending',
+              conditionReportId: conditionReport.id,
+              scaffoldingItemId: item.scaffoldingItemId || '',
+              scaffoldingItemName: item.scaffoldingItemName || '',
+              quantity: item.quantityWriteOff || 0,
+              fromStatus: 'returned',
+              toStatus: 'written-off',
+              referenceId: rcfNumber,
+              referenceType: 'condition-report',
+              adjustedBy: inspectedBy,
+              adjustedAt: new Date().toISOString().split('T')[0],
+              notes: `Write-off from inspection: ${item.damageDescription || 'Beyond repair - requires replacement'}`,
+            })),
+          });
+        }
       }
 
-      // Fetch the complete report with items
+      // Fetch the complete report with items and return request info
       const completeReport = await tx.conditionReport.findUnique({
         where: { id: conditionReport.id },
-        include: { items: true },
+        include: { 
+          items: true,
+          returnRequest: {
+            select: {
+              id: true,
+              requestId: true,
+              customerName: true,
+              agreementNo: true,
+              setName: true,
+              status: true,
+            },
+          },
+        },
       });
 
       return completeReport;
@@ -143,7 +200,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: 'Condition report created successfully',
+        message: returnRequestId 
+          ? 'Condition report created from return request' 
+          : 'Condition report created successfully',
         data: transformedResult,
       },
       { status: 201 }
@@ -163,12 +222,19 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/inspection/condition-reports
  * Get all condition reports
+ * Supports filters:
+ * - customerName: Filter by customer name
+ * - status: Filter by status
+ * - fromReturn: Filter reports created from returns (true/false)
+ * - returnRequestId: Get report for specific return request
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const customerName = searchParams.get('customerName');
     const status = searchParams.get('status');
+    const fromReturn = searchParams.get('fromReturn');
+    const returnRequestId = searchParams.get('returnRequestId');
 
     // Build filter conditions
     const where: any = {};
@@ -181,12 +247,36 @@ export async function GET(request: NextRequest) {
     if (status) {
       where.status = status;
     }
+    
+    // Filter by return request link
+    if (fromReturn === 'true') {
+      where.returnRequestId = { not: null };
+    } else if (fromReturn === 'false') {
+      where.returnRequestId = null;
+    }
+    
+    // Get specific report for a return request
+    if (returnRequestId) {
+      where.returnRequestId = returnRequestId;
+    }
 
-    // Get all condition reports with filters
+    // Get all condition reports with filters and return request info
     const conditionReports = await prisma.conditionReport.findMany({
       where,
       include: {
         items: true,
+        returnRequest: {
+          select: {
+            id: true,
+            requestId: true,
+            customerName: true,
+            agreementNo: true,
+            setName: true,
+            status: true,
+            returnType: true,
+            collectionMethod: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -196,6 +286,8 @@ export async function GET(request: NextRequest) {
     // Transform items to parse JSON fields
     const transformedReports = conditionReports.map(report => ({
       ...report,
+      // Add convenience flag for UI
+      isFromReturn: !!report.returnRequestId,
       items: report.items.map((item: any) => ({
         ...item,
         inspectionChecklist: typeof item.inspectionChecklist === 'string' 

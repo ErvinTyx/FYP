@@ -18,6 +18,19 @@ export interface ConditionReport {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  // Link to Return Request (auto-created from return workflow)
+  returnRequestId?: string;
+  isFromReturn?: boolean; // Convenience flag added by API
+  returnRequest?: {
+    id: string;
+    requestId: string;
+    customerName: string;
+    agreementNo: string;
+    setName: string;
+    status: string;
+    returnType?: string;
+    collectionMethod?: string;
+  };
 }
 
 export interface InspectionItem {
@@ -125,7 +138,7 @@ export interface InvoiceItem {
 
 export interface InventoryAdjustment {
   id: string;
-  adjustmentType: 'damage-detected' | 'repair-completed' | 'scrapped';
+  adjustmentType: 'damage-detected' | 'repair-completed' | 'scrapped' | 'write-off-pending';
   scaffoldingItemId: string;
   scaffoldingItemName: string;
   quantity: number;
@@ -136,6 +149,7 @@ export interface InventoryAdjustment {
   adjustedBy: string;
   adjustedAt: string;
   notes?: string;
+  conditionReportId?: string; // Link to condition report for write-offs
 }
 
 export const DAMAGE_TYPES = [

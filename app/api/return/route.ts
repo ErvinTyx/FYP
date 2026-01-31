@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { appendFileSync } from 'fs';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 
@@ -52,7 +53,11 @@ export async function GET(request: NextRequest) {
       returnRequests = await (prisma.returnRequest.findMany as any)({
         where,
         include: {
-          items: true,
+          items: {
+            include: {
+              conditions: true, // Include normalized condition breakdown
+            },
+          },
           schedule: true,
           pickupConfirm: true,
           driverRecording: true,
@@ -76,7 +81,11 @@ export async function GET(request: NextRequest) {
       returnRequests = await prisma.returnRequest.findMany({
         where,
         include: {
-          items: true,
+          items: {
+            include: {
+              conditions: true,
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -151,15 +160,38 @@ export async function GET(request: NextRequest) {
           inventoryUpdated: req.completion?.inventoryUpdated ?? req.inventoryUpdated,
           soaUpdated: req.completion?.soaUpdated ?? req.soaUpdated,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          items: req.items.map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            quantity: item.quantity,
-            quantityReturned: item.quantityReturned,
-            status: item.itemStatus,
-            notes: item.notes,
-            scaffoldingItemId: item.scaffoldingItemId || null,
-          })),
+          items: req.items.map((item: any) => {
+            // Build statusBreakdown from normalized ReturnItemCondition table
+            let statusBreakdown: { Good: number; Damaged: number; Replace: number } | null = null;
+            let primaryStatus = 'Good';
+
+            if (item.conditions && item.conditions.length > 0) {
+              statusBreakdown = { Good: 0, Damaged: 0, Replace: 0 };
+              let maxQty = 0;
+              for (const cond of item.conditions) {
+                if (cond.status === 'Good') statusBreakdown.Good = cond.quantity;
+                else if (cond.status === 'Damaged') statusBreakdown.Damaged = cond.quantity;
+                else if (cond.status === 'Replace') statusBreakdown.Replace = cond.quantity;
+                
+                // Determine primary status (highest quantity)
+                if (cond.quantity > maxQty) {
+                  maxQty = cond.quantity;
+                  primaryStatus = cond.status;
+                }
+              }
+            }
+
+            return {
+              id: item.id,
+              name: item.name,
+              quantity: item.quantity,
+              quantityReturned: item.quantityReturned,
+              status: primaryStatus,
+              statusBreakdown,
+              notes: item.notes,
+              scaffoldingItemId: item.scaffoldingItemId || null,
+            };
+          }),
         };
       } catch (transformErr) {
         throw transformErr;
@@ -263,7 +295,6 @@ export async function POST(request: NextRequest) {
               name: item.name,
               quantity: item.quantity,
               quantityReturned: item.quantityReturned ?? item.quantity,
-              itemStatus: 'Good',
               scaffoldingItemId: item.scaffoldingItemId || null,
             })),
           } : undefined,
@@ -297,7 +328,6 @@ export async function POST(request: NextRequest) {
               name: item.name,
               quantity: item.quantity,
               quantityReturned: item.quantityReturned ?? item.quantity,
-              itemStatus: 'Good',
             })),
           } : undefined,
         },
@@ -496,6 +526,174 @@ export async function PUT(request: NextRequest) {
       });
     }
 
+    // IMPORTANT: Update items BEFORE creating condition report
+    // This ensures condition data is in DB when condition report is generated
+    // #region agent log
+    const firstItem = updateData.items?.[0] as { id?: string; statusBreakdown?: unknown } | undefined;
+    try {
+      appendFileSync('d:\\FYP_Development\\FYP\\.cursor\\debug.log', JSON.stringify({ location: 'api/return/route.ts:PUT', message: 'updateData.items received', data: { itemCount: updateData.items?.length, firstItemId: firstItem?.id, hasStatusBreakdown: !!firstItem?.statusBreakdown, statusBreakdown: firstItem?.statusBreakdown }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H5' }) + '\n');
+    } catch (_) {}
+    // #endregion
+    if (updateData.items && Array.isArray(updateData.items)) {
+      for (const item of updateData.items) {
+        if (item.id) {
+          // Update basic item fields
+          await prisma.returnRequestItem.update({
+            where: { id: item.id },
+            data: {
+              quantityReturned: item.quantityReturned ?? undefined,
+              notes: item.notes ?? undefined,
+            },
+          });
+
+          // Save conditions to ReturnItemCondition table if statusBreakdown provided
+          if (item.statusBreakdown && typeof item.statusBreakdown === 'object') {
+            const breakdown = item.statusBreakdown as { Good?: number; Damaged?: number; Replace?: number };
+            
+            // Delete existing conditions for this item and recreate
+            await prisma.returnItemCondition.deleteMany({
+              where: { returnRequestItemId: item.id },
+            });
+
+            // Create new condition records for non-zero quantities
+            const conditionsToCreate = [];
+            if (breakdown.Good && breakdown.Good > 0) {
+              conditionsToCreate.push({ returnRequestItemId: item.id, status: 'Good', quantity: breakdown.Good });
+            }
+            if (breakdown.Damaged && breakdown.Damaged > 0) {
+              conditionsToCreate.push({ returnRequestItemId: item.id, status: 'Damaged', quantity: breakdown.Damaged });
+            }
+            if (breakdown.Replace && breakdown.Replace > 0) {
+              conditionsToCreate.push({ returnRequestItemId: item.id, status: 'Replace', quantity: breakdown.Replace });
+            }
+
+            if (conditionsToCreate.length > 0) {
+              await prisma.returnItemCondition.createMany({
+                data: conditionsToCreate,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Auto-create Condition Report when status becomes 'Sorting Complete'
+    // This integrates Return Management with Inspection & Maintenance module
+    if (updateData.status === 'Sorting Complete') {
+      // Check if condition report already exists for this return
+      const existingConditionReport = await prisma.conditionReport.findUnique({
+        where: { returnRequestId: id },
+      });
+
+      if (!existingConditionReport) {
+        // Fetch the full return request with items and their conditions for mapping
+        const returnWithItems = await prisma.returnRequest.findUnique({
+          where: { id },
+          include: {
+            items: {
+              include: {
+                conditions: true, // Include normalized condition records
+              },
+            },
+            inspection: true,
+            rcf: true,
+          },
+        });
+
+        if (returnWithItems) {
+          // Generate RCF number for condition report (use existing or create new)
+          const rcfNumber = returnWithItems.rcf?.rcfNumber || 
+            `RCF-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`;
+
+          // Calculate totals from return items
+          let totalItemsInspected = 0;
+          let totalGood = 0;
+          let totalRepair = 0;
+          let totalWriteOff = 0;
+          let totalDamaged = 0;
+
+          // Map return items to inspection items
+          const inspectionItems = returnWithItems.items.map(item => {
+            // Get quantities from ReturnItemCondition table
+            let quantityGood = 0;
+            let quantityRepair = 0;
+            let quantityWriteOff = 0;
+
+            if (item.conditions && item.conditions.length > 0) {
+              for (const cond of item.conditions) {
+                if (cond.status === 'Good') quantityGood = cond.quantity;
+                else if (cond.status === 'Damaged') quantityRepair = cond.quantity;
+                else if (cond.status === 'Replace') quantityWriteOff = cond.quantity;
+              }
+            }
+
+            const quantity = quantityGood + quantityRepair + quantityWriteOff;
+
+            totalItemsInspected += quantity;
+            totalGood += quantityGood;
+            totalRepair += quantityRepair;
+            totalWriteOff += quantityWriteOff;
+            totalDamaged += quantityRepair + quantityWriteOff;
+
+            // Determine condition based on status breakdown
+            let condition = 'good';
+            if (quantityWriteOff > 0) {
+              condition = 'beyond-repair';
+            } else if (quantityRepair > 0) {
+              condition = 'major-damage';
+            }
+
+            return {
+              scaffoldingItemId: item.scaffoldingItemId || '',
+              scaffoldingItemName: item.name,
+              quantity,
+              quantityGood,
+              quantityRepair,
+              quantityWriteOff,
+              condition,
+              damageDescription: item.notes || '',
+              repairRequired: quantityRepair > 0 || quantityWriteOff > 0,
+              estimatedRepairCost: 0, // Will be calculated in inspection module
+              originalItemPrice: 0, // Will be fetched from inventory
+              inspectionChecklist: JSON.stringify({}),
+              images: JSON.stringify([]),
+            };
+          });
+          // #region agent log
+          try {
+            appendFileSync('d:\\FYP_Development\\FYP\\.cursor\\debug.log', JSON.stringify({ location: 'api/return/route.ts:conditionReport', message: 'RCF totals from DB', data: { totalItemsInspected, totalGood, totalRepair, totalWriteOff, totalDamaged, itemConditionsSample: returnWithItems.items.slice(0, 2).map(i => ({ name: i.name, conditions: i.conditions })) }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H4' }) + '\n');
+          } catch (_) {}
+          // #endregion
+          // Create the condition report linked to return request
+          await prisma.conditionReport.create({
+            data: {
+              rcfNumber,
+              deliveryOrderNumber: returnWithItems.agreementNo,
+              customerName: returnWithItems.customerName,
+              returnedBy: returnWithItems.customerName,
+              returnDate: new Date().toISOString().split('T')[0],
+              inspectionDate: new Date().toISOString().split('T')[0],
+              inspectedBy: session.user.email || 'System',
+              status: 'pending',
+              totalItemsInspected,
+              totalGood,
+              totalRepair,
+              totalWriteOff,
+              totalDamaged,
+              totalRepairCost: 0,
+              notes: returnWithItems.inspection?.productionNotes || 'Auto-created from Return Management workflow',
+              returnRequestId: id,
+              items: {
+                create: inspectionItems,
+              },
+            },
+          });
+
+          console.log(`[Return API] Auto-created condition report ${rcfNumber} for return ${id}`);
+        }
+      }
+    }
+
     // Upsert Notification step
     if (updateData.customerNotificationSent !== undefined) {
       await prisma.returnNotification.upsert({
@@ -530,24 +728,10 @@ export async function PUT(request: NextRequest) {
       });
     }
 
-    // Update items if provided
-    if (updateData.items && Array.isArray(updateData.items)) {
-      for (const item of updateData.items) {
-        if (item.id) {
-          await prisma.returnRequestItem.update({
-            where: { id: item.id },
-            data: {
-              quantityReturned: item.quantityReturned ?? undefined,
-              itemStatus: item.status ?? undefined,
-              statusBreakdown: item.statusBreakdown ?? undefined,
-              notes: item.notes ?? undefined,
-            },
-          });
-        }
-      }
-    }
+    // Note: Items and their conditions are updated earlier in the flow (before condition report creation)
+    // to ensure ReturnItemCondition data is available when auto-creating condition reports
 
-    // Fetch updated request with all relations
+    // Fetch updated request with all relations including condition report
     const finalRequest = await prisma.returnRequest.findUnique({
       where: { id },
       include: { 
@@ -560,6 +744,13 @@ export async function PUT(request: NextRequest) {
         rcf: true,
         notification: true,
         completion: true,
+        conditionReport: {
+          select: {
+            id: true,
+            rcfNumber: true,
+            status: true,
+          },
+        },
       },
     });
 
@@ -567,6 +758,8 @@ export async function PUT(request: NextRequest) {
       success: true,
       message: 'Return request updated successfully',
       returnRequest: finalRequest,
+      // Include condition report info if created
+      conditionReportCreated: updateData.status === 'Sorting Complete' && finalRequest?.conditionReport ? true : false,
     });
   } catch (error) {
     console.error('Update return request error:', error);

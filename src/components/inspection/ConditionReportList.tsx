@@ -1,4 +1,4 @@
-import { Eye, Edit, Wrench, Calendar, User, Package, FileText, Trash2 } from 'lucide-react';
+import { Eye, Edit, Wrench, Calendar, User, Package, FileText, Trash2, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -7,18 +7,27 @@ import { ConditionReport } from '../../types/inspection';
 interface ConditionReportListProps {
   reports: ConditionReport[];
   searchQuery: string;
+  sourceFilter?: 'all' | 'from-return' | 'manual'; // Added: Filter by source
   onEdit: (report: ConditionReport) => void;
   onDelete: (reportId: string) => void;
   onCreateRepairSlip: (reportId: string) => void;
   existingRepairSlips?: Array<{ conditionReportId: string }>; 
 }
 
-export function ConditionReportList({ reports, searchQuery, onEdit, onDelete, onCreateRepairSlip, existingRepairSlips = [] }: ConditionReportListProps) {
-  const filteredReports = reports.filter(report =>
+export function ConditionReportList({ reports, searchQuery, sourceFilter = 'all', onEdit, onDelete, onCreateRepairSlip, existingRepairSlips = [] }: ConditionReportListProps) {
+  // Filter by search query
+  let filteredReports = reports.filter(report =>
     report.rcfNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
     report.deliveryOrderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
     report.customerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  
+  // Filter by source
+  if (sourceFilter === 'from-return') {
+    filteredReports = filteredReports.filter(report => report.isFromReturn || report.returnRequestId);
+  } else if (sourceFilter === 'manual') {
+    filteredReports = filteredReports.filter(report => !report.isFromReturn && !report.returnRequestId);
+  }
 
   const getStatusColor = (status: ConditionReport['status']) => {
     const colors = {
@@ -52,11 +61,22 @@ export function ConditionReportList({ reports, searchQuery, onEdit, onDelete, on
               <div className="flex-1 space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <h3 className="text-[#231F20]">{report.rcfNumber}</h3>
                       <Badge className={getStatusColor(report.status)}>
                         {report.status.toUpperCase()}
                       </Badge>
+                      {/* Source badge - indicates if created from return workflow */}
+                      {(report.isFromReturn || report.returnRequestId) ? (
+                        <Badge className="bg-purple-100 text-purple-800 flex items-center gap-1">
+                          <RotateCcw className="size-3" />
+                          From Return
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-gray-600">
+                          Manual
+                        </Badge>
+                      )}
                       {report.totalRepair > 0 && (
                         <Badge className="bg-amber-100 text-amber-800">
                           {report.totalRepair} Need Repair
@@ -69,6 +89,12 @@ export function ConditionReportList({ reports, searchQuery, onEdit, onDelete, on
                       )}
                     </div>
                     <p className="text-gray-600 mt-1">DO: {report.deliveryOrderNumber}</p>
+                    {/* Show return request info if linked */}
+                    {report.returnRequest && (
+                      <p className="text-xs text-purple-600 mt-1">
+                        Return: {report.returnRequest.requestId} • {report.returnRequest.setName}
+                      </p>
+                    )}
                   </div>
                 </div>
 
