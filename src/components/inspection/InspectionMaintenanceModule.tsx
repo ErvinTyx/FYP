@@ -633,22 +633,22 @@ export function InspectionMaintenanceModule() {
     openRepairs: repairSlips.filter(s => s.status === 'open' || s.status === 'in-repair').length,
     completedRepairs: repairSlips.filter(s => s.status === 'completed').length,
     totalRepairCost: repairSlips.reduce((sum, s) => sum + s.actualCost, 0),
-    itemsUnderRepair: adjustments.reduce((net, a) => {
-      // Add items going TO under-repair status
-      if (a.toStatus === 'under-repair') {
-        return net + a.quantity;
-      }
-      // Subtract items coming FROM under-repair status (completed repairs)
-      if (a.fromStatus === 'under-repair') {
-        return net - a.quantity;
-      }
-      return net;
-    }, 0)
+    // Total remaining items to repair from all open/in-repair slips
+    itemsUnderRepair: repairSlips
+      .filter(s => s.status === 'open' || s.status === 'in-repair')
+      .reduce((total, slip) => {
+        return total + (slip.items || []).reduce((itemTotal, item) => {
+          // Use quantityRemaining if available, otherwise use quantity
+          const remaining = item.quantityRemaining !== undefined ? item.quantityRemaining : item.quantity;
+          return itemTotal + remaining;
+        }, 0);
+      }, 0)
   };
 
   if (viewMode === 'create-report') {
     return (
       <ConditionReportForm
+// ... (rest of the code remains the same)
         report={selectedReport}
         onSave={handleSaveReport}
         onCancel={handleCancelReport}

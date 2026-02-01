@@ -207,7 +207,8 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
                   updated.unitPrice = scaffoldingItem.price;
                 }
               }
-              updated.totalPrice = updated.quantity * updated.unitPrice;
+              const duration = calculateDuration(set.deliverDate, set.returnDate);
+              updated.totalPrice = updated.quantity * updated.unitPrice * duration;
               return updated;
             }
             return item;
@@ -218,18 +219,25 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     }));
   };
 
-  const calculateTotal = () => {
-    return uiSets.reduce((sum, set) => sum + set.items.reduce((itemSum, item) => itemSum + Number(item.totalPrice), 0), 0);
-  };
-
-  const getTotalItemCount = () => {
-    return uiSets.reduce((sum, set) => sum + set.items.length, 0);
-  };
 
   useEffect(() => {
     const items = uiSetsToItems(uiSets);
     setFormData(prev => ({ ...prev, items, totalAmount: calculateTotal() }));
   }, [uiSets]);
+
+  const calculateTotal = () => {
+    return uiSets.reduce((sum, set) => {
+      const duration = calculateDuration(set.deliverDate, set.returnDate);
+      return sum + set.items.reduce((itemSum, item) => {
+        const itemTotal = item.quantity * item.unitPrice * duration;
+        return itemSum + itemTotal;
+      }, 0);
+    }, 0);
+  };
+
+  const getTotalItemCount = () => {
+    return uiSets.reduce((sum, set) => sum + set.items.length, 0);
+  };
 
   const createNotification = (rfq: RFQ, changes: NotificationChange[], isNew: boolean) => {
     const notifications: RFQNotification[] = JSON.parse(localStorage.getItem('rfqNotifications') || '[]');
