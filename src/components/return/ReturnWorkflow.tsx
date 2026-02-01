@@ -15,7 +15,7 @@ import { Badge } from '../ui/badge';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
 import { Calendar } from '../ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { ScrollableTimePicker } from '../ui/scrollable-time-picker';
 import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -107,12 +107,6 @@ interface ReturnWorkflowProps {
   onBack: () => void;
 }
 
-const TIME_SLOTS = [
-  '09:00 - 12:00',
-  '12:00 - 15:00',
-  '15:00 - 18:00',
-];
-
 export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<Partial<Return>>(returnOrder || {
@@ -152,6 +146,31 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
   
   // Saving state for API persistence
   const [isSaving, setIsSaving] = useState(false);
+
+  // Validation error states for each step
+  const [step1Errors, setStep1Errors] = useState<{
+    pickupDate?: string;
+    pickupTimeSlot?: string;
+  }>({});
+
+  const [step2Errors, setStep2Errors] = useState<{
+    pickupDriver?: string;
+    driverContact?: string;
+  }>({});
+
+  const [step3Errors, setStep3Errors] = useState<{
+    photos?: string;
+  }>({});
+
+  const [step4Errors, setStep4Errors] = useState<{
+    photos?: string;
+  }>({});
+
+  const [step5Errors, setStep5Errors] = useState<{
+    items?: { [itemId: string]: string };
+    externalGoodsNotes?: string;
+    general?: string;
+  }>({});
 
   useEffect(() => {
     if (returnOrder) {
@@ -210,8 +229,8 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       if (returnOrder.pickupTimeSlot) {
         setPickupTimeSlot(returnOrder.pickupTimeSlot);
       } else if (returnOrder.transportationType === 'Transportation Needed' && returnOrder.status === 'Requested') {
-        // Auto-fill with default time slot (first slot) for new requests
-        setPickupTimeSlot(TIME_SLOTS[0]);
+        // Auto-fill with default time (12:00) for new requests
+        setPickupTimeSlot('12:00');
       }
       
       // Pre-fill item statuses with breakdown
@@ -273,30 +292,49 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
 
   const steps = getSteps();
 
+  // Validate Step 1: Schedule Pickup
+  const validateStep1 = (): boolean => {
+    const errors: typeof step1Errors = {};
+    let isValid = true;
+
+    if (formData.transportationType === 'Transportation Needed') {
+      if (!pickupDate) {
+        errors.pickupDate = 'Please select a pickup date';
+        isValid = false;
+      }
+      
+      if (!pickupTimeSlot) {
+        errors.pickupTimeSlot = 'Please select a pickup time';
+        isValid = false;
+      }
+    }
+
+    setStep1Errors(errors);
+    return isValid;
+  };
+
+  // Clear Step 1 error for a specific field
+  const clearStep1Error = (field: keyof typeof step1Errors) => {
+    setStep1Errors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[field];
+      return newErrors;
+    });
+  };
+
   const handleApproveAndSchedule = async () => {
     if (formData.transportationType === 'Transportation Needed') {
-      // Validate date
-      if (!pickupDate) {
-        toast.error('Please select or enter a pickup date');
+      // Validate Step 1
+      if (!validateStep1()) {
         return;
       }
       
-      // Validate time slot - check for custom time or selected slot
-      const isCustomTime = pickupTimeSlot.startsWith('custom:');
-      const customTimeValue = isCustomTime ? pickupTimeSlot.replace('custom:', '').trim() : '';
-      
-      if (!pickupTimeSlot || (isCustomTime && !customTimeValue)) {
-        toast.error('Please select a time slot or enter a custom time');
-        return;
-      }
-      
-      // Clean up the time slot value for storage
-      const finalTimeSlot = isCustomTime ? customTimeValue : pickupTimeSlot;
+      const finalTimeSlot = pickupTimeSlot;
       
       const updatedData = {
         ...formData,
         status: 'Pickup Scheduled' as const,
-        pickupDate: pickupDate.toISOString(),
+        pickupDate: pickupDate!.toISOString(),
         pickupTimeSlot: finalTimeSlot,
       };
       setFormData(updatedData);
@@ -305,6 +343,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       try {
         await onSave(updatedData as Return); // Save to database
         toast.success('Return approved and pickup scheduled');
+        setStep1Errors({});
         setCurrentStep(2);
       } catch {
         toast.error('Failed to save. Please try again.');
@@ -331,9 +370,43 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     }
   };
 
+  // Validate Step 2: Confirm Pickup
+  const validateStep2 = (): boolean => {
+    const errors: typeof step2Errors = {};
+    let isValid = true;
+
+    if (!formData.pickupDriver?.trim()) {
+      errors.pickupDriver = 'Driver name is required';
+      isValid = false;
+    }
+
+    if (!formData.driverContact?.trim()) {
+      errors.driverContact = 'Driver contact is required';
+      isValid = false;
+    } else {
+      // Optional phone format validation
+      const phoneRegex = /^[\d\s+\-()]+$/;
+      if (!phoneRegex.test(formData.driverContact)) {
+        errors.driverContact = 'Invalid phone number format';
+        isValid = false;
+      }
+    }
+
+    setStep2Errors(errors);
+    return isValid;
+  };
+
+  // Clear Step 2 error for a specific field
+  const clearStep2Error = (field: keyof typeof step2Errors) => {
+    setStep2Errors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[field];
+      return newErrors;
+    });
+  };
+
   const handleConfirmPickup = async () => {
-    if (!formData.pickupDriver || !formData.driverContact) {
-      toast.error('Please enter driver name and contact');
+    if (!validateStep2()) {
       return;
     }
     
@@ -347,6 +420,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     try {
       await onSave(updatedData as Return); // Save to database
       toast.success('Pickup confirmed');
+      setStep2Errors({});
       setCurrentStep(3);
     } catch {
       toast.error('Failed to save. Please try again.');
@@ -355,9 +429,27 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     }
   };
 
-  const handleDriverRecording = async () => {
+  // Validate Step 3: Driver Recording
+  const validateStep3 = (): boolean => {
+    const errors: typeof step3Errors = {};
+    let isValid = true;
+
     if (driverPhotos.length === 0) {
-      toast.error('Please upload at least one photo of the goods');
+      errors.photos = 'Please upload at least one photo of the goods';
+      isValid = false;
+    }
+
+    setStep3Errors(errors);
+    return isValid;
+  };
+
+  // Clear Step 3 error
+  const clearStep3Error = () => {
+    setStep3Errors({});
+  };
+
+  const handleDriverRecording = async () => {
+    if (!validateStep3()) {
       return;
     }
     
@@ -379,6 +471,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     try {
       await onSave(updatedData as Return); // Save to database
       toast.success('Driver recording saved - items in transit');
+      setStep3Errors({});
       setCurrentStep(4);
     } catch {
       toast.error('Failed to save. Please try again.');
@@ -387,9 +480,27 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     }
   };
 
-  const handleReceiveAtWarehouse = async () => {
+  // Validate Step 4/2: Receive at Warehouse
+  const validateStep4 = (): boolean => {
+    const errors: typeof step4Errors = {};
+    let isValid = true;
+
     if (warehousePhotos.length === 0) {
-      toast.error('Please upload at least one photo of received goods');
+      errors.photos = 'Please upload at least one photo of received goods';
+      isValid = false;
+    }
+
+    setStep4Errors(errors);
+    return isValid;
+  };
+
+  // Clear Step 4 error
+  const clearStep4Error = () => {
+    setStep4Errors({});
+  };
+
+  const handleReceiveAtWarehouse = async () => {
+    if (!validateStep4()) {
       return;
     }
     
@@ -411,6 +522,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     try {
       await onSave(updatedData as Return); // Save to database
       toast.success('Goods received at warehouse');
+      setStep4Errors({});
       
       if (formData.transportationType === 'Transportation Needed') {
         setCurrentStep(5);
@@ -439,23 +551,66 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     return total === expectedTotal;
   };
 
-  const handleCompleteInspection = async () => {
+  // Validate Step 5/3: Inspection & GRN
+  const validateStep5 = (): boolean => {
+    const errors: typeof step5Errors = {};
+    const itemErrors: { [itemId: string]: string } = {};
+    let isValid = true;
+
     // Validate all items have breakdown that totals to quantityReturned
-    const validationErrors: string[] = [];
     formData.items?.forEach(item => {
       const breakdown = itemStatusBreakdowns[item.id];
       if (!breakdown) {
-        validationErrors.push(`${item.name}: No status set`);
+        itemErrors[item.id] = 'No status set';
+        isValid = false;
       } else {
         const total = Object.values(breakdown).reduce((sum, qty) => sum + qty, 0);
         if (total !== item.quantityReturned) {
-          validationErrors.push(`${item.name}: Total (${total}) doesn't match returned quantity (${item.quantityReturned})`);
+          itemErrors[item.id] = `Total (${total}) doesn't match returned quantity (${item.quantityReturned})`;
+          isValid = false;
         }
       }
     });
 
-    if (validationErrors.length > 0) {
-      toast.error(validationErrors[0]);
+    if (Object.keys(itemErrors).length > 0) {
+      errors.items = itemErrors;
+    }
+
+    // Validate external goods notes if checkbox is checked
+    if (hasExternalGoods && !externalGoodsNotes.trim()) {
+      errors.externalGoodsNotes = 'Please describe the external goods';
+      isValid = false;
+    }
+
+    setStep5Errors(errors);
+    return isValid;
+  };
+
+  // Clear Step 5 item error
+  const clearStep5ItemError = (itemId: string) => {
+    setStep5Errors(prev => {
+      if (!prev.items) return prev;
+      const newItemErrors = { ...prev.items };
+      delete newItemErrors[itemId];
+      return {
+        ...prev,
+        items: Object.keys(newItemErrors).length > 0 ? newItemErrors : undefined,
+      };
+    });
+  };
+
+  // Clear Step 5 field error
+  const clearStep5Error = (field: 'externalGoodsNotes' | 'general') => {
+    setStep5Errors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[field];
+      return newErrors;
+    });
+  };
+
+  const handleCompleteInspection = async () => {
+    // Validate Step 5
+    if (!validateStep5()) {
       return;
     }
     
@@ -469,10 +624,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
         notes: itemNotes[item.id] || undefined,
       };
     });
-    // #region agent log
-    const first = updatedItems?.[0];
-    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ReturnWorkflow.tsx:handleCompleteInspection',message:'updatedItems before onSave',data:{itemCount:updatedItems?.length,firstItem:first?{id:first.id,name:first.name,statusBreakdown:first.statusBreakdown}:null},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
+    
     // Generate GRN
     const grnNumber = `GRN-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
     
@@ -491,6 +643,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     try {
       await onSave(updatedData as Return); // Save to database
       toast.success(`GRN ${grnNumber} generated`);
+      setStep5Errors({});
       
       if (formData.transportationType === 'Transportation Needed') {
         setCurrentStep(6);
@@ -839,13 +992,16 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             {formData.transportationType === 'Transportation Needed' && (
               <>
                 <div className="space-y-2">
-                  <Label>Pickup Date</Label>
+                  <Label className={step1Errors.pickupDate ? 'text-red-600' : ''}>Pickup Date *</Label>
                   <div className="flex gap-2">
                     <Input
                       type="date"
                       value={pickupDate ? format(pickupDate, 'yyyy-MM-dd') : ''}
-                      onChange={(e) => setPickupDate(e.target.value ? new Date(e.target.value) : undefined)}
-                      className="flex-1"
+                      onChange={(e) => {
+                        setPickupDate(e.target.value ? new Date(e.target.value) : undefined);
+                        if (e.target.value) clearStep1Error('pickupDate');
+                      }}
+                      className={`flex-1 ${step1Errors.pickupDate ? 'border-red-500 bg-red-50' : ''}`}
                     />
                     <Popover>
                       <PopoverTrigger asChild>
@@ -857,40 +1013,37 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                         <Calendar
                           mode="single"
                           selected={pickupDate}
-                          onSelect={setPickupDate}
+                          onSelect={(date) => {
+                            setPickupDate(date);
+                            if (date) clearStep1Error('pickupDate');
+                          }}
                           initialFocus
                         />
                       </PopoverContent>
                     </Popover>
                   </div>
+                  {step1Errors.pickupDate && (
+                    <p className="text-xs text-red-600 flex items-center">
+                      <AlertCircle className="size-3 mr-1" />
+                      {step1Errors.pickupDate}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Pickup Time Slot</Label>
-                  <Select value={pickupTimeSlot.startsWith('custom:') ? 'custom' : pickupTimeSlot} onValueChange={(value) => {
-                    if (value === 'custom') {
-                      setPickupTimeSlot('custom:');
-                    } else {
-                      setPickupTimeSlot(value);
-                    }
-                  }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select time slot" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIME_SLOTS.map(slot => (
-                        <SelectItem key={slot} value={slot}>{slot}</SelectItem>
-                      ))}
-                      <SelectItem value="custom">Custom Time</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {pickupTimeSlot.startsWith('custom:') && (
-                    <Input
-                      type="text"
-                      placeholder="e.g., 10:00 - 11:00 or 14:30"
-                      value={pickupTimeSlot.replace('custom:', '')}
-                      onChange={(e) => setPickupTimeSlot(`custom:${e.target.value}`)}
-                    />
+                  <ScrollableTimePicker
+                    value={pickupTimeSlot || '12:00'}
+                    onChange={(time) => {
+                      setPickupTimeSlot(time);
+                      if (time) clearStep1Error('pickupTimeSlot');
+                    }}
+                    label="Pickup Time *"
+                  />
+                  {step1Errors.pickupTimeSlot && (
+                    <p className="text-xs text-red-600 flex items-center">
+                      <AlertCircle className="size-3 mr-1" />
+                      {step1Errors.pickupTimeSlot}
+                    </p>
                   )}
                 </div>
               </>
@@ -899,9 +1052,10 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             <Button
               onClick={handleApproveAndSchedule}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
+              disabled={isSaving}
             >
-              <Check className="size-4 mr-2" />
-              {formData.transportationType === 'Transportation Needed' ? 'Confirm Schedule & Proceed' : 'Approve Return'}
+              {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
+              {isSaving ? 'Saving...' : (formData.transportationType === 'Transportation Needed' ? 'Confirm Schedule & Proceed' : 'Approve Return')}
             </Button>
           </CardContent>
         </Card>
@@ -929,30 +1083,50 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             </div>
 
             <div className="space-y-2">
-              <Label>Driver Name</Label>
+              <Label className={step2Errors.pickupDriver ? 'text-red-600' : ''}>Driver Name *</Label>
               <Input
                 value={formData.pickupDriver || ''}
-                onChange={(e) => setFormData({ ...formData, pickupDriver: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, pickupDriver: e.target.value });
+                  if (e.target.value.trim()) clearStep2Error('pickupDriver');
+                }}
                 placeholder="Enter driver name"
+                className={step2Errors.pickupDriver ? 'border-red-500 bg-red-50' : ''}
               />
+              {step2Errors.pickupDriver && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step2Errors.pickupDriver}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <Label>Driver Contact</Label>
+              <Label className={step2Errors.driverContact ? 'text-red-600' : ''}>Driver Contact *</Label>
               <Input
                 value={formData.driverContact || ''}
-                onChange={(e) => setFormData({ ...formData, driverContact: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, driverContact: e.target.value });
+                  if (e.target.value.trim()) clearStep2Error('driverContact');
+                }}
                 placeholder="+60 12-345-6789"
+                className={step2Errors.driverContact ? 'border-red-500 bg-red-50' : ''}
               />
+              {step2Errors.driverContact && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step2Errors.driverContact}
+                </p>
+              )}
             </div>
 
             <Button
               onClick={handleConfirmPickup}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
-              disabled={!formData.pickupDriver || !formData.driverContact}
+              disabled={isSaving}
             >
-              <Check className="size-4 mr-2" />
-              Confirm Pickup
+              {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
+              {isSaving ? 'Saving...' : 'Confirm Pickup'}
             </Button>
           </CardContent>
         </Card>
@@ -984,8 +1158,16 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             </div>
 
             <div className="space-y-2">
-              <Label>Driver Photos (Required)</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+              <Label className={step3Errors.photos ? 'text-red-600' : ''}>Driver Photos (Required) *</Label>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  handlePhotoUpload();
+                  if (driverPhotos.length > 0) clearStep3Error();
+                }} 
+                className={`w-full ${step3Errors.photos ? 'border-red-500 bg-red-50' : ''}`}
+                disabled={isUploading}
+              >
                 {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
                 {isUploading ? 'Uploading...' : 'Upload Photos'}
               </Button>
@@ -994,9 +1176,18 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={onFileSelect}
+                onChange={(e) => {
+                  onFileSelect(e);
+                  clearStep3Error();
+                }}
                 className="hidden"
               />
+              {step3Errors.photos && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step3Errors.photos}
+                </p>
+              )}
               {driverPhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {driverPhotos.map((photo, index) => (
@@ -1019,7 +1210,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             <Button
               onClick={handleDriverRecording}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
-              disabled={driverPhotos.length === 0 || isSaving}
+              disabled={isSaving}
             >
               {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
               {isSaving ? 'Saving...' : 'Save Recording & Mark In Transit'}
@@ -1044,8 +1235,16 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             </p>
 
             <div className="space-y-2">
-              <Label>Warehouse Receipt Photos (Required)</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+              <Label className={step4Errors.photos ? 'text-red-600' : ''}>Warehouse Receipt Photos (Required) *</Label>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  handlePhotoUpload();
+                  if (warehousePhotos.length > 0) clearStep4Error();
+                }} 
+                className={`w-full ${step4Errors.photos ? 'border-red-500 bg-red-50' : ''}`}
+                disabled={isUploading}
+              >
                 {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
                 {isUploading ? 'Uploading...' : 'Upload Photos'}
               </Button>
@@ -1054,9 +1253,18 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                 type="file"
                 accept="image/*"
                 multiple
-                onChange={onFileSelect}
+                onChange={(e) => {
+                  onFileSelect(e);
+                  clearStep4Error();
+                }}
                 className="hidden"
               />
+              {step4Errors.photos && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step4Errors.photos}
+                </p>
+              )}
               {warehousePhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {warehousePhotos.map((photo, index) => (
@@ -1079,10 +1287,10 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             <Button
               onClick={handleReceiveAtWarehouse}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
-              disabled={warehousePhotos.length === 0}
+              disabled={isSaving}
             >
-              <Check className="size-4 mr-2" />
-              Confirm Receipt at Warehouse
+              {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
+              {isSaving ? 'Saving...' : 'Confirm Receipt at Warehouse'}
             </Button>
           </CardContent>
         </Card>
@@ -1124,6 +1332,8 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                       [status]: newValue,
                     },
                   });
+                  // Clear error when user updates breakdown
+                  clearStep5ItemError(item.id);
                 };
 
                 const setAllToStatus = (status: ItemConditionStatus) => {
@@ -1135,10 +1345,14 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                       'Replace': status === 'Replace' ? item.quantityReturned : 0,
                     },
                   });
+                  // Clear error when user sets status
+                  clearStep5ItemError(item.id);
                 };
 
+                const hasItemError = step5Errors.items?.[item.id];
+
                 return (
-                  <div key={item.id} className="p-4 border rounded-lg space-y-4">
+                  <div key={item.id} className={`p-4 border rounded-lg space-y-4 ${hasItemError ? 'border-red-500 bg-red-50/30' : ''}`}>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-medium text-[#231F20]">{item.name}</p>
@@ -1244,6 +1458,14 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                       {totalAssigned === item.quantityReturned && ' ✓'}
                     </div>
                     
+                    {/* Inline Error Message */}
+                    {hasItemError && (
+                      <p className="text-xs text-red-600 flex items-center">
+                        <AlertCircle className="size-3 mr-1" />
+                        {hasItemError}
+                      </p>
+                    )}
+                    
                     <div className="space-y-2">
                       <Label className="text-xs">Notes (Optional)</Label>
                       <Textarea
@@ -1282,13 +1504,23 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
 
             {hasExternalGoods && (
               <div className="space-y-2">
-                <Label>External Goods Notes</Label>
+                <Label className={step5Errors.externalGoodsNotes ? 'text-red-600' : ''}>External Goods Notes *</Label>
                 <Textarea
                   value={externalGoodsNotes}
-                  onChange={(e) => setExternalGoodsNotes(e.target.value)}
+                  onChange={(e) => {
+                    setExternalGoodsNotes(e.target.value);
+                    if (e.target.value.trim()) clearStep5Error('externalGoodsNotes');
+                  }}
                   placeholder="Describe the external goods..."
                   rows={2}
+                  className={step5Errors.externalGoodsNotes ? 'border-red-500 bg-red-50' : ''}
                 />
+                {step5Errors.externalGoodsNotes && (
+                  <p className="text-xs text-red-600 flex items-center">
+                    <AlertCircle className="size-3 mr-1" />
+                    {step5Errors.externalGoodsNotes}
+                  </p>
+                )}
               </div>
             )}
 
@@ -1329,9 +1561,10 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             <Button
               onClick={handleCompleteInspection}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
+              disabled={isSaving}
             >
-              <FileText className="size-4 mr-2" />
-              Complete Inspection & Generate GRN
+              {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <FileText className="size-4 mr-2" />}
+              {isSaving ? 'Saving...' : 'Complete Inspection & Generate GRN'}
             </Button>
           </CardContent>
         </Card>
