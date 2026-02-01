@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE `repairitem` ADD COLUMN `quantityRepair` INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN `quantityWriteOff` INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN `repairActionEntries` LONGTEXT NULL,
+    ADD COLUMN `totalRepairCost` DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    ADD COLUMN `writeOffCostPerUnit` DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    ADD COLUMN `writeOffTotalCost` DECIMAL(15, 2) NOT NULL DEFAULT 0;

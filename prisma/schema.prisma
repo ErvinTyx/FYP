@@ -317,15 +317,22 @@ model RepairItem {
   scaffoldingItemId     String
   scaffoldingItemName   String
   quantity              Int
+  quantityRepair        Int                  @default(0)  // Items for repair
+  quantityWriteOff      Int                  @default(0)  // Items for write-off (beyond repair)
   quantityRepaired      Int                  @default(0)
   quantityRemaining     Int                  @default(0)
   damageType            String               // bent, cracked, corroded, missing-parts, welding-required, other
   damageDescription     String?              @db.Text
-  repairActions         String?              @db.LongText // JSON array of repair actions
+  repairActions         String?              @db.LongText // JSON array of repair action names (legacy)
+  repairActionEntries   String?              @db.LongText // JSON array of RepairActionEntry: {id, action, affectedItems, issueQuantity, costPerUnit, totalCost}
   repairDescription     String?              @db.Text
   repairStatus          String               @default("pending") // pending, in-progress, completed
-  costPerUnit           Decimal              @default(0) @db.Decimal(15, 2)
-  totalCost             Decimal              @default(0) @db.Decimal(15, 2)
+  // Cost fields
+  writeOffCostPerUnit   Decimal              @default(0) @db.Decimal(15, 2) // Original price of scaffolding item
+  writeOffTotalCost     Decimal              @default(0) @db.Decimal(15, 2) // quantityWriteOff × writeOffCostPerUnit
+  totalRepairCost       Decimal              @default(0) @db.Decimal(15, 2) // Sum of all repair action entry costs
+  costPerUnit           Decimal              @default(0) @db.Decimal(15, 2) // Legacy
+  totalCost             Decimal              @default(0) @db.Decimal(15, 2) // totalRepairCost + writeOffTotalCost
   estimatedCostFromRFQ  Decimal              @default(0) @db.Decimal(15, 2)
   finalCost             Decimal              @default(0) @db.Decimal(15, 2)
   beforeImages          String?              @db.LongText // JSON array of image URLs
