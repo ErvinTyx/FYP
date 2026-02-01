@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Info } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -8,7 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
-import { OpenRepairSlip, RepairItem, ConditionReport, DAMAGE_TYPES, REPAIR_ACTIONS } from '../../types/inspection';
+import { 
+  OpenRepairSlip, 
+  RepairItem, 
+  RepairActionEntry,
+  ConditionReport, 
+  getRepairActionsForItem,
+  ScaffoldingRepairAction
+} from '../../types/inspection';
 
 interface RepairSlipFormProps {
   repairSlip?: OpenRepairSlip | null;
@@ -34,29 +41,34 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
 
   const [repairItems, setRepairItems] = useState<RepairItem[]>(repairSlip?.items || []);
 
-  // Initialize repair items from condition report
   useEffect(() => {
     if (conditionReport && !repairSlip && conditionReport.items) {
       const damagedItems = (conditionReport.items || []).filter(item => item.repairRequired);
       const initialItems: RepairItem[] = damagedItems.map(item => {
-        // Auto-populate cost from condition report
-        const estimatedRepairCost = Number(item.estimatedRepairCost || 0);
-        const damageQty = Number(item.quantityRepair || 0) + Number(item.quantityWriteOff || 0);
-        const costPerUnit = damageQty > 0 ? estimatedRepairCost / damageQty : estimatedRepairCost;
+        const qtyRepair = Number(item.quantityRepair || 0);
+        const qtyWriteOff = Number(item.quantityWriteOff || 0);
+        const totalQty = qtyRepair + qtyWriteOff;
+        const originalPrice = Number(item.originalItemPrice || 0);
         return {
           id: `repair-item-${Date.now()}-${Math.random()}`,
           inspectionItemId: item.id,
           scaffoldingItemId: item.scaffoldingItemId,
           scaffoldingItemName: item.scaffoldingItemName,
-          quantity: damageQty, // Only damaged/repair needed items
+          quantity: totalQty,
+          quantityRepair: qtyRepair,
+          quantityWriteOff: qtyWriteOff,
           quantityRepaired: 0,
-          quantityRemaining: damageQty,
+          quantityRemaining: qtyRepair,
           damageType: 'other',
           damageDescription: item.damageDescription || '',
           repairActions: [],
+          repairActionEntries: [],
           repairStatus: 'pending',
-          costPerUnit: Number.isFinite(costPerUnit) ? costPerUnit : 0,
-          totalCost: Number.isFinite(estimatedRepairCost) ? estimatedRepairCost : 0,
+          writeOffCostPerUnit: originalPrice,
+          writeOffTotalCost: qtyWriteOff * originalPrice,
+          totalRepairCost: 0,
+          costPerUnit: 0,
+          totalCost: qtyWriteOff * originalPrice,
           beforeImages: item.images.map(img => img.url),
           afterImages: [],
         };
@@ -65,25 +77,15 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     }
   }, [conditionReport, repairSlip]);
 
-  // Recalculate estimated cost when items change
   useEffect(() => {
     const total = repairItems.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
     setFormData(prev => ({ ...prev, estimatedCost: Number.isFinite(total) ? total : 0 }));
   }, [repairItems]);
 
-  // Get available items from condition report for dropdown, excluding already selected items
   const getAvailableConditionReportItems = (currentRepairItemId: string) => {
     if (!conditionReport || !conditionReport.items) return [];
-    
-    // Get IDs of items already selected in other repair items (not the current one)
-    const selectedInspectionItemIds = repairItems
-      .filter(ri => ri.id !== currentRepairItemId && ri.inspectionItemId)
-      .map(ri => ri.inspectionItemId);
-    
-    // Return items that require repair and are not already selected
-    return conditionReport.items.filter(item => 
-      item.repairRequired && !selectedInspectionItemIds.includes(item.id)
-    );
+    const selectedIds = repairItems.filter(ri => ri.id !== currentRepairItemId && ri.inspectionItemId).map(ri => ri.inspectionItemId);
+    return conditionReport.items.filter(item => item.repairRequired && !selectedIds.includes(item.id));
   };
 
   const handleAddItem = () => {
@@ -92,13 +94,19 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
       inspectionItemId: '',
       scaffoldingItemId: '',
       scaffoldingItemName: '',
-      quantity: 1,
+      quantity: 0,
+      quantityRepair: 0,
+      quantityWriteOff: 0,
       quantityRepaired: 0,
-      quantityRemaining: 1,
+      quantityRemaining: 0,
       damageType: 'other',
       damageDescription: '',
       repairActions: [],
+      repairActionEntries: [],
       repairStatus: 'pending',
+      writeOffCostPerUnit: 0,
+      writeOffTotalCost: 0,
+      totalRepairCost: 0,
       costPerUnit: 0,
       totalCost: 0,
       beforeImages: [],
@@ -107,17 +115,14 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     setRepairItems([...repairItems, newItem]);
   };
 
-  // Handle selecting a scaffolding item from condition report dropdown
   const handleSelectConditionReportItem = (repairItemId: string, inspectionItemId: string) => {
     if (!conditionReport || !conditionReport.items) return;
-    
     const selectedItem = conditionReport.items.find(item => item.id === inspectionItemId);
     if (!selectedItem) return;
-
-    const estimatedRepairCost = Number(selectedItem.estimatedRepairCost || 0);
-    const damageQty = Number(selectedItem.quantityRepair || 0) + Number(selectedItem.quantityWriteOff || 0);
-    const costPerUnit = damageQty > 0 ? estimatedRepairCost / damageQty : estimatedRepairCost;
-
+    const qtyRepair = Number(selectedItem.quantityRepair || 0);
+    const qtyWriteOff = Number(selectedItem.quantityWriteOff || 0);
+    const totalQty = qtyRepair + qtyWriteOff;
+    const originalPrice = Number(selectedItem.originalItemPrice || 0);
     setRepairItems(repairItems.map(item => {
       if (item.id === repairItemId) {
         return {
@@ -125,11 +130,15 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
           inspectionItemId: selectedItem.id,
           scaffoldingItemId: selectedItem.scaffoldingItemId,
           scaffoldingItemName: selectedItem.scaffoldingItemName,
-          quantity: damageQty,
-          quantityRemaining: damageQty,
+          quantity: totalQty,
+          quantityRepair: qtyRepair,
+          quantityWriteOff: qtyWriteOff,
+          quantityRemaining: qtyRepair,
           damageDescription: selectedItem.damageDescription || '',
-          costPerUnit: Number.isFinite(costPerUnit) ? costPerUnit : 0,
-          totalCost: Number.isFinite(estimatedRepairCost) ? estimatedRepairCost : 0,
+          writeOffCostPerUnit: originalPrice,
+          writeOffTotalCost: qtyWriteOff * originalPrice,
+          totalCost: qtyWriteOff * originalPrice,
+          repairActionEntries: [],
           beforeImages: selectedItem.images.map(img => img.url),
         };
       }
@@ -141,56 +150,83 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     setRepairItems(repairItems.filter(item => item.id !== itemId));
   };
 
-  const handleUpdateItem = (itemId: string, field: keyof RepairItem, value: any) => {
+  const handleUpdateQuantity = (itemId: string, field: 'quantityRepair' | 'quantityWriteOff', value: number) => {
     setRepairItems(repairItems.map(item => {
       if (item.id === itemId) {
         const updated = { ...item, [field]: value };
-        
-        // Auto-calculate total cost
-        if (field === 'costPerUnit' || field === 'quantity') {
-          const costPerUnit = Number((updated as any).costPerUnit || 0);
-          const quantity = Number((updated as any).quantity || 0);
-          updated.totalCost = Number.isFinite(costPerUnit * quantity) ? costPerUnit * quantity : 0;
-        }
-        
+        updated.quantity = updated.quantityRepair + updated.quantityWriteOff;
+        updated.quantityRemaining = updated.quantityRepair;
+        updated.writeOffTotalCost = updated.quantityWriteOff * updated.writeOffCostPerUnit;
+        updated.totalCost = updated.totalRepairCost + updated.writeOffTotalCost;
         return updated;
       }
       return item;
     }));
   };
 
-  const handleToggleRepairAction = (itemId: string, action: string) => {
+  const handleUpdateRepairActionEntry = (itemId: string, actionId: string, field: keyof RepairActionEntry, value: number) => {
     setRepairItems(repairItems.map(item => {
       if (item.id === itemId) {
-        const actions = item.repairActions.includes(action)
-          ? item.repairActions.filter(a => a !== action)
-          : [...item.repairActions, action];
-        return { ...item, repairActions: actions };
+        const entries = item.repairActionEntries.map(entry => {
+          if (entry.id === actionId) {
+            const updated = { ...entry, [field]: value };
+            updated.totalCost = updated.issueQuantity * updated.costPerUnit;
+            return updated;
+          }
+          return entry;
+        });
+        const totalRepairCost = entries.reduce((sum, e) => sum + e.totalCost, 0);
+        return { ...item, repairActionEntries: entries, totalRepairCost, totalCost: totalRepairCost + item.writeOffTotalCost };
+      }
+      return item;
+    }));
+  };
+
+  const handleToggleRepairAction = (itemId: string, repairAction: ScaffoldingRepairAction) => {
+    setRepairItems(repairItems.map(item => {
+      if (item.id === itemId) {
+        const existingEntry = item.repairActionEntries.find(e => e.action === repairAction.action);
+        let newEntries: RepairActionEntry[];
+        if (existingEntry) {
+          newEntries = item.repairActionEntries.filter(e => e.action !== repairAction.action);
+        } else {
+          newEntries = [...item.repairActionEntries, {
+            id: `action-${Date.now()}-${Math.random()}`,
+            action: repairAction.action,
+            affectedItems: 0,
+            issueQuantity: 0,
+            costPerUnit: repairAction.costPerUnit,
+            totalCost: 0,
+          }];
+        }
+        const totalRepairCost = newEntries.reduce((sum, e) => sum + e.totalCost, 0);
+        return { ...item, repairActionEntries: newEntries, repairActions: newEntries.map(e => e.action), totalRepairCost, totalCost: totalRepairCost + item.writeOffTotalCost };
+      }
+      return item;
+    }));
+  };
+
+  const handleUpdateItem = (itemId: string, field: keyof RepairItem, value: any) => {
+    setRepairItems(repairItems.map(item => item.id === itemId ? { ...item, [field]: value } : item));
+  };
+
+  const handleUpdateWriteOffCost = (itemId: string, newPrice: number) => {
+    setRepairItems(repairItems.map(item => {
+      if (item.id === itemId) {
+        const writeOffTotal = item.quantityWriteOff * newPrice;
+        return { ...item, writeOffCostPerUnit: newPrice, writeOffTotalCost: writeOffTotal, totalCost: item.totalRepairCost + writeOffTotal };
       }
       return item;
     }));
   };
 
   const handleSubmit = () => {
-    // Validation
-    if (!formData.rcfNumber) {
-      toast.error('RCF Number is required');
-      return;
-    }
-
-    if (repairItems.length === 0) {
-      toast.error('At least one repair item is required');
-      return;
-    }
-
-    const invalidItems = repairItems.filter(
-      item => !item.scaffoldingItemName || !item.damageDescription || item.repairActions.length === 0
-    );
-
-    if (invalidItems.length > 0) {
-      toast.error('Please complete all repair item details');
-      return;
-    }
+    if (!formData.rcfNumber) { toast.error('RCF Number is required'); return; }
+    if (repairItems.length === 0) { toast.error('At least one repair item is required'); return; }
+    const invalidItems = repairItems.filter(item => !item.scaffoldingItemName || (item.quantityRepair === 0 && item.quantityWriteOff === 0));
+    if (invalidItems.length > 0) { toast.error('Please complete all repair item details'); return; }
+    const itemsNeedingActions = repairItems.filter(item => item.quantityRepair > 0 && item.repairActionEntries.length === 0);
+    if (itemsNeedingActions.length > 0) { toast.error('Please add at least one repair action for items marked for repair'); return; }
 
     const repairSlipData: OpenRepairSlip = {
       id: repairSlip?.id || `repair-${Date.now()}`,
@@ -211,71 +247,42 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
       createdAt: repairSlip?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-
     onSave(repairSlipData);
     toast.success(repairSlip ? 'Repair slip updated successfully' : 'Repair slip created successfully');
   };
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onCancel}>
-            <ArrowLeft className="size-5" />
-          </Button>
+          <Button variant="ghost" size="icon" onClick={onCancel}><ArrowLeft className="size-5" /></Button>
           <div>
-            <h1 className="text-[#231F20]">
-              {repairSlip ? 'Edit Repair Slip' : 'Create Repair Slip'}
-            </h1>
-            <p className="text-gray-600">
-              {conditionReport ? `From RCF: ${conditionReport.rcfNumber}` : 'Enter repair details'}
-            </p>
+            <h1 className="text-[#231F20]">{repairSlip ? 'Edit Repair Slip' : 'Create Repair Slip'}</h1>
+            <p className="text-gray-600">{conditionReport ? `From RCF: ${conditionReport.rcfNumber}` : 'Enter repair details'}</p>
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} className="bg-[#F15929] hover:bg-[#d94d1f]">
-            {repairSlip ? 'Update' : 'Create'} Repair Slip
-          </Button>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button onClick={handleSubmit} className="bg-[#F15929] hover:bg-[#d94d1f]">{repairSlip ? 'Update' : 'Create'} Repair Slip</Button>
         </div>
       </div>
 
-      {/* Basic Information */}
       <Card>
-        <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Basic Information</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>ORP Number</Label>
-              <Input
-                value={formData.orpNumber}
-                onChange={(e) => setFormData({ ...formData, orpNumber: e.target.value })}
-                placeholder="ORP-XXXXX"
-              />
+              <Input value={formData.orpNumber} onChange={(e) => setFormData({ ...formData, orpNumber: e.target.value })} placeholder="ORP-XXXXX" />
             </div>
             <div className="space-y-2">
               <Label>RCF Number</Label>
-              <Input
-                value={formData.rcfNumber}
-                onChange={(e) => setFormData({ ...formData, rcfNumber: e.target.value })}
-                placeholder="RCF-XXXXX"
-                disabled={!!conditionReport}
-              />
+              <Input value={formData.rcfNumber} onChange={(e) => setFormData({ ...formData, rcfNumber: e.target.value })} placeholder="RCF-XXXXX" disabled={!!conditionReport} />
             </div>
             <div className="space-y-2">
               <Label>Priority</Label>
-              <Select
-                value={formData.priority}
-                onValueChange={(value) => setFormData({ ...formData, priority: value as OpenRepairSlip['priority'] })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <Select value={formData.priority} onValueChange={(value) => setFormData({ ...formData, priority: value as OpenRepairSlip['priority'] })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="low">Low</SelectItem>
                   <SelectItem value="medium">Medium</SelectItem>
@@ -285,206 +292,150 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
               </Select>
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Assigned To</Label>
-              <Input
-                value={formData.assignedTo}
-                onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
-                placeholder="Technician name"
-              />
+              <Input value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} placeholder="Technician name" />
             </div>
             <div className="space-y-2">
               <Label>Start Date</Label>
-              <Input
-                type="date"
-                value={formData.startDate}
-                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-              />
+              <Input type="date" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
             </div>
           </div>
-
           <div className="space-y-2">
             <Label>Repair Notes</Label>
-            <Textarea
-              value={formData.repairNotes}
-              onChange={(e) => setFormData({ ...formData, repairNotes: e.target.value })}
-              placeholder="Additional notes about the repair..."
-              rows={3}
-            />
+            <Textarea value={formData.repairNotes} onChange={(e) => setFormData({ ...formData, repairNotes: e.target.value })} placeholder="Additional notes..." rows={3} />
           </div>
         </CardContent>
       </Card>
 
-      {/* Repair Items */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Repair Items</CardTitle>
-            <Button onClick={handleAddItem} variant="outline" size="sm">
-              <Plus className="size-4 mr-2" />
-              Add Item
-            </Button>
+            <Button onClick={handleAddItem} variant="outline" size="sm"><Plus className="size-4 mr-2" />Add Item</Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {repairItems.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No repair items added. Click "Add Item" to add repair items.
-            </div>
+            <div className="text-center py-8 text-gray-500">No repair items added. Click "Add Item" to add repair items.</div>
           ) : (
             repairItems.map((item, index) => (
-              <div key={item.id} className="p-4 border rounded-lg space-y-4 relative">
+              <div key={item.id} className="p-4 border rounded-lg space-y-4">
                 <div className="flex items-start justify-between">
-                  <h4 className="text-[#231F20]">Item #{index + 1}</h4>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleRemoveItem(item.id)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label>Scaffolding Item</Label>
-                    {conditionReport ? (
-                      <>
-                        <Select
-                          value={item.inspectionItemId || ''}
-                          onValueChange={(value) => handleSelectConditionReportItem(item.id, value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select from condition report" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {getAvailableConditionReportItems(item.id).map((crItem) => (
-                              <SelectItem key={crItem.id} value={crItem.id}>
-                                {crItem.scaffoldingItemName} (Qty: {(crItem.quantityRepair || 0) + (crItem.quantityWriteOff || 0)})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-gray-500">Select from condition report items</p>
-                      </>
-                    ) : (
-                      <Input
-                        value={item.scaffoldingItemName}
-                        onChange={(e) => handleUpdateItem(item.id, 'scaffoldingItemName', e.target.value)}
-                        placeholder="e.g., Standard Frame"
-                      />
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Quantity</Label>
-                    <Input
-                      type="number"
-                      value={item.quantity}
-                      onChange={(e) => handleUpdateItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
-                      min="1"
-                      disabled={!!conditionReport && !!item.inspectionItemId}
-                      className={conditionReport && item.inspectionItemId ? "bg-gray-200" : ""}
-                    />
-                    {conditionReport && item.inspectionItemId && (
-                      <p className="text-xs text-gray-500">Auto-filled from condition report</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Damage Type</Label>
-                    <Select
-                      value={item.damageType}
-                      onValueChange={(value) => handleUpdateItem(item.id, 'damageType', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DAMAGE_TYPES.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            {type.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {item.damageType === 'other' && (
-                  <div className="space-y-2">
-                    <Label>Damage Description</Label>
-                    <Textarea
-                      value={item.damageDescription}
-                      onChange={(e) => handleUpdateItem(item.id, 'damageDescription', e.target.value)}
-                      placeholder="Describe the damage..."
-                      rows={2}
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label>Repair Actions Required</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {REPAIR_ACTIONS.map(action => (
-                      <Badge
-                        key={action}
-                        variant={item.repairActions.includes(action) ? 'default' : 'outline'}
-                        className={`cursor-pointer ${
-                          item.repairActions.includes(action)
-                            ? 'bg-[#F15929] hover:bg-[#d94d1f]'
-                            : 'hover:bg-gray-100'
-                        }`}
-                        onClick={() => handleToggleRepairAction(item.id, action)}
-                      >
-                        {action}
-                      </Badge>
-                    ))}
-                  </div>
+                  <h4 className="text-[#231F20] font-medium">Item #{index + 1}</h4>
+                  <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(item.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50"><Trash2 className="size-4" /></Button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
+                    <Label>Scaffolding Item</Label>
+                    {conditionReport ? (
+                      <Select value={item.inspectionItemId || ''} onValueChange={(value) => handleSelectConditionReportItem(item.id, value)}>
+                        <SelectTrigger><SelectValue placeholder="Select from condition report" /></SelectTrigger>
+                        <SelectContent>
+                          {getAvailableConditionReportItems(item.id).map((crItem) => (
+                            <SelectItem key={crItem.id} value={crItem.id}>{crItem.scaffoldingItemName} (Qty: {(crItem.quantityRepair || 0) + (crItem.quantityWriteOff || 0)})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value={item.scaffoldingItemName} onChange={(e) => handleUpdateItem(item.id, 'scaffoldingItemName', e.target.value)} placeholder="e.g., Crab Ledger 1.50m" />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Total Quantity</Label>
+                    <Input type="number" value={item.quantity} disabled className="bg-gray-200" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Damage Description</Label>
+                  <Textarea value={item.damageDescription} onChange={(e) => handleUpdateItem(item.id, 'damageDescription', e.target.value)} placeholder="Describe the damage..." rows={2} />
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+                  <div className="flex items-center gap-2"><Info className="size-4 text-blue-500" /><span className="text-sm font-medium">Quantity Breakdown</span></div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>For Repair</Label>
+                      <Input type="number" value={item.quantityRepair} onChange={(e) => handleUpdateQuantity(item.id, 'quantityRepair', parseInt(e.target.value) || 0)} min="0" />
+                      <p className="text-xs text-gray-500">Items that can be repaired</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>For Write-off</Label>
+                      <Input type="number" value={item.quantityWriteOff} onChange={(e) => handleUpdateQuantity(item.id, 'quantityWriteOff', parseInt(e.target.value) || 0)} min="0" />
+                      <p className="text-xs text-gray-500">Items beyond repair</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Write-off Cost/Unit (RM)</Label>
+                      <Input type="number" value={Number(item.writeOffCostPerUnit || 0).toFixed(2)} onChange={(e) => handleUpdateWriteOffCost(item.id, parseFloat(e.target.value) || 0)} />
+                      <p className="text-xs text-gray-500">Write-off: RM {Number(item.writeOffTotalCost || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {item.quantityRepair > 0 && item.scaffoldingItemName && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2"><Label>Repair Actions Required</Label><span className="text-xs text-gray-500">(Click to add/remove)</span></div>
+                    <div className="flex flex-wrap gap-2">
+                      {getRepairActionsForItem(item.scaffoldingItemName).map((repairAction) => {
+                        const isSelected = item.repairActionEntries.some(e => e.action === repairAction.action);
+                        return (
+                          <Badge key={repairAction.action} variant={isSelected ? 'default' : 'outline'} className={`cursor-pointer ${isSelected ? 'bg-[#F15929] hover:bg-[#d94d1f]' : 'hover:bg-gray-100'}`} onClick={() => handleToggleRepairAction(item.id, repairAction)}>
+                            {repairAction.action} (RM {repairAction.costPerUnit.toFixed(2)}/{repairAction.costType === 'per-bend' ? 'bend' : 'item'})
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                    {item.repairActionEntries.length > 0 && (
+                      <div className="space-y-3 p-4 bg-blue-50 rounded-lg">
+                        <span className="text-sm font-medium text-blue-700">Repair Action Details</span>
+                        {item.repairActionEntries.map((entry) => {
+                          const actionInfo = getRepairActionsForItem(item.scaffoldingItemName).find(a => a.action === entry.action);
+                          const isBendType = actionInfo?.costType === 'per-bend';
+                          return (
+                            <div key={entry.id} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 bg-white rounded border">
+                              <div><Label className="text-xs">{entry.action}</Label><p className="text-xs text-gray-500">RM {entry.costPerUnit.toFixed(2)}/{isBendType ? 'bend' : 'item'}</p></div>
+                              <div className="space-y-1"><Label className="text-xs">Affected Items</Label><Input type="number" value={entry.affectedItems} onChange={(e) => handleUpdateRepairActionEntry(item.id, entry.id, 'affectedItems', parseInt(e.target.value) || 0)} min="0" max={item.quantityRepair} className="h-8 text-sm" /><p className="text-xs text-gray-400">Scaffolding items affected</p></div>
+                              <div className="space-y-1"><Label className="text-xs">{isBendType ? 'Issue Qty (Bends)' : 'Issue Qty'}</Label><Input type="number" value={entry.issueQuantity} onChange={(e) => handleUpdateRepairActionEntry(item.id, entry.id, 'issueQuantity', parseInt(e.target.value) || 0)} min="0" className="h-8 text-sm" /><p className="text-xs text-gray-400">{isBendType ? 'Total bends to fix' : 'For cost calculation'}</p></div>
+                              <div className="space-y-1"><Label className="text-xs">Cost</Label><div className="h-8 flex items-center text-sm font-medium text-green-700">RM {Number(entry.totalCost || 0).toFixed(2)}</div><p className="text-xs text-gray-400">{entry.issueQuantity} x RM {entry.costPerUnit.toFixed(2)}</p></div>
+                            </div>
+                          );
+                        })}
+                        <div className="flex justify-end pt-2 border-t"><span className="text-sm font-medium text-blue-700">Total Repair Cost: RM {Number(item.totalRepairCost || 0).toFixed(2)}</span></div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                  <div className="space-y-2">
                     <Label>Repair Status</Label>
-                    <Select
-                      value={item.repairStatus}
-                      onValueChange={(value) => handleUpdateItem(item.id, 'repairStatus', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Select value={item.repairStatus} onValueChange={(value) => handleUpdateItem(item.id, 'repairStatus', value)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pending">Pending</SelectItem>
                         <SelectItem value="in-progress">In Progress</SelectItem>
                         <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="scrapped">Scrapped</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Total Cost (RM)</Label>
-                    <Input
-                      type="number"
-                      value={Number(item.totalCost || 0).toFixed(2)}
-                      disabled
-                      className="bg-gray-200"
-                    />
-                    {conditionReport && (
-                      <p className="text-xs text-gray-500">Auto-calculated from condition report</p>
-                    )}
+                    <div className="p-3 bg-gray-100 rounded-lg">
+                      <div className="flex justify-between text-sm"><span>Repair Cost:</span><span>RM {Number(item.totalRepairCost || 0).toFixed(2)}</span></div>
+                      <div className="flex justify-between text-sm"><span>Write-off Cost:</span><span>RM {Number(item.writeOffTotalCost || 0).toFixed(2)}</span></div>
+                      <div className="flex justify-between font-bold text-[#F15929] pt-2 border-t mt-2"><span>Total:</span><span>RM {Number(item.totalCost || 0).toFixed(2)}</span></div>
+                    </div>
                   </div>
                 </div>
               </div>
             ))
           )}
-
           {repairItems.length > 0 && (
             <div className="pt-4 border-t">
-              <div className="flex justify-between items-center">
-                <span className="text-[#231F20]">Estimated Total Cost:</span>
-                <span className="text-[#231F20]">RM {Number(formData.estimatedCost || 0).toFixed(2)}</span>
-              </div>
+              <div className="flex justify-between items-center text-lg font-bold"><span className="text-[#231F20]">Estimated Total Cost:</span><span className="text-[#F15929]">RM {Number(formData.estimatedCost || 0).toFixed(2)}</span></div>
             </div>
           )}
         </CardContent>

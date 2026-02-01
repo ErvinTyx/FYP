@@ -88,23 +88,40 @@ export interface OpenRepairSlip {
   inventoryLevel?: 'very-low' | 'low' | 'normal' | 'high'; // Added for priority calculation
 }
 
+// Repair action entry for tracking each repair action with quantities
+export interface RepairActionEntry {
+  id: string;
+  action: string;              // e.g., "Wedge key missing/damaged", "Repairable bend"
+  affectedItems: number;       // Number of scaffolding items affected (for tracking repair progress)
+  issueQuantity: number;       // Quantity of issues (e.g., number of bends) - for cost calculation
+  costPerUnit: number;         // Cost per issue unit (from ScaffoldingDamageRepair)
+  totalCost: number;           // issueQuantity × costPerUnit
+}
+
 export interface RepairItem {
   id: string;
   inspectionItemId: string;
   scaffoldingItemId: string;
   scaffoldingItemName: string;
-  quantity: number;
-  quantityRepaired: number; // Track how much has been repaired
-  quantityRemaining: number; // Track remaining to be repaired
+  quantity: number;            // Total quantity from condition report
+  quantityRepair: number;      // Items for repair
+  quantityWriteOff: number;    // Items for write-off (beyond repair)
+  quantityRepaired: number;    // Track how much has been repaired
+  quantityRemaining: number;   // Track remaining to be repaired
   damageType: 'bent' | 'cracked' | 'corroded' | 'missing-parts' | 'welding-required' | 'other';
   damageDescription: string;
-  repairActions: string[];
-  repairDescription?: string; // Only required for "other" repair action
+  repairActions: string[];     // Legacy - kept for backward compatibility
+  repairActionEntries: RepairActionEntry[]; // New - detailed repair actions with quantities
+  repairDescription?: string;
   repairStatus: 'pending' | 'in-progress' | 'completed';
-  costPerUnit: number;
-  totalCost: number;
-  estimatedCostFromRFQ?: number; // Added: Auto from RFQ
-  finalCost?: number; // Added: Manual input
+  // Cost fields
+  writeOffCostPerUnit: number; // Original price of scaffolding item
+  writeOffTotalCost: number;   // quantityWriteOff × writeOffCostPerUnit
+  totalRepairCost: number;     // Sum of all repair action costs
+  costPerUnit: number;         // Legacy - kept for backward compatibility
+  totalCost: number;           // totalRepairCost + writeOffTotalCost
+  estimatedCostFromRFQ?: number;
+  finalCost?: number;
   beforeImages: string[];
   afterImages: string[];
   completedDate?: string;
@@ -174,13 +191,123 @@ export const REPAIR_ACTIONS = [
   'Others'
 ];
 
-// Helper function to calculate estimated repair cost
+// Scaffolding item category to repair actions mapping
+// Based on Schedule of Damaged Equipment - Repairing Charges
+export interface ScaffoldingRepairAction {
+  action: string;
+  costPerUnit: number;
+  costType: 'per-item' | 'per-bend' | 'per-unit'; // How the cost is calculated
+}
+
+export const SCAFFOLDING_REPAIR_ACTIONS: Record<string, ScaffoldingRepairAction[]> = {
+  // Crab Triangle 1.5m, 0.7m
+  'CRAB TRIANGLE': [
+    { action: 'Wedge key missing/lost/damaged', costPerUnit: 10.50, costType: 'per-item' },
+    { action: 'Bar missing/lost/damaged', costPerUnit: 10.50, costType: 'per-item' },
+    { action: 'Repairable bend on horizontal/diagonal members', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  // Crab Plan Brace
+  'CRAB PLAN BRACE': [
+    { action: 'Repairable pipe bend', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  // Crab Brace
+  'CRAB BRACE': [
+    { action: 'Repairable pipe bend', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  // Crab Ledger, Base Hook, Crab Step Holder, Crab Ladder Beam
+  'CRAB LEDGER': [
+    { action: 'Wedge key missing/lost/damaged', costPerUnit: 10.50, costType: 'per-item' },
+    { action: 'Repairable pipe bend', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+    { action: 'Fastener bolt missing/lost/damaged', costPerUnit: 15.75, costType: 'per-item' },
+  ],
+  'ARM LOCK': [
+    { action: 'Wedge key missing/lost/damaged', costPerUnit: 10.50, costType: 'per-item' },
+    { action: 'Repairable pipe bend', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+    { action: 'Fastener bolt missing/lost/damaged', costPerUnit: 15.75, costType: 'per-item' },
+  ],
+  'BASE HOOK': [
+    { action: 'Wedge key missing/lost/damaged', costPerUnit: 10.50, costType: 'per-item' },
+    { action: 'Repairable pipe bend', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+    { action: 'Fastener bolt missing/lost/damaged', costPerUnit: 15.75, costType: 'per-item' },
+  ],
+  'CRAB STEP HOLDER': [
+    { action: 'Wedge key missing/lost/damaged', costPerUnit: 10.50, costType: 'per-item' },
+    { action: 'Repairable pipe bend', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+    { action: 'Fastener bolt missing/lost/damaged', costPerUnit: 15.75, costType: 'per-item' },
+  ],
+  'CRAB LADDER BEAM': [
+    { action: 'Wedge key missing/lost/damaged', costPerUnit: 10.50, costType: 'per-item' },
+    { action: 'Repairable pipe bend', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+    { action: 'Fastener bolt missing/lost/damaged', costPerUnit: 15.75, costType: 'per-item' },
+  ],
+  // Crab Basic Standard, Crab Standard (various sizes)
+  'CRAB BASIC STANDARD': [
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  'CRAB STANDARD': [
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  'CRAB SMALL POST': [
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  'CRAB END POST': [
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  // Crab Jack Base, Crab U-Head
+  'CRAB JACK BASE': [
+    { action: 'Thread pipe bend/dented/missing/lost', costPerUnit: 21.00, costType: 'per-item' },
+    { action: 'Jack handle nut damaged/missing/lost', costPerUnit: 15.75, costType: 'per-item' },
+    { action: 'Base plate & u-plate damaged/missing/lost', costPerUnit: 15.75, costType: 'per-item' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  'CRAB U-HEAD': [
+    { action: 'Thread pipe bend/dented/missing/lost', costPerUnit: 21.00, costType: 'per-item' },
+    { action: 'Jack handle nut damaged/missing/lost', costPerUnit: 15.75, costType: 'per-item' },
+    { action: 'Base plate & u-plate damaged/missing/lost', costPerUnit: 15.75, costType: 'per-item' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  'THREAD PIPE': [
+    { action: 'Thread pipe bend/dented/missing/lost', costPerUnit: 21.00, costType: 'per-item' },
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+  ],
+  // Default for unknown items
+  'DEFAULT': [
+    { action: 'Major concrete cleaning', costPerUnit: 2.10, costType: 'per-item' },
+    { action: 'Repairable bend/dent', costPerUnit: 5.25, costType: 'per-bend' },
+    { action: 'Part replacement', costPerUnit: 10.50, costType: 'per-item' },
+    { action: 'Other repair', costPerUnit: 0, costType: 'per-item' },
+  ],
+};
+
+// Helper function to get repair actions for a scaffolding item
+export function getRepairActionsForItem(itemName: string): ScaffoldingRepairAction[] {
+  const upperName = itemName.toUpperCase();
+  
+  // Check for exact or partial matches
+  for (const key of Object.keys(SCAFFOLDING_REPAIR_ACTIONS)) {
+    if (key !== 'DEFAULT' && upperName.includes(key)) {
+      return SCAFFOLDING_REPAIR_ACTIONS[key];
+    }
+  }
+  
+  return SCAFFOLDING_REPAIR_ACTIONS['DEFAULT'];
+}
+
+// Helper function to calculate estimated repair cost (legacy - kept for backward compatibility)
 export function calculateEstimatedRepairCost(
   originalPrice: number,
   condition: InspectionItem['condition']
 ): number {
   if (condition === 'good') return 0;
-  if (condition === 'beyond-repair') return originalPrice * 1.2; // 120% for write-off
-  // For minor-damage and major-damage
-  return originalPrice * 0.6; // 60% for repair
+  if (condition === 'beyond-repair') return originalPrice; // Write-off = original price
+  // For minor-damage and major-damage - now calculated based on specific repair actions
+  return 0; // Will be calculated from repair action entries
 }
