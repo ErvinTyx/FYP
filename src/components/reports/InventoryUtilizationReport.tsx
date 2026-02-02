@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Download, Calendar as CalendarIcon, Search, Package,
-  TrendingUp, AlertCircle, Clock, BarChart3, FileSpreadsheet
+  TrendingUp, AlertCircle, Clock, BarChart3, FileSpreadsheet, Loader2, Play
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -27,6 +27,22 @@ import { Calendar } from '../ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
+import type { InventoryUtilizationResponse } from '@/types/report';
+import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
+import { generateInventoryUtilizationExcel, downloadExcel } from '@/lib/report-excel-generator';
 
 interface ReportFilter {
   reportType: string;
@@ -36,141 +52,7 @@ interface ReportFilter {
   category?: string;
 }
 
-interface InventoryUtilizationData {
-  itemId: string;
-  itemName: string;
-  category: string;
-  totalQuantity: number;
-  inUse: number;
-  idle: number;
-  utilizationRate: number;
-  avgIdleDays: number;
-  location: string;
-  condition: 'Excellent' | 'Good' | 'Fair' | 'Needs Maintenance';
-}
-
-const mockData: InventoryUtilizationData[] = [
-  {
-    itemId: 'SCAF-001',
-    itemName: 'Steel Pipe Scaffolding - Standard (6m)',
-    category: 'Pipes',
-    totalQuantity: 500,
-    inUse: 425,
-    idle: 75,
-    utilizationRate: 85,
-    avgIdleDays: 15,
-    location: 'Warehouse A',
-    condition: 'Good'
-  },
-  {
-    itemId: 'SCAF-002',
-    itemName: 'Scaffold Board - Wooden (3.9m)',
-    category: 'Boards',
-    totalQuantity: 400,
-    inUse: 352,
-    idle: 48,
-    utilizationRate: 88,
-    avgIdleDays: 12,
-    location: 'Warehouse A',
-    condition: 'Good'
-  },
-  {
-    itemId: 'SCAF-003',
-    itemName: 'H-Frame Scaffolding (1.7m x 1.2m)',
-    category: 'Frames',
-    totalQuantity: 300,
-    inUse: 246,
-    idle: 54,
-    utilizationRate: 82,
-    avgIdleDays: 18,
-    location: 'Warehouse B',
-    condition: 'Excellent'
-  },
-  {
-    itemId: 'SCAF-004',
-    itemName: 'Coupling - Fixed/Right Angle',
-    category: 'Couplings',
-    totalQuantity: 800,
-    inUse: 736,
-    idle: 64,
-    utilizationRate: 92,
-    avgIdleDays: 8,
-    location: 'Warehouse A',
-    condition: 'Good'
-  },
-  {
-    itemId: 'SCAF-005',
-    itemName: 'Base Jack - Adjustable',
-    category: 'Accessories',
-    totalQuantity: 250,
-    inUse: 195,
-    idle: 55,
-    utilizationRate: 78,
-    avgIdleDays: 22,
-    location: 'Warehouse B',
-    condition: 'Good'
-  },
-  {
-    itemId: 'SCAF-006',
-    itemName: 'Ladder Beam - 5m',
-    category: 'Beams',
-    totalQuantity: 180,
-    inUse: 117,
-    idle: 63,
-    utilizationRate: 65,
-    avgIdleDays: 28,
-    location: 'Warehouse C',
-    condition: 'Fair'
-  },
-  {
-    itemId: 'SCAF-007',
-    itemName: 'Ringlock System - Vertical (3m)',
-    category: 'Systems',
-    totalQuantity: 200,
-    inUse: 180,
-    idle: 20,
-    utilizationRate: 90,
-    avgIdleDays: 10,
-    location: 'Warehouse A',
-    condition: 'Excellent'
-  },
-  {
-    itemId: 'SCAF-008',
-    itemName: 'Aluminum Mobile Tower',
-    category: 'Towers',
-    totalQuantity: 50,
-    inUse: 38,
-    idle: 12,
-    utilizationRate: 76,
-    avgIdleDays: 20,
-    location: 'Warehouse B',
-    condition: 'Good'
-  },
-  {
-    itemId: 'SCAF-009',
-    itemName: 'Toe Board - Metal (2.5m)',
-    category: 'Safety',
-    totalQuantity: 600,
-    inUse: 390,
-    idle: 210,
-    utilizationRate: 65,
-    avgIdleDays: 35,
-    location: 'Warehouse C',
-    condition: 'Fair'
-  },
-  {
-    itemId: 'SCAF-010',
-    itemName: 'Safety Harness - Full Body',
-    category: 'Safety',
-    totalQuantity: 150,
-    inUse: 82,
-    idle: 68,
-    utilizationRate: 55,
-    avgIdleDays: 42,
-    location: 'Warehouse A',
-    condition: 'Needs Maintenance'
-  },
-];
+const COLORS = ['#F15929', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
 
 export function InventoryUtilizationReport({ filters }: { filters: ReportFilter }) {
   const [dateFrom, setDateFrom] = useState<Date>();
@@ -180,13 +62,58 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
   const [utilizationFilter, setUtilizationFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'utilization' | 'idle' | 'idleDays'>('utilization');
 
+  const [data, setData] = useState<InventoryUtilizationResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasGenerated, setHasGenerated] = useState(false);
+
+  // Validation check
+  const validateFilters = () => {
+    if (!dateFrom) {
+      toast.error('Please select a From Date');
+      return false;
+    }
+    if (!dateTo) {
+      toast.error('Please select a To Date');
+      return false;
+    }
+    if (dateFrom > dateTo) {
+      toast.error('From Date cannot be after To Date');
+      return false;
+    }
+    return true;
+  };
+
+  // Fetch data from API - only called when Generate button is clicked
+  const generateReport = async () => {
+    if (!validateFilters()) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams();
+      if (categoryFilter !== 'all') params.set('category', categoryFilter);
+
+      const response = await fetch(`/api/reports/inventory-utilization?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch data');
+
+      const result: InventoryUtilizationResponse = await response.json();
+      setData(result);
+      setHasGenerated(true);
+      toast.success('Report generated successfully');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      toast.error('Failed to load inventory utilization data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filter and sort data
-  const filteredData = mockData
+  const filteredData = data?.data
     .filter(item => {
       if (searchQuery && !item.itemName.toLowerCase().includes(searchQuery.toLowerCase())) {
-        return false;
-      }
-      if (categoryFilter !== 'all' && item.category !== categoryFilter) {
         return false;
       }
       if (utilizationFilter !== 'all') {
@@ -207,180 +134,97 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
         default:
           return 0;
       }
-    });
+    }) || [];
 
-  // Calculate totals
-  const totals = {
-    totalItems: filteredData.reduce((sum, item) => sum + item.totalQuantity, 0),
-    totalInUse: filteredData.reduce((sum, item) => sum + item.inUse, 0),
-    totalIdle: filteredData.reduce((sum, item) => sum + item.idle, 0),
-    avgUtilization: Math.round(
-      filteredData.reduce((sum, item) => sum + item.utilizationRate, 0) / filteredData.length
-    ),
-    avgIdleDays: Math.round(
-      filteredData.reduce((sum, item) => sum + item.avgIdleDays, 0) / filteredData.length
-    ),
+  const summary = data?.summary || {
+    totalItems: 0,
+    totalInUse: 0,
+    totalIdle: 0,
+    avgUtilization: 0,
+    avgIdleDays: 0,
+    totalValue: 0,
+    idleValue: 0,
   };
+  const categories = data?.categories || [];
+  const byCategory = data?.byCategory || [];
+  const byLocation = data?.byLocation || [];
 
-  const categories = Array.from(new Set(mockData.map(item => item.category)));
+  // Prepare donut chart data for In Use vs Idle
+  const usageDistribution = [
+    { name: 'In Use', value: summary.totalInUse, color: '#10B981' },
+    { name: 'Idle', value: summary.totalIdle, color: '#EF4444' },
+  ].filter(d => d.value > 0);
 
   const exportToExcel = () => {
-    // Create CSV content
-    let csvContent = 'Power Metal & Steel - Inventory Utilization Report\n';
-    csvContent += `Generated on: ${new Date().toLocaleString()}\n`;
-    if (dateFrom && dateTo) {
-      csvContent += `Period: ${format(dateFrom, 'PPP')} - ${format(dateTo, 'PPP')}\n`;
-    }
-    csvContent += '\n';
-    csvContent += 'SUMMARY\n';
-    csvContent += `Total Items,${totals.totalItems}\n`;
-    csvContent += `Items In Use,${totals.totalInUse}\n`;
-    csvContent += `Idle Items,${totals.totalIdle}\n`;
-    csvContent += `Average Utilization (%),${totals.avgUtilization}\n`;
-    csvContent += `Average Idle Days,${totals.avgIdleDays}\n`;
-    csvContent += '\n';
-    csvContent += 'DETAILED REPORT\n';
-    csvContent += 'Item Code,Item Name,Category,Total Qty,In Use,Idle,Utilization (%),Avg Idle Days,Location,Condition\n';
-    
-    filteredData.forEach(item => {
-      csvContent += `${item.itemId},"${item.itemName}",${item.category},${item.totalQuantity},${item.inUse},${item.idle},${item.utilizationRate},${item.avgIdleDays},${item.location},${item.condition}\n`;
-    });
+    if (!data) return;
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Inventory_Utilization_Report_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
+    const blob = generateInventoryUtilizationExcel(
+      filteredData,
+      summary,
+      byCategory,
+      {
+        title: 'Inventory Utilization Report',
+        dateRange: dateFrom && dateTo ? { from: dateFrom, to: dateTo } : undefined,
+      }
+    );
+
+    downloadExcel(blob, `Inventory_Utilization_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
     toast.success('Report exported to Excel successfully');
   };
 
   const exportToPDF = () => {
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Inventory Utilization Report</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 1200px; margin: 40px auto; padding: 20px; color: #231F20; }
-    .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #F15929; padding-bottom: 20px; }
-    .company-name { font-size: 28px; font-weight: bold; color: #231F20; }
-    .report-title { font-size: 22px; color: #F15929; margin: 10px 0; }
-    .report-date { font-size: 14px; color: #6B7280; }
-    .summary-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin: 30px 0; }
-    .summary-card { background: #F9FAFB; border-left: 4px solid #F15929; padding: 15px; border-radius: 4px; }
-    .card-label { font-size: 11px; color: #6B7280; margin-bottom: 5px; }
-    .card-value { font-size: 20px; font-weight: bold; color: #231F20; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
-    th { background-color: #F9FAFB; color: #231F20; font-weight: bold; padding: 10px; text-align: left; border: 1px solid #E5E7EB; }
-    td { padding: 10px; border: 1px solid #E5E7EB; }
-    tr:nth-child(even) { background-color: #F9FAFB; }
-    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #E5E7EB; text-align: center; font-size: 12px; color: #6B7280; }
-    .utilization-high { background-color: #D1FAE5; color: #065F46; padding: 3px 8px; border-radius: 4px; font-weight: 500; }
-    .utilization-medium { background-color: #FEF3C7; color: #92400E; padding: 3px 8px; border-radius: 4px; font-weight: 500; }
-    .utilization-low { background-color: #FEE2E2; color: #991B1B; padding: 3px 8px; border-radius: 4px; font-weight: 500; }
-    .idle-high { background-color: #FEE2E2; color: #991B1B; }
-    .idle-low { background-color: #D1FAE5; color: #065F46; }
-    @media print { body { margin: 0; padding: 20px; } }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="company-name">Power Metal & Steel</div>
-    <div class="report-title">Inventory Utilization Report</div>
-    <div class="report-date">
-      Generated on ${new Date().toLocaleString()}
-      ${dateFrom && dateTo ? `<br/>Period: ${format(dateFrom, 'PPP')} - ${format(dateTo, 'PPP')}` : ''}
-    </div>
-  </div>
+    if (!data) return;
 
-  <div class="summary-cards">
-    <div class="summary-card">
-      <div class="card-label">Total Items</div>
-      <div class="card-value">${totals.totalItems.toLocaleString()}</div>
-    </div>
-    <div class="summary-card">
-      <div class="card-label">Items In Use</div>
-      <div class="card-value">${totals.totalInUse.toLocaleString()}</div>
-    </div>
-    <div class="summary-card">
-      <div class="card-label">Idle Items</div>
-      <div class="card-value">${totals.totalIdle.toLocaleString()}</div>
-    </div>
-    <div class="summary-card">
-      <div class="card-label">Avg Utilization</div>
-      <div class="card-value">${totals.avgUtilization}%</div>
-    </div>
-    <div class="summary-card">
-      <div class="card-label">Avg Idle Days</div>
-      <div class="card-value">${totals.avgIdleDays}</div>
-    </div>
-  </div>
+    const generator = new ReportPDFGenerator();
+    const blob = generator.generateInventoryUtilizationReport(
+      filteredData,
+      summary,
+      {
+        title: 'Inventory Utilization Report',
+        dateRange: dateFrom && dateTo ? { from: dateFrom, to: dateTo } : undefined,
+      }
+    );
 
-  <table>
-    <thead>
-      <tr>
-        <th>Item Code</th>
-        <th>Item Name</th>
-        <th>Category</th>
-        <th style="text-align: right;">Total Qty</th>
-        <th style="text-align: right;">In Use</th>
-        <th style="text-align: right;">Idle</th>
-        <th style="text-align: right;">Utilization</th>
-        <th style="text-align: right;">Avg Idle Days</th>
-        <th>Location</th>
-        <th>Condition</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filteredData.map(item => `
-      <tr>
-        <td>${item.itemId}</td>
-        <td>${item.itemName}</td>
-        <td>${item.category}</td>
-        <td style="text-align: right;">${item.totalQuantity}</td>
-        <td style="text-align: right;">${item.inUse}</td>
-        <td style="text-align: right;" class="${item.idle > item.totalQuantity * 0.3 ? 'idle-high' : 'idle-low'}">
-          ${item.idle}
-        </td>
-        <td style="text-align: right;">
-          <span class="${item.utilizationRate >= 80 ? 'utilization-high' : item.utilizationRate >= 60 ? 'utilization-medium' : 'utilization-low'}">
-            ${item.utilizationRate}%
-          </span>
-        </td>
-        <td style="text-align: right;">${item.avgIdleDays}</td>
-        <td>${item.location}</td>
-        <td>${item.condition}</td>
-      </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  <div class="footer">
-    <p>Power Metal & Steel - Inventory Utilization Report</p>
-    <p>This report shows inventory utilization rates, idle inventory analysis, and equipment condition status.</p>
-  </div>
-</body>
-</html>
-    `;
-
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Inventory_Utilization_Report_${new Date().toISOString().split('T')[0]}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    toast.success('Report exported successfully');
+    downloadPDF(blob, `Inventory_Utilization_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Report exported to PDF successfully');
   };
+
+  // Show initial state before report is generated
+  const renderInitialState = () => (
+    <Card className="mt-6">
+      <CardContent className="py-16">
+        <div className="flex flex-col items-center justify-center text-center">
+          <Package className="size-16 text-gray-300 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-600 mb-2">No Report Generated</h3>
+          <p className="text-gray-500 mb-6 max-w-md">
+            Select your filters above and click "Generate Report" to view inventory utilization data.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-start">
+          <div>
+            <h2 className="text-[#231F20]">Inventory Utilization Report</h2>
+            <p className="text-gray-600">Analyze scaffolding utilization rates and identify idle inventory</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <p className="text-red-600 mb-4">{error}</p>
+            <Button onClick={generateReport} variant="outline">
+              Retry
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -391,102 +235,24 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
           <p className="text-gray-600">Analyze scaffolding utilization rates and identify idle inventory</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={exportToExcel} variant="outline">
+          <Button onClick={exportToExcel} variant="outline" disabled={!data}>
             <FileSpreadsheet className="size-4 mr-2" />
             Export to Excel
           </Button>
-          <Button onClick={exportToPDF} className="bg-[#F15929] hover:bg-[#d94d1f]">
+          <Button onClick={exportToPDF} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={!data}>
             <Download className="size-4 mr-2" />
             Export to PDF
           </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <Package className="size-4" />
-              Total Items
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{totals.totalItems.toLocaleString()}</div>
-            <p className="text-xs text-gray-500 mt-1">All inventory</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <TrendingUp className="size-4" />
-              In Use
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{totals.totalInUse.toLocaleString()}</div>
-            <p className="text-xs text-gray-500 mt-1">Currently rented</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <AlertCircle className="size-4" />
-              Idle
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{totals.totalIdle.toLocaleString()}</div>
-            <p className="text-xs text-gray-500 mt-1">Available at HQ</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <BarChart3 className="size-4" />
-              Avg Utilization
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{totals.avgUtilization}%</div>
-            <p className="text-xs text-gray-500 mt-1">Overall rate</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <Clock className="size-4" />
-              Avg Idle Days
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{totals.avgIdleDays}</div>
-            <p className="text-xs text-gray-500 mt-1">Days not in use</p>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="space-y-2">
-              <Label>Search Item</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-gray-400" />
-                <Input
-                  placeholder="Search by item name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Report Filters</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label>Category</Label>
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
@@ -503,9 +269,227 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
             </div>
 
             <div className="space-y-2">
-              <Label>Utilization Level</Label>
+              <Label>From Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start">
+                    <CalendarIcon className="size-4 mr-2" />
+                    {dateFrom ? format(dateFrom, 'PP') : 'Select date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateFrom}
+                    onSelect={setDateFrom}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <Label>To Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start">
+                    <CalendarIcon className="size-4 mr-2" />
+                    {dateTo ? format(dateTo, 'PP') : 'Select date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateTo}
+                    onSelect={setDateTo}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-2 flex items-end">
+              <Button 
+                onClick={generateReport} 
+                className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="size-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Play className="size-4 mr-2" />
+                    Generate Report
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Show initial state or report content */}
+      {!hasGenerated ? (
+        renderInitialState()
+      ) : (
+        <>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
+              <Package className="size-4" />
+              Total Items
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-[#231F20] text-2xl font-bold">{summary.totalItems.toLocaleString()}</div>
+            <p className="text-xs text-gray-500 mt-1">All inventory</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
+              <TrendingUp className="size-4" />
+              In Use
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-[#231F20] text-2xl font-bold">{summary.totalInUse.toLocaleString()}</div>
+            <p className="text-xs text-gray-500 mt-1">Currently rented</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
+              <AlertCircle className="size-4" />
+              Idle
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-[#231F20] text-2xl font-bold">{summary.totalIdle.toLocaleString()}</div>
+            <p className="text-xs text-gray-500 mt-1">Available at HQ</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
+              <BarChart3 className="size-4" />
+              Avg Utilization
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-[#231F20] text-2xl font-bold">{summary.avgUtilization}%</div>
+            <p className="text-xs text-gray-500 mt-1">Overall rate</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
+              <Clock className="size-4" />
+              Avg Idle Days
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-[#231F20] text-2xl font-bold">{summary.avgIdleDays}</div>
+            <p className="text-xs text-gray-500 mt-1">Days not in use</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* In Use vs Idle - Donut Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">In Use vs Idle</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={usageDistribution}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name, value, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  labelLine={false}
+                >
+                  {usageDistribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => [value.toLocaleString(), 'Items']} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Utilization by Category - Horizontal Bar Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Utilization by Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={byCategory} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                <YAxis dataKey="category" type="category" width={80} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(value: number) => [`${value}%`, 'Utilization']} />
+                <Bar dataKey="utilizationRate" fill="#F15929" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Quantity by Location - Grouped Bar Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Quantity by Location</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={byLocation}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="location" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="inUse" fill="#10B981" name="In Use" />
+                <Bar dataKey="idle" fill="#EF4444" name="Idle" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Data Table */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <CardTitle>Utilization Details</CardTitle>
+            <div className="flex gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-gray-400" />
+                <Input
+                  placeholder="Search items..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 w-48"
+                />
+              </div>
               <Select value={utilizationFilter} onValueChange={setUtilizationFilter}>
-                <SelectTrigger>
+                <SelectTrigger className="w-40">
                   <SelectValue placeholder="All Levels" />
                 </SelectTrigger>
                 <SelectContent>
@@ -515,12 +499,8 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
                   <SelectItem value="low">Low ({'<'} 60%)</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Sort By</Label>
-              <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
-                <SelectTrigger>
+              <Select value={sortBy} onValueChange={(value: 'utilization' | 'idle' | 'idleDays') => setSortBy(value)}>
+                <SelectTrigger className="w-48">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -530,48 +510,7 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-2">
-              <Label>Date Range</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start">
-                    <CalendarIcon className="size-4 mr-2" />
-                    {dateFrom && dateTo
-                      ? `${format(dateFrom, 'PP')} - ${format(dateTo, 'PP')}`
-                      : 'Select period'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <div className="p-3 space-y-2">
-                    <div>
-                      <Label className="text-xs">From</Label>
-                      <Calendar
-                        mode="single"
-                        selected={dateFrom}
-                        onSelect={setDateFrom}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">To</Label>
-                      <Calendar
-                        mode="single"
-                        selected={dateTo}
-                        onSelect={setDateTo}
-                      />
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Data Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Utilization Details</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -586,71 +525,62 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
                 <TableHead className="text-right">Utilization</TableHead>
                 <TableHead className="text-right">Avg Idle Days</TableHead>
                 <TableHead>Location</TableHead>
-                <TableHead>Condition</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredData.map((item) => (
-                <TableRow key={item.itemId}>
-                  <TableCell className="text-[#231F20]">{item.itemId}</TableCell>
-                  <TableCell>
-                    <p className="text-[#231F20]">{item.itemName}</p>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{item.category}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right text-[#231F20]">
-                    {item.totalQuantity}
-                  </TableCell>
-                  <TableCell className="text-right text-[#231F20]">
-                    {item.inUse}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge
-                      className={
-                        item.idle > item.totalQuantity * 0.3
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-green-100 text-green-800'
-                      }
-                    >
-                      {item.idle}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge
-                      className={
-                        item.utilizationRate >= 80
-                          ? 'bg-green-100 text-green-800'
-                          : item.utilizationRate >= 60
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }
-                    >
-                      {item.utilizationRate}%
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right text-[#231F20]">
-                    {item.avgIdleDays} days
-                  </TableCell>
-                  <TableCell className="text-gray-600">{item.location}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={
-                        item.condition === 'Excellent'
-                          ? 'border-green-500 text-green-700'
-                          : item.condition === 'Good'
-                          ? 'border-blue-500 text-blue-700'
-                          : item.condition === 'Fair'
-                          ? 'border-yellow-500 text-yellow-700'
-                          : 'border-red-500 text-red-700'
-                      }
-                    >
-                      {item.condition}
-                    </Badge>
+              {filteredData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center text-gray-500 py-8">
+                    No inventory utilization data available
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredData.map((item) => (
+                  <TableRow key={item.itemId}>
+                    <TableCell className="text-[#231F20] font-medium">{item.itemCode}</TableCell>
+                    <TableCell>
+                      <p className="text-[#231F20]">{item.itemName}</p>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{item.category}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-[#231F20]">
+                      {item.totalQuantity}
+                    </TableCell>
+                    <TableCell className="text-right text-[#231F20]">
+                      {item.inUse}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge
+                        className={
+                          item.idle > item.totalQuantity * 0.3
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-green-100 text-green-800'
+                        }
+                      >
+                        {item.idle}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge
+                        className={
+                          item.utilizationRate >= 80
+                            ? 'bg-green-100 text-green-800'
+                            : item.utilizationRate >= 60
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-red-100 text-red-800'
+                        }
+                      >
+                        {item.utilizationRate}%
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right text-[#231F20]">
+                      {item.avgIdleDays} days
+                    </TableCell>
+                    <TableCell className="text-gray-600">{item.location}</TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -676,7 +606,7 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
                 .map((item) => (
                   <div key={item.itemId} className="flex items-center justify-between p-3 bg-white rounded border border-amber-200">
                     <div>
-                      <p className="text-[#231F20]">{item.itemName}</p>
+                      <p className="text-[#231F20] font-medium">{item.itemName}</p>
                       <p className="text-sm text-gray-600">
                         {item.idle} units idle • {item.avgIdleDays} days average
                       </p>
@@ -689,6 +619,8 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
             </div>
           </CardContent>
         </Card>
+      )}
+        </>
       )}
     </div>
   );

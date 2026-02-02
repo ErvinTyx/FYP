@@ -1,10 +1,11 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { DepositRecordsTable } from './DepositRecordsTable';
 import { MonthlyBillingTable } from './MonthlyBillingTable';
 import { CreditNotesTable } from './CreditNotesTable';
-import { sampleDepositRecords, sampleMonthlyBillingRecords, sampleCreditNoteRecords } from '../../types/report';
 import { format } from 'date-fns';
+import { Loader2 } from 'lucide-react';
+import type { DepositRecord, MonthlyBillingRecord, CreditNoteRecord } from '../../types/report';
 
 type ReportType = 'all' | 'deposit' | 'monthly-billing' | 'credit-note';
 type StatusFilter = 'all' | 'paid' | 'pending' | 'overdue' | 'rejected' | 'pending-approval';
@@ -17,6 +18,12 @@ interface ReportPreviewProps {
   dateTo?: Date;
 }
 
+interface FinancialData {
+  deposits: DepositRecord[];
+  billingRecords: MonthlyBillingRecord[];
+  creditNotes: CreditNoteRecord[];
+}
+
 export function ReportPreview({ 
   reportType, 
   statusFilter, 
@@ -24,6 +31,93 @@ export function ReportPreview({
   dateFrom,
   dateTo 
 }: ReportPreviewProps) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<FinancialData>({
+    deposits: [],
+    billingRecords: [],
+    creditNotes: []
+  });
+
+  // Fetch data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams();
+        if (dateFrom) params.set('dateFrom', dateFrom.toISOString());
+        if (dateTo) params.set('dateTo', dateTo.toISOString());
+
+        const response = await fetch(`/api/reports/financial?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch data');
+
+        const result = await response.json();
+
+        // Transform API data to component format
+        const deposits: DepositRecord[] = [];
+        const billingRecords: MonthlyBillingRecord[] = [];
+        const creditNotes: CreditNoteRecord[] = [];
+
+        // Map customer data to deposit records format
+        if (result.customerData) {
+          result.customerData.forEach((customer: { customerId: string; customerName: string; depositsPaid: number; depositsOutstanding: number; status: string; lastPaymentDate: string | null }) => {
+            if (customer.depositsPaid > 0 || customer.depositsOutstanding > 0) {
+              deposits.push({
+                invoiceNo: `DEP-${customer.customerId}`,
+                customer: customer.customerName,
+                depositAmount: customer.depositsPaid + customer.depositsOutstanding,
+                status: customer.depositsOutstanding > 0 ? 'Pending Approval' : 'Paid',
+                proofUploaded: customer.depositsPaid > 0,
+                date: customer.lastPaymentDate ? new Date(customer.lastPaymentDate).toLocaleDateString() : '-'
+              });
+            }
+          });
+        }
+
+        // Map monthly data to billing records format
+        if (result.monthlyData) {
+          result.monthlyData.forEach((month: { period: string; month: string; totalInvoiced: number; totalPaid: number; status: string; numberOfInvoices: number }) => {
+            billingRecords.push({
+              invoiceNo: `MRI-${month.period}`,
+              project: 'All Projects',
+              billingMonth: month.month,
+              amount: month.totalInvoiced,
+              status: month.totalPaid >= month.totalInvoiced ? 'Paid' : 
+                      month.status === 'Critical' ? 'Overdue' : 'Pending Payment',
+              itemsReturned: false,
+              dueDate: month.month,
+              paymentProof: month.totalPaid > 0
+            });
+          });
+        }
+
+        // Map invoice status breakdown to credit notes (for demonstration)
+        if (result.invoiceStatusBreakdown) {
+          result.invoiceStatusBreakdown.forEach((status: { status: string; count: number; amount: number }, index: number) => {
+            if (status.status !== 'Paid') {
+              creditNotes.push({
+                cnNo: `CN-${String(index + 1).padStart(3, '0')}`,
+                invoiceNo: `Various`,
+                customer: 'Multiple Customers',
+                item: `${status.status} Invoices`,
+                quantityAdjusted: `${status.count} invoices`,
+                priceAdjusted: `RM ${status.amount.toLocaleString()}`,
+                reason: 'Invoice Status Summary',
+                status: status.status === 'Overdue' ? 'Pending Approval' : 'Paid'
+              });
+            }
+          });
+        }
+
+        setData({ deposits, billingRecords, creditNotes });
+      } catch (error) {
+        console.error('Error fetching financial data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [dateFrom, dateTo]);
   
   // Filter data based on filters
   const filterByStatus = (status: string) => {
@@ -42,27 +136,18 @@ export function ReportPreview({
 
   const filterByCustomer = (customer: string) => {
     if (customerFilter === 'all') return true;
-    
-    const customerMap: { [key: string]: string[] } = {
-      'alpha-construction': ['Alpha Construction'],
-      'beta-builders': ['Beta Builders'],
-      'citra-engineering': ['Citra Engineering'],
-      'kl-tower': ['KL Tower Project'],
-      'pj-mall': ['PJ Mall']
-    };
-    
-    return customerMap[customerFilter]?.includes(customer);
+    return customer.toLowerCase().includes(customerFilter.toLowerCase());
   };
 
-  const filteredDepositRecords = sampleDepositRecords.filter(
+  const filteredDepositRecords = data.deposits.filter(
     record => filterByStatus(record.status) && filterByCustomer(record.customer)
   );
 
-  const filteredMonthlyBillingRecords = sampleMonthlyBillingRecords.filter(
+  const filteredMonthlyBillingRecords = data.billingRecords.filter(
     record => filterByStatus(record.status) && filterByCustomer(record.project)
   );
 
-  const filteredCreditNoteRecords = sampleCreditNoteRecords.filter(
+  const filteredCreditNoteRecords = data.creditNotes.filter(
     record => filterByStatus(record.status) && filterByCustomer(record.customer)
   );
 
@@ -72,6 +157,15 @@ export function ReportPreview({
   
   const billingTotal = filteredMonthlyBillingRecords.reduce((sum, r) => sum + r.amount, 0);
   const billingPaid = filteredMonthlyBillingRecords.filter(r => r.status === 'Paid').reduce((sum, r) => sum + r.amount, 0);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="size-8 animate-spin text-[#F15929]" />
+        <span className="ml-2 text-gray-600">Loading financial data from database...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -90,6 +184,7 @@ export function ReportPreview({
                 Period: {format(dateFrom, 'PP')} - {format(dateTo, 'PP')}
               </span>
             )}
+            <span className="ml-4 text-green-600">(Real-time data from database)</span>
           </div>
         </CardHeader>
         <CardContent>

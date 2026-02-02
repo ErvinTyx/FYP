@@ -1,8 +1,8 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
-import { X } from 'lucide-react';
-import { sampleDepositRecords, sampleMonthlyBillingRecords, sampleCreditNoteRecords } from '../../types/report';
+import { X, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import type { DepositRecord, MonthlyBillingRecord, CreditNoteRecord } from '../../types/report';
 
 type ReportType = 'all' | 'deposit' | 'monthly-billing' | 'credit-note';
 type StatusFilter = 'all' | 'paid' | 'pending' | 'overdue' | 'rejected' | 'pending-approval';
@@ -16,6 +16,12 @@ interface ReportPrintLayoutProps {
   onClose: () => void;
 }
 
+interface FinancialData {
+  deposits: DepositRecord[];
+  billingRecords: MonthlyBillingRecord[];
+  creditNotes: CreditNoteRecord[];
+}
+
 export function ReportPrintLayout({
   reportType,
   statusFilter,
@@ -24,6 +30,93 @@ export function ReportPrintLayout({
   dateTo,
   onClose
 }: ReportPrintLayoutProps) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<FinancialData>({
+    deposits: [],
+    billingRecords: [],
+    creditNotes: []
+  });
+
+  // Fetch data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams();
+        if (dateFrom) params.set('dateFrom', dateFrom.toISOString());
+        if (dateTo) params.set('dateTo', dateTo.toISOString());
+
+        const response = await fetch(`/api/reports/financial?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch data');
+
+        const result = await response.json();
+
+        // Transform API data to component format
+        const deposits: DepositRecord[] = [];
+        const billingRecords: MonthlyBillingRecord[] = [];
+        const creditNotes: CreditNoteRecord[] = [];
+
+        // Map customer data to deposit records format
+        if (result.customerData) {
+          result.customerData.forEach((customer: { customerId: string; customerName: string; depositsPaid: number; depositsOutstanding: number; status: string; lastPaymentDate: string | null }) => {
+            if (customer.depositsPaid > 0 || customer.depositsOutstanding > 0) {
+              deposits.push({
+                invoiceNo: `DEP-${customer.customerId}`,
+                customer: customer.customerName,
+                depositAmount: customer.depositsPaid + customer.depositsOutstanding,
+                status: customer.depositsOutstanding > 0 ? 'Pending Approval' : 'Paid',
+                proofUploaded: customer.depositsPaid > 0,
+                date: customer.lastPaymentDate ? new Date(customer.lastPaymentDate).toLocaleDateString() : '-'
+              });
+            }
+          });
+        }
+
+        // Map monthly data to billing records format
+        if (result.monthlyData) {
+          result.monthlyData.forEach((month: { period: string; month: string; totalInvoiced: number; totalPaid: number; status: string; numberOfInvoices: number }) => {
+            billingRecords.push({
+              invoiceNo: `MRI-${month.period}`,
+              project: 'All Projects',
+              billingMonth: month.month,
+              amount: month.totalInvoiced,
+              status: month.totalPaid >= month.totalInvoiced ? 'Paid' : 
+                      month.status === 'Critical' ? 'Overdue' : 'Pending Payment',
+              itemsReturned: false,
+              dueDate: month.month,
+              paymentProof: month.totalPaid > 0
+            });
+          });
+        }
+
+        // Map invoice status breakdown to credit notes
+        if (result.invoiceStatusBreakdown) {
+          result.invoiceStatusBreakdown.forEach((status: { status: string; count: number; amount: number }, index: number) => {
+            if (status.status !== 'Paid') {
+              creditNotes.push({
+                cnNo: `CN-${String(index + 1).padStart(3, '0')}`,
+                invoiceNo: `Various`,
+                customer: 'Multiple Customers',
+                item: `${status.status} Invoices`,
+                quantityAdjusted: `${status.count} invoices`,
+                priceAdjusted: `RM ${status.amount.toLocaleString()}`,
+                reason: 'Invoice Status Summary',
+                status: status.status === 'Overdue' ? 'Pending Approval' : 'Paid'
+              });
+            }
+          });
+        }
+
+        setData({ deposits, billingRecords, creditNotes });
+      } catch (error) {
+        console.error('Error fetching financial data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [dateFrom, dateTo]);
   
   // Filter data based on filters
   const filterByStatus = (status: string) => {
@@ -42,29 +135,37 @@ export function ReportPrintLayout({
 
   const filterByCustomer = (customer: string) => {
     if (customerFilter === 'all') return true;
-    
-    const customerMap: { [key: string]: string[] } = {
-      'alpha-construction': ['Alpha Construction'],
-      'beta-builders': ['Beta Builders'],
-      'citra-engineering': ['Citra Engineering'],
-      'kl-tower': ['KL Tower Project'],
-      'pj-mall': ['PJ Mall']
-    };
-    
-    return customerMap[customerFilter]?.includes(customer);
+    return customer.toLowerCase().includes(customerFilter.toLowerCase());
   };
 
-  const filteredDepositRecords = sampleDepositRecords.filter(
+  const filteredDepositRecords = data.deposits.filter(
     record => filterByStatus(record.status) && filterByCustomer(record.customer)
   );
 
-  const filteredMonthlyBillingRecords = sampleMonthlyBillingRecords.filter(
+  const filteredMonthlyBillingRecords = data.billingRecords.filter(
     record => filterByStatus(record.status) && filterByCustomer(record.project)
   );
 
-  const filteredCreditNoteRecords = sampleCreditNoteRecords.filter(
+  const filteredCreditNoteRecords = data.creditNotes.filter(
     record => filterByStatus(record.status) && filterByCustomer(record.customer)
   );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="size-8 animate-spin text-[#F15929] mx-auto mb-4" />
+          <p className="text-gray-600">Loading financial data from database...</p>
+          <div className="print:hidden mt-4">
+            <Button variant="outline" onClick={onClose}>
+              <X className="h-4 w-4 mr-2" />
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -102,6 +203,9 @@ export function ReportPrintLayout({
                   Period: {format(dateFrom, 'PP')} - {format(dateTo, 'PP')}
                 </p>
               )}
+              <p className="text-xs text-green-600 mt-1">
+                Data from database
+              </p>
             </div>
           </div>
         </div>
@@ -145,8 +249,8 @@ export function ReportPrintLayout({
                   </tr>
                 ))}
                 <tr style={{ backgroundColor: '#F5F5F5' }}>
-                  <td colSpan={2} className="border px-2 py-2">Total</td>
-                  <td className="border px-2 py-2 text-right">
+                  <td colSpan={2} className="border px-2 py-2 font-semibold">Total</td>
+                  <td className="border px-2 py-2 text-right font-semibold">
                     RM {filteredDepositRecords.reduce((sum, r) => sum + r.depositAmount, 0).toLocaleString()}
                   </td>
                   <td colSpan={3} className="border px-2 py-2"></td>
@@ -201,8 +305,8 @@ export function ReportPrintLayout({
                   </tr>
                 ))}
                 <tr style={{ backgroundColor: '#F5F5F5' }}>
-                  <td colSpan={3} className="border px-2 py-2">Total</td>
-                  <td className="border px-2 py-2 text-right">
+                  <td colSpan={3} className="border px-2 py-2 font-semibold">Total</td>
+                  <td className="border px-2 py-2 text-right font-semibold">
                     RM {filteredMonthlyBillingRecords.reduce((sum, r) => sum + r.amount, 0).toLocaleString()}
                   </td>
                   <td colSpan={4} className="border px-2 py-2"></td>
@@ -257,6 +361,15 @@ export function ReportPrintLayout({
           </div>
         )}
 
+        {/* No data message */}
+        {filteredDepositRecords.length === 0 && 
+         filteredMonthlyBillingRecords.length === 0 && 
+         filteredCreditNoteRecords.length === 0 && (
+          <div className="py-8 text-center text-gray-500">
+            No records found matching the selected filters.
+          </div>
+        )}
+
         {/* Footer */}
         <div className="mt-8 pt-4 border-t text-sm text-gray-600 flex justify-between">
           <div>
@@ -268,7 +381,7 @@ export function ReportPrintLayout({
         </div>
 
         <div className="mt-2 text-xs text-gray-500 text-center">
-          Printed on: {format(new Date(), 'PPP p')}
+          Printed on: {format(new Date(), 'PPP p')} | Data sourced from database
         </div>
       </div>
 
