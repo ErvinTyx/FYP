@@ -9,6 +9,20 @@ import {
   TableRow,
 } from "../ui/table";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "../ui/pagination";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -19,16 +33,33 @@ import { Transaction } from "../../types/statementOfAccount";
 import { TransactionTypeBadge } from "./TransactionTypeBadge";
 import { TransactionStatusBadge } from "./TransactionStatusBadge";
 
+const PAGE_SIZES = [5, 10, 25, 50] as const;
+type OrderBy = "latest" | "earliest";
+
 type SOAAction = "view" | "viewDocument" | "downloadReceipt";
 
 interface TransactionLedgerProps {
   transactions: Transaction[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  orderBy?: OrderBy;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
+  onOrderByChange?: (orderBy: OrderBy) => void;
   onViewDetails?: (transaction: Transaction) => void;
   onNavigate?: (transaction: Transaction, action: SOAAction) => void;
 }
 
 export function TransactionLedger({
   transactions,
+  total = 0,
+  page = 1,
+  pageSize = 10,
+  orderBy = "latest",
+  onPageChange,
+  onPageSizeChange,
+  onOrderByChange,
   onViewDetails,
   onNavigate,
 }: TransactionLedgerProps) {
@@ -52,14 +83,52 @@ export function TransactionLedger({
     }
   };
 
+  const totalCount = total > 0 ? total : transactions.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
   return (
     <Card className="border-[#E5E7EB]">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="text-[18px]">
-          Transaction Ledger ({transactions.length} entries)
+          Transaction Ledger ({totalCount} entries)
         </CardTitle>
-        <div className="text-xs text-[#6B7280] bg-[#F9FAFB] px-3 py-1.5 rounded-md border border-[#E5E7EB]">
-          <strong>Formula:</strong> Balance = Previous Balance + Debit - Credit
+        <div className="flex flex-wrap items-center gap-3">
+          {(onOrderByChange != null || onPageSizeChange != null) && (
+            <div className="flex items-center gap-2 text-sm text-[#6B7280]">
+              {onOrderByChange != null && (
+                <>
+                  <span>Order:</span>
+                  <Select value={orderBy} onValueChange={(v) => onOrderByChange(v as OrderBy)}>
+                    <SelectTrigger className="w-[120px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="latest">Latest first</SelectItem>
+                      <SelectItem value="earliest">Earliest first</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+              {onPageSizeChange != null && (
+                <>
+                  <span>Rows per page:</span>
+                  <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v) as 5 | 10 | 25 | 50)}>
+                    <SelectTrigger className="w-[70px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAGE_SIZES.map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            </div>
+          )}
+          <div className="text-xs text-[#6B7280] bg-[#F9FAFB] px-3 py-1.5 rounded-md border border-[#E5E7EB]">
+            <strong>Formula:</strong> Balance = Previous Balance + Debit - Credit
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -146,6 +215,31 @@ export function TransactionLedger({
             </TableBody>
           </Table>
         </div>
+        {onPageChange != null && totalCount > 0 && totalPages > 1 && (
+          <Pagination className="mt-4">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); if (page > 1) onPageChange(page - 1); }}
+                  className={page <= 1 ? "pointer-events-none opacity-50" : undefined}
+                  aria-disabled={page <= 1}
+                />
+              </PaginationItem>
+              <PaginationItem>
+                <span className="px-2 text-sm text-[#6B7280]">Page {page} of {totalPages}</span>
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); if (page < totalPages) onPageChange(page + 1); }}
+                  className={page >= totalPages ? "pointer-events-none opacity-50" : undefined}
+                  aria-disabled={page >= totalPages}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        )}
       </CardContent>
     </Card>
   );

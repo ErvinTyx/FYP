@@ -97,13 +97,24 @@ export async function GET(request: NextRequest) {
     if (customerName) where.customerName = { contains: customerName };
     if (invoiceType) where.invoiceType = invoiceType;
 
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+    const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
+    const pageSize = [5, 10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
+    const orderByParam = searchParams.get('orderBy') ?? 'latest';
+    const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
+    const skip = (page - 1) * pageSize;
+
+    const total = await prisma.refund.count({ where });
+
     const list = await prisma.refund.findMany({
       where,
       include: { attachments: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: orderDir },
+      skip,
+      take: pageSize,
     });
     const data = list.map((r) => serializeRefund(r as Parameters<typeof serializeRefund>[0]));
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, data, total, page, pageSize, orderBy: orderByParam });
   } catch (error) {
     console.error('[Refunds] GET error:', error);
     return NextResponse.json(

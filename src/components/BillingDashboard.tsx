@@ -271,7 +271,7 @@ export function BillingDashboard({ onNavigateToCreditNotes, onNavigateToFinancia
               value={String(pageSize)}
               onValueChange={(v) => {
                 const n = parseInt(v, 10);
-                if ([10, 25, 50].includes(n)) {
+                if ([5, 10, 25, 50].includes(n)) {
                   setPageSize(n);
                   setPage(1);
                 }
@@ -281,6 +281,7 @@ export function BillingDashboard({ onNavigateToCreditNotes, onNavigateToFinancia
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="5">5</SelectItem>
                 <SelectItem value="10">10</SelectItem>
                 <SelectItem value="25">25</SelectItem>
                 <SelectItem value="50">50</SelectItem>

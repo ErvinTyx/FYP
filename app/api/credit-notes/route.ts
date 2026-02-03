@@ -114,14 +114,25 @@ export async function GET(request: NextRequest) {
       if (dateTo) (where.date as Record<string, Date>).lte = new Date(dateTo);
     }
 
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+    const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
+    const pageSize = [5, 10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
+    const orderByParam = searchParams.get('orderBy') ?? 'latest';
+    const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
+    const skip = (page - 1) * pageSize;
+
+    const total = await prisma.creditNote.count({ where });
+
     const list = await prisma.creditNote.findMany({
       where,
       include: { items: true, attachments: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: orderDir },
+      skip,
+      take: pageSize,
     });
 
     const serialized = list.map((cn) => serializeCreditNote(cn as Parameters<typeof serializeCreditNote>[0]));
-    return NextResponse.json({ success: true, data: serialized });
+    return NextResponse.json({ success: true, data: serialized, total, page, pageSize, orderBy: orderByParam });
   } catch (error) {
     console.error('[Credit notes] GET error:', error);
     return NextResponse.json(

@@ -57,30 +57,40 @@ interface CreditNotesMainProps {
   onConsumedSOANavigation?: () => void;
 }
 
+type OrderBy = "latest" | "earliest";
+
 export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }: CreditNotesMainProps = {}) {
   const [currentView, setCurrentView] = useState<View>("list");
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [orderBy, setOrderBy] = useState<OrderBy>("latest");
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userRole] = useState<"Admin" | "Finance" | "Staff" | "Viewer">("Admin");
 
   const fetchCreditNotes = useCallback(async () => {
     try {
-      const res = await fetch("/api/credit-notes");
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      const res = await fetch(`/api/credit-notes?${params}`);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setCreditNotes(json.data.map((d: Record<string, unknown>) => mapApiToCreditNote(d)));
+        setTotal(typeof json.total === "number" ? json.total : json.data.length);
       } else {
         setCreditNotes([]);
+        setTotal(0);
       }
     } catch (e) {
       console.error("Failed to fetch credit notes", e);
       toast.error("Failed to load credit notes");
       setCreditNotes([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, orderBy]);
 
   useEffect(() => {
     fetchCreditNotes();
@@ -211,6 +221,13 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
       {currentView === "list" && (
         <CreditNotesList
           creditNotes={creditNotes}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          orderBy={orderBy}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
           onView={handleView}
           onEdit={handleEdit}
           onDelete={handleDelete}

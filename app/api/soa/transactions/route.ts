@@ -70,6 +70,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const page = Math.max(1, parseInt(request.nextUrl.searchParams.get('page') ?? '1', 10));
+    const rawPageSize = parseInt(request.nextUrl.searchParams.get('pageSize') ?? '10', 10);
+    const pageSize = [5, 10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
+    const orderByParam = request.nextUrl.searchParams.get('orderBy') ?? 'latest';
+    const orderLatest = orderByParam !== 'earliest';
+
     const agreement = await prisma.rentalAgreement.findUnique({
       where: { id: agreementId },
       select: {
@@ -312,10 +318,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Sort by date and add id, balance
-    rawTxs.sort((a, b) => a.date.getTime() - b.date.getTime());
+    // Sort by date (latest = desc, earliest = asc) and add id, balance
+    rawTxs.sort((a, b) =>
+      orderLatest ? b.date.getTime() - a.date.getTime() : a.date.getTime() - b.date.getTime()
+    );
     let balance = 0;
-    const transactions = rawTxs.map((tx, idx) => {
+    const allTransactions = rawTxs.map((tx, idx) => {
       balance = balance + tx.debit - tx.credit;
       return {
         id: `tx-${agreementId}-${idx}-${tx.entityId}`,
@@ -331,6 +339,10 @@ export async function GET(request: NextRequest) {
         entityId: tx.entityId,
       };
     });
+
+    const totalTransactions = allTransactions.length;
+    const skip = (page - 1) * pageSize;
+    const transactions = allTransactions.slice(skip, skip + pageSize);
 
     // Summary
     const totalDepositCollected = deposits.reduce((s, d) => s + toNum(d.depositAmount), 0);
@@ -367,6 +379,10 @@ export async function GET(request: NextRequest) {
       project,
       summary,
       transactions,
+      total: totalTransactions,
+      page,
+      pageSize,
+      orderBy: orderByParam,
     });
   } catch (e) {
     console.error('[SOA transactions]', e);

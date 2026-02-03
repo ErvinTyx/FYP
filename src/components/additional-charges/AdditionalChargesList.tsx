@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Search, Eye, Upload, CheckCircle, XCircle, MoreVertical } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -24,12 +24,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "../ui/pagination";
 import { AdditionalChargeStatusBadge } from "./AdditionalChargeStatusBadge";
 import { UploadPopModal } from "./UploadPopModal";
 import { ApproveModal } from "./ApproveModal";
 import { RejectModal } from "./RejectModal";
 import { AdditionalCharge } from "../../types/additionalCharge";
 import { toast } from "sonner";
+
+const PAGE_SIZES = [5, 10, 25, 50] as const;
+type OrderBy = "latest" | "earliest";
 
 const API_STATUS_TO_DISPLAY: Record<string, AdditionalCharge["status"]> = {
   pending_payment: "Pending Payment",
@@ -92,20 +102,26 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [charges, setCharges] = useState<AdditionalCharge[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [orderBy, setOrderBy] = useState<OrderBy>("latest");
   const [loading, setLoading] = useState(true);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedCharge, setSelectedCharge] = useState<AdditionalCharge | null>(null);
 
-  const fetchCharges = async () => {
+  const fetchCharges = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/additional-charges", { credentials: "include" });
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      const res = await fetch(`/api/additional-charges?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       const result = await res.json();
       if (result.success && Array.isArray(result.data)) {
         setCharges(result.data.map(mapApiChargeToDisplay));
+        setTotal(typeof result.total === "number" ? result.total : result.data.length);
       }
     } catch (e) {
       console.error(e);
@@ -113,11 +129,11 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, orderBy]);
 
   useEffect(() => {
     fetchCharges();
-  }, []);
+  }, [fetchCharges]);
 
   const filteredCharges = charges.filter((charge) => {
     const matchesSearch =
@@ -289,10 +305,33 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
       </Card>
 
       <Card className="border-[#E5E7EB]">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-[18px]">
-            Additional Charges List ({filteredCharges.length})
+            Additional Charges List ({total > 0 ? total : filteredCharges.length})
           </CardTitle>
+          <div className="flex items-center gap-3 text-sm text-[#6B7280]">
+            <span>Order:</span>
+            <Select value={orderBy} onValueChange={(v) => { setOrderBy(v as OrderBy); setPage(1); }}>
+              <SelectTrigger className="w-[120px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest">Latest first</SelectItem>
+                <SelectItem value="earliest">Earliest first</SelectItem>
+              </SelectContent>
+            </Select>
+            <span>Rows per page:</span>
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v) as 5 | 10 | 25 | 50); setPage(1); }}>
+              <SelectTrigger className="w-[70px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZES.map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -405,6 +444,35 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
               </Table>
             </div>
           )}
+          {total > 0 && (() => {
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (totalPages <= 1) return null;
+            return (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); if (page > 1) setPage(page - 1); }}
+                      className={page <= 1 ? "pointer-events-none opacity-50" : undefined}
+                      aria-disabled={page <= 1}
+                    />
+                  </PaginationItem>
+                  <PaginationItem>
+                    <span className="px-2 text-sm text-[#6B7280]">Page {page} of {totalPages}</span>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); if (page < totalPages) setPage(page + 1); }}
+                      className={page >= totalPages ? "pointer-events-none opacity-50" : undefined}
+                      aria-disabled={page >= totalPages}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            );
+          })()}
         </CardContent>
       </Card>
 

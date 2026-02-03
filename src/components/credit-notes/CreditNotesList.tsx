@@ -25,11 +25,28 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "../ui/pagination";
 import { StatusBadge } from "./StatusBadge";
 import { CreditNote } from "../../types/creditNote";
 
+const PAGE_SIZES = [5, 10, 25, 50] as const;
+type OrderBy = "latest" | "earliest";
+
 interface CreditNotesListProps {
   creditNotes: CreditNote[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  orderBy?: OrderBy;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
+  onOrderByChange?: (orderBy: OrderBy) => void;
   onView: (id: string) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
@@ -37,6 +54,13 @@ interface CreditNotesListProps {
 
 export function CreditNotesList({
   creditNotes,
+  total = 0,
+  page = 1,
+  pageSize = 10,
+  orderBy = "latest",
+  onPageChange,
+  onPageSizeChange,
+  onOrderByChange,
   onView,
   onEdit,
   onDelete,
@@ -71,7 +95,7 @@ export function CreditNotesList({
             <CardTitle className="text-[14px] text-[#6B7280]">Total Credit Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-[#111827]">{creditNotes.length}</p>
+            <p className="text-[#111827]">{total > 0 ? total : creditNotes.length}</p>
             <p className="text-[12px] text-[#6B7280] mt-1">All time</p>
           </CardContent>
         </Card>
@@ -134,8 +158,41 @@ export function CreditNotesList({
 
       {/* Table */}
       <Card className="border-[#E5E7EB]">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-[18px]">Credit Notes</CardTitle>
+          {(onPageSizeChange != null || onOrderByChange != null) && (
+            <div className="flex items-center gap-3 text-sm text-[#6B7280]">
+              {onOrderByChange != null && (
+                <>
+                  <span>Order:</span>
+                  <Select value={orderBy} onValueChange={(v) => onOrderByChange(v as OrderBy)}>
+                    <SelectTrigger className="w-[120px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="latest">Latest first</SelectItem>
+                      <SelectItem value="earliest">Earliest first</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+              {onPageSizeChange != null && (
+                <>
+                  <span>Rows per page:</span>
+                  <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v) as 5 | 10 | 25 | 50)}>
+                    <SelectTrigger className="w-[70px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAGE_SIZES.map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <Table>
@@ -217,6 +274,35 @@ export function CreditNotesList({
               )}
             </TableBody>
           </Table>
+          {onPageChange != null && total > 0 && (() => {
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (totalPages <= 1) return null;
+            return (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); if (page > 1) onPageChange(page - 1); }}
+                      className={page <= 1 ? "pointer-events-none opacity-50" : undefined}
+                      aria-disabled={page <= 1}
+                    />
+                  </PaginationItem>
+                  <PaginationItem>
+                    <span className="px-2 text-sm text-[#6B7280]">Page {page} of {totalPages}</span>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); if (page < totalPages) onPageChange(page + 1); }}
+                      className={page >= totalPages ? "pointer-events-none opacity-50" : undefined}
+                      aria-disabled={page >= totalPages}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            );
+          })()}
         </CardContent>
       </Card>
     </div>

@@ -16,9 +16,16 @@ interface MonthlyRentalBillingProps {
   onConsumedSOANavigation?: () => void;
 }
 
+const PAGE_SIZES = [5, 10, 25, 50] as const;
+type OrderBy = 'latest' | 'earliest';
+
 export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, onConsumedSOANavigation }: MonthlyRentalBillingProps) {
   const [currentView, setCurrentView] = useState<View>('list');
   const [invoices, setInvoices] = useState<MonthlyRentalInvoice[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [orderBy, setOrderBy] = useState<OrderBy>('latest');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -27,11 +34,13 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
   const fetchInvoices = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/monthly-rental');
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      const response = await fetch(`/api/monthly-rental?${params}`);
       const data = await response.json();
       
       if (data.success) {
         setInvoices(data.invoices || []);
+        setTotal(typeof data.total === 'number' ? data.total : (data.invoices?.length ?? 0));
       } else {
         console.error('Failed to fetch invoices:', data.message);
         toast.error(data.message || 'Failed to load invoices');
@@ -42,9 +51,9 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [page, pageSize, orderBy]);
 
-  // Load invoices on mount
+  // Load invoices when page, pageSize, or orderBy change
   useEffect(() => {
     fetchInvoices();
   }, [fetchInvoices]);
@@ -228,6 +237,13 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
           
           <MonthlyRentalInvoiceList
             invoices={invoices}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            orderBy={orderBy}
+            onPageChange={setPage}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+            onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
             onView={handleView}
             onEditPayment={handleEditPayment}
             userRole={userRole}

@@ -33,6 +33,10 @@ interface ManageDepositFlowProps {
 export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onConsumedSOANavigation }: ManageDepositFlowProps) {
   const [currentView, setCurrentView] = useState<View>("list");
   const [deposits, setDeposits] = useState<Deposit[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [orderBy, setOrderBy] = useState<'latest' | 'earliest'>('latest');
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
   const [showGenerateInvoiceDialog, setShowGenerateInvoiceDialog] = useState(false);
   const [depositToGenerateInvoice, setDepositToGenerateInvoice] = useState<string | null>(null);
@@ -47,13 +51,15 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
     try {
       setIsLoading(true);
       setError(null);
-      
-      const response = await fetch('/api/deposit');
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      const response = await fetch(`/api/deposit?${params}`);
       const data = await response.json();
       
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch deposits');
       }
+      
+      setTotal(typeof data.total === 'number' ? data.total : (data.deposits?.length ?? 0));
       
       // Transform API data to match frontend interface
       const transformedDeposits: Deposit[] = data.deposits.map((d: Deposit) => ({
@@ -98,9 +104,9 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [page, pageSize, orderBy]);
 
-  // Load deposits on mount
+  // Load deposits when page, pageSize, or orderBy change
   useEffect(() => {
     fetchDeposits();
   }, [fetchDeposits]);
@@ -403,6 +409,13 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
       {currentView === "list" && (
         <DepositList
           deposits={deposits}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          orderBy={orderBy}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
           onView={handleView}
           onUploadProof={handleSubmitPayment}
           onResetDueDate={handleResetDueDate}

@@ -191,10 +191,21 @@ export async function GET(request: NextRequest) {
     if (status) where.status = status;
     if (customerName) where.customerName = { contains: customerName };
 
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+    const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
+    const pageSize = [5, 10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
+    const orderByParam = searchParams.get('orderBy') ?? 'latest';
+    const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
+    const skip = (page - 1) * pageSize;
+
+    const total = await prisma.additionalCharge.count({ where });
+
     const list = await prisma.additionalCharge.findMany({
       where,
       include: { items: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: orderDir },
+      skip,
+      take: pageSize,
     });
 
     const serialized = list.map((c) => ({
@@ -210,7 +221,7 @@ export async function GET(request: NextRequest) {
       })),
     }));
 
-    return NextResponse.json({ success: true, data: serialized });
+    return NextResponse.json({ success: true, data: serialized, total, page, pageSize, orderBy: orderByParam });
   } catch (error) {
     console.error('[Additional Charges API] GET error:', error);
     return NextResponse.json(

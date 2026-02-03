@@ -12,28 +12,38 @@ interface RefundManagementMainProps {
   onConsumedSOANavigation?: () => void;
 }
 
+type OrderBy = "latest" | "earliest";
+
 export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, onConsumedSOANavigation }: RefundManagementMainProps) {
   const [currentView, setCurrentView] = useState<"list" | "create" | "details">("list");
   const [selectedRefundId, setSelectedRefundId] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<Refund[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [orderBy, setOrderBy] = useState<OrderBy>("latest");
   const [loading, setLoading] = useState(true);
 
   const fetchRefunds = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/refunds");
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      const res = await fetch(`/api/refunds?${params}`);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setRefunds(json.data);
+        setTotal(typeof json.total === "number" ? json.total : json.data.length);
       } else {
         setRefunds([]);
+        setTotal(0);
       }
     } catch {
       setRefunds([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, orderBy]);
 
   useEffect(() => {
     fetchRefunds();
@@ -90,6 +100,13 @@ export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, o
   return (
     <RefundList
       refunds={refunds}
+      total={total}
+      page={page}
+      pageSize={pageSize}
+      orderBy={orderBy}
+      onPageChange={setPage}
+      onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+      onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
       loading={loading}
       onCreateNew={handleCreateNew}
       onViewDetails={handleViewDetails}

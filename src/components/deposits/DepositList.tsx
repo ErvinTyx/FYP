@@ -34,12 +34,29 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Label } from "../ui/label";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "../ui/pagination";
 import { DepositStatusBadge } from "./DepositStatusBadge";
 import { UploadProofModal } from "./UploadProofModal";
 import { Deposit } from "../../types/deposit";
 
+const PAGE_SIZES = [5, 10, 25, 50] as const;
+type OrderBy = "latest" | "earliest";
+
 interface DepositListProps {
   deposits: Deposit[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  orderBy?: OrderBy;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
+  onOrderByChange?: (orderBy: OrderBy) => void;
   onView: (id: string) => void;
   onUploadProof?: (depositId: string, file: File) => void;
   onResetDueDate?: (depositId: string, newDueDate: string) => void;
@@ -48,7 +65,7 @@ interface DepositListProps {
   isProcessing?: boolean;
 }
 
-export function DepositList({ deposits, onView, onUploadProof, onResetDueDate, onMarkExpired, userRole, isProcessing }: DepositListProps) {
+export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, onView, onUploadProof, onResetDueDate, onMarkExpired, userRole, isProcessing }: DepositListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -204,8 +221,41 @@ export function DepositList({ deposits, onView, onUploadProof, onResetDueDate, o
 
       {/* Table */}
       <Card className="border-[#E5E7EB]">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-[18px]">Deposit List</CardTitle>
+          {(onPageSizeChange != null || onOrderByChange != null) && (
+            <div className="flex items-center gap-3 text-sm text-[#6B7280]">
+              {onOrderByChange != null && (
+                <>
+                  <span>Order:</span>
+                  <Select value={orderBy} onValueChange={(v) => onOrderByChange(v as OrderBy)}>
+                    <SelectTrigger className="w-[120px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="latest">Latest first</SelectItem>
+                      <SelectItem value="earliest">Earliest first</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+              {onPageSizeChange != null && (
+                <>
+                  <span>Rows per page:</span>
+                  <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v) as 5 | 10 | 25 | 50)}>
+                    <SelectTrigger className="w-[70px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAGE_SIZES.map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <Table>
@@ -327,6 +377,35 @@ export function DepositList({ deposits, onView, onUploadProof, onResetDueDate, o
               )}
             </TableBody>
           </Table>
+          {onPageChange != null && total > 0 && (() => {
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            if (totalPages <= 1) return null;
+            return (
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); if (page > 1) onPageChange(page - 1); }}
+                      className={page <= 1 ? "pointer-events-none opacity-50" : undefined}
+                      aria-disabled={page <= 1}
+                    />
+                  </PaginationItem>
+                  <PaginationItem>
+                    <span className="px-2 text-sm text-[#6B7280]">Page {page} of {totalPages}</span>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); if (page < totalPages) onPageChange(page + 1); }}
+                      className={page >= totalPages ? "pointer-events-none opacity-50" : undefined}
+                      aria-disabled={page >= totalPages}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            );
+          })()}
         </CardContent>
       </Card>
 

@@ -21,6 +21,8 @@ interface StatementOfAccountProps {
   onNavigateToPage?: (page: string, entityId: string, action: "view" | "viewDocument" | "downloadReceipt") => void;
 }
 
+type OrderBy = "latest" | "earliest";
+
 export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -28,6 +30,10 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [soaData, setSOAData] = useState<SOAData | null>(null);
+  const [soaTotal, setSoaTotal] = useState(0);
+  const [soaPage, setSoaPage] = useState(1);
+  const [soaPageSize, setSoaPageSize] = useState(10);
+  const [soaOrderBy, setSoaOrderBy] = useState<OrderBy>("latest");
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingSOA, setLoadingSOA] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -76,37 +82,60 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
     setSelectedCustomer(customer);
   };
 
-  const handleProjectChange = useCallback(async (project: Project) => {
+  const handleProjectChange = useCallback((project: Project) => {
     setSelectedProject(project);
     setSOAData(null);
-    setLoadingSOA(true);
-    try {
-      const res = await fetch(`/api/soa/transactions?agreementId=${encodeURIComponent(project.id)}`);
-      const json = await res.json();
-      if (json.success && json.project && json.summary && Array.isArray(json.transactions)) {
-        setSOAData({
-          project: json.project,
-          summary: json.summary,
-          transactions: json.transactions,
-        });
-        setSelectedCustomer({
-          id: project.customerId,
-          name: project.customerName,
-          type: "Company",
-          email: "",
-          phone: "",
-        });
-      } else {
-        setSOAData(null);
-        toast.error(json.message || "Failed to load statement");
-      }
-    } catch {
-      setSOAData(null);
-      toast.error("Failed to load statement");
-    } finally {
-      setLoadingSOA(false);
-    }
+    setSoaPage(1);
+    setSelectedCustomer({
+      id: project.customerId,
+      name: project.customerName,
+      type: "Company",
+      email: "",
+      phone: "",
+    });
   }, []);
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    let cancelled = false;
+    setLoadingSOA(true);
+    const params = new URLSearchParams({
+      agreementId: selectedProject.id,
+      page: String(soaPage),
+      pageSize: String(soaPageSize),
+      orderBy: soaOrderBy,
+    });
+    fetch(`/api/soa/transactions?${params}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.success && json.project && json.summary && Array.isArray(json.transactions)) {
+          setSOAData({
+            project: json.project,
+            summary: json.summary,
+            transactions: json.transactions,
+          });
+          setSoaTotal(typeof json.total === "number" ? json.total : json.transactions.length);
+        } else {
+          setSOAData(null);
+          setSoaTotal(0);
+          toast.error(json.message || "Failed to load statement");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSOAData(null);
+          setSoaTotal(0);
+          toast.error("Failed to load statement");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSOA(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProject, soaPage, soaPageSize, soaOrderBy]);
 
   const handleExportPDF = () => {
     if (!soaData) {
@@ -247,6 +276,13 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
           {/* Transaction Ledger */}
           <TransactionLedger
             transactions={soaData.transactions}
+            total={soaTotal}
+            page={soaPage}
+            pageSize={soaPageSize}
+            orderBy={soaOrderBy}
+            onPageChange={setSoaPage}
+            onPageSizeChange={(n) => { setSoaPageSize(n); setSoaPage(1); }}
+            onOrderByChange={(o) => { setSoaOrderBy(o); setSoaPage(1); }}
             onViewDetails={handleViewTransactionDetails}
             onNavigate={
               onNavigateToPage

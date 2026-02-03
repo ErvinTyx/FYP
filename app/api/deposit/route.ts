@@ -161,6 +161,16 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    // Pagination and order: page (default 1), pageSize (5, 10, 25, 50), orderBy (latest | earliest)
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+    const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
+    const pageSize = [5, 10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
+    const orderByParam = searchParams.get('orderBy') ?? 'latest';
+    const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
+    const skip = (page - 1) * pageSize;
+
+    const total = await prisma.deposit.count({ where });
+
     const deposits = await prisma.deposit.findMany({
       where,
       include: {
@@ -171,8 +181,10 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: orderDir,
       },
+      skip,
+      take: pageSize,
     });
 
     // Check and update overdue statuses
@@ -226,6 +238,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       deposits: transformedDeposits,
+      total,
+      page,
+      pageSize,
+      orderBy: orderByParam,
     });
   } catch (error) {
     console.error('Get deposits error:', error);

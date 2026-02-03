@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
     const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
-    const pageSize = [10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
+    const pageSize = [5, 10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
 
     const items: ActivityItem[] = [];
 

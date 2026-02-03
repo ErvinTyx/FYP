@@ -286,6 +286,19 @@ export async function GET(request: NextRequest) {
       where.customerEmail = { contains: customerEmail };
     }
 
+    // Pagination and order: page (default 1), pageSize (5, 10, 25, 50), orderBy (latest | earliest)
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+    const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
+    const pageSize = [5, 10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
+    const orderByParam = searchParams.get('orderBy') ?? 'latest';
+    const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
+
+    const skip = (page - 1) * pageSize;
+
+    // Get total count
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const total = await (prisma as any).monthlyRentalInvoice.count({ where });
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const invoices = await (prisma as any).monthlyRentalInvoice.findMany({
       where,
@@ -299,8 +312,10 @@ export async function GET(request: NextRequest) {
         items: true,
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: orderDir,
       },
+      skip,
+      take: pageSize,
     });
 
     // Check and update overdue statuses
@@ -342,6 +357,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       invoices: transformedInvoices,
+      total,
+      page,
+      pageSize,
+      orderBy: orderByParam,
     });
   } catch (error) {
     console.error('Get monthly rental invoices error:', error);
