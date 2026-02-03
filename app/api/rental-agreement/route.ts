@@ -112,6 +112,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const agreementNumber = searchParams.get('agreementNumber');
+    const includeRfqItems = searchParams.get('includeRfqItems') === 'true';
+    const withRfqOnly = searchParams.get('withRfqOnly') === 'true';
 
     // Build where clause
     const where: Record<string, unknown> = {};
@@ -123,12 +125,26 @@ export async function GET(request: NextRequest) {
         contains: agreementNumber,
       };
     }
+    // Filter to only agreements with linked RFQ if requested
+    if (withRfqOnly) {
+      where.rfqId = { not: null };
+    }
 
     const agreements = await prisma.rentalAgreement.findMany({
       where,
       orderBy: {
         createdAt: 'desc',
       },
+      // Include RFQ with items if requested
+      ...(includeRfqItems && {
+        include: {
+          rfq: {
+            include: {
+              items: true,
+            },
+          },
+        },
+      }),
     });
 
     // Load versions and deposits via separate queries (avoids include when client is stale)
@@ -166,8 +182,32 @@ export async function GET(request: NextRequest) {
       depositsByAgreementId.set(d.agreementId, list);
     }
 
+    // Type for RFQ with items
+    type RFQWithItems = {
+      id: string;
+      rfqNumber: string;
+      customerName: string;
+      customerEmail: string;
+      customerPhone: string;
+      projectName: string;
+      projectLocation: string;
+      totalAmount: unknown;
+      items: Array<{
+        id: string;
+        scaffoldingItemId: string;
+        scaffoldingItemName: string;
+        quantity: number;
+        unit: string;
+        unitPrice: unknown;
+        totalPrice: unknown;
+        setName: string;
+        deliverDate: Date | null;
+        returnDate: Date | null;
+      }>;
+    };
+
     const transformedAgreements = agreements.map((agreement) => {
-      const a = agreement as typeof agreement & { rfqId?: string | null };
+      const a = agreement as typeof agreement & { rfqId?: string | null; rfq?: RFQWithItems | null };
       const versions = (versionsByAgreementId.get(agreement.id) ?? []).map((v) => ({
         id: v.id,
         versionNumber: v.versionNumber,
@@ -184,6 +224,31 @@ export async function GET(request: NextRequest) {
         status: d.status,
         dueDate: d.dueDate.toISOString(),
       }));
+
+      // Transform RFQ data if included
+      const rfqData = a.rfq ? {
+        id: a.rfq.id,
+        rfqNumber: a.rfq.rfqNumber,
+        customerName: a.rfq.customerName,
+        customerEmail: a.rfq.customerEmail,
+        customerPhone: a.rfq.customerPhone,
+        projectName: a.rfq.projectName,
+        projectLocation: a.rfq.projectLocation,
+        totalAmount: Number(a.rfq.totalAmount),
+        items: a.rfq.items?.map((item) => ({
+          id: item.id,
+          scaffoldingItemId: item.scaffoldingItemId,
+          scaffoldingItemName: item.scaffoldingItemName,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: Number(item.unitPrice),
+          totalPrice: Number(item.totalPrice),
+          setName: item.setName,
+          deliverDate: item.deliverDate?.toISOString() ?? null,
+          returnDate: item.returnDate?.toISOString() ?? null,
+        })) ?? [],
+      } : null;
+
       return {
         id: agreement.id,
         agreementNumber: agreement.agreementNumber,
@@ -218,7 +283,7 @@ export async function GET(request: NextRequest) {
         createdAt: agreement.createdAt.toISOString(),
         updatedAt: agreement.updatedAt.toISOString(),
         rfqId: a.rfqId ?? null,
-        rfq: null,
+        rfq: rfqData,
         deposits,
         versions,
       };

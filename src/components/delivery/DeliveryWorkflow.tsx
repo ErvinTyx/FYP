@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+import { ScrollableTimePicker } from '../ui/scrollable-time-picker';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { DeliveryOrder, DeliveryItem } from './DeliveryManagement';
@@ -39,12 +40,6 @@ interface DeliveryWorkflowProps {
   onBack: () => void;
 }
 
-const TIME_SLOTS = [
-  '09:00 - 12:00',
-  '12:00 - 15:00',
-  '15:00 - 18:00',
-];
-
 export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<Partial<DeliveryOrder>>(delivery || {
@@ -58,7 +53,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
   const [stockCheckNotes, setStockCheckNotes] = useState('');
   const [scheduledDate, setScheduledDate] = useState<Date>();
-  const [scheduleTimeSlot, setScheduleTimeSlot] = useState('');
+  const [scheduleTimeSlot, setScheduleTimeSlot] = useState('09:00');
   const [packingPhotos, setPackingPhotos] = useState<string[]>([]);
   const [deliveryPhotos, setDeliveryPhotos] = useState<string[]>([]);
   const [isSignatureDialogOpen, setIsSignatureDialogOpen] = useState(false);
@@ -87,6 +82,22 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
   }>>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+
+  // Validation error states for Step 3: Packing & Loading
+  const [step3Errors, setStep3Errors] = useState<{
+    scheduledDate?: string;
+    timeSlot?: string;
+    driverName?: string;
+    vehicleNumber?: string;
+    driverContact?: string;
+  }>({});
+
+  // Validation error states for Step 4: Customer Sign & OTP
+  const [step4Errors, setStep4Errors] = useState<{
+    customerId?: string;
+    signature?: string;
+    otp?: string;
+  }>({});
 
   // Fetch customers for OTP selection
   useEffect(() => {
@@ -260,19 +271,64 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     }
   };
 
-  const handleStartPacking = async () => {
+  // Validate Step 3: Packing & Loading
+  const validateStep3 = (isStartPacking: boolean = false): boolean => {
+    const errors: typeof step3Errors = {};
+    let isValid = true;
+
     if (!scheduledDate) {
-      toast.error('Scheduled date is not set. Please check the delivery order.');
-      return;
+      errors.scheduledDate = 'Scheduled date is required';
+      isValid = false;
     }
+
     if (!scheduleTimeSlot) {
-      toast.error('Please select a time slot');
+      errors.timeSlot = 'Please select a delivery/pickup time';
+      isValid = false;
+    }
+
+    // For complete loading (not just start packing), validate driver details for delivery type
+    if (!isStartPacking && formData.type === 'delivery') {
+      if (!formData.driverName?.trim()) {
+        errors.driverName = 'Driver name is required';
+        isValid = false;
+      }
+
+      if (!formData.vehicleNumber?.trim()) {
+        errors.vehicleNumber = 'Vehicle number is required';
+        isValid = false;
+      }
+
+      // Optional phone format validation for driver contact
+      if (formData.driverContact?.trim()) {
+        const phoneRegex = /^[\d\s+\-()]+$/;
+        if (!phoneRegex.test(formData.driverContact)) {
+          errors.driverContact = 'Invalid phone number format';
+          isValid = false;
+        }
+      }
+    }
+
+    setStep3Errors(errors);
+    return isValid;
+  };
+
+  // Clear Step 3 error for a specific field
+  const clearStep3Error = (field: keyof typeof step3Errors) => {
+    setStep3Errors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[field];
+      return newErrors;
+    });
+  };
+
+  const handleStartPacking = async () => {
+    if (!validateStep3(true)) {
       return;
     }
 
     const updatedData = {
       ...formData,
-      scheduledDate: scheduledDate.toISOString(),
+      scheduledDate: scheduledDate!.toISOString(),
       scheduledTimeSlot: scheduleTimeSlot,
       packingStartedAt: new Date().toISOString(),
       packingStartedBy: 'Current User',
@@ -291,12 +347,8 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
   };
 
   const handleCompleteLoading = async () => {
-    if (formData.type === 'delivery') {
-      // For delivery, need driver details
-      if (!formData.driverName || !formData.vehicleNumber) {
-        toast.error('Please enter driver name and vehicle number');
-        return;
-      }
+    if (!validateStep3(false)) {
+      return;
     }
 
     const newStatus = formData.type === 'delivery' ? 'In Transit' : 'Ready for Pickup';
@@ -324,21 +376,73 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
       } else {
         toast.success('Items packed and ready for customer pickup');
       }
+      setStep3Errors({});
       setCurrentStep(4);
     } catch {
       // Error already handled in saveProgressToApi
     }
   };
 
-  const handleSendOTP = async () => {
+  // Validate Step 4: Customer Sign & OTP
+  const validateStep4SendOTP = (): boolean => {
+    const errors: typeof step4Errors = {};
+    let isValid = true;
+
     if (!selectedCustomerId) {
-      toast.error('Please select a customer');
+      errors.customerId = 'Please select a customer';
+      isValid = false;
+    }
+
+    setStep4Errors(errors);
+    return isValid;
+  };
+
+  const validateStep4Verify = (): boolean => {
+    const errors: typeof step4Errors = {};
+    let isValid = true;
+
+    if (!selectedCustomerId) {
+      errors.customerId = 'Please select a customer';
+      isValid = false;
+    }
+
+    if (!formData.customerSignature) {
+      errors.signature = 'Customer signature is required';
+      isValid = false;
+    }
+
+    if (!otpInput) {
+      errors.otp = 'Please enter the OTP';
+      isValid = false;
+    } else if (otpInput.length !== 6) {
+      errors.otp = 'OTP must be 6 digits';
+      isValid = false;
+    } else if (otpInput !== generatedOtp) {
+      errors.otp = 'Invalid OTP. Please try again';
+      isValid = false;
+    }
+
+    setStep4Errors(errors);
+    return isValid;
+  };
+
+  // Clear Step 4 error for a specific field
+  const clearStep4Error = (field: keyof typeof step4Errors) => {
+    setStep4Errors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[field];
+      return newErrors;
+    });
+  };
+
+  const handleSendOTP = async () => {
+    if (!validateStep4SendOTP()) {
       return;
     }
 
     const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
     if (!selectedCustomer) {
-      toast.error('Selected customer not found');
+      setStep4Errors({ customerId: 'Selected customer not found' });
       return;
     }
 
@@ -373,13 +477,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
   };
 
   const handleVerifyOTP = async () => {
-    if (otpInput !== generatedOtp) {
-      toast.error('Invalid OTP. Please try again.');
-      return;
-    }
-
-    if (!formData.customerSignature) {
-      toast.error('Customer signature required');
+    if (!validateStep4Verify()) {
       return;
     }
 
@@ -403,6 +501,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     try {
       await saveProgressToApi(updatedData);
       toast.success('OTP verified and delivery completed!');
+      setStep4Errors({});
       setCurrentStep(5);
     } catch {
       // Error already handled in saveProgressToApi
@@ -506,6 +605,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     const signatureData = canvas.toDataURL();
     if (signatureType === 'customer') {
       setFormData({ ...formData, customerSignature: signatureData });
+      clearStep4Error('signature');
       toast.success('Customer signature saved');
     } else if (signatureType === 'driver') {
       setFormData({ ...formData, driverSignature: signatureData });
@@ -763,8 +863,8 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             </p>
 
             {/* Schedule Date - Auto-filled from DO */}
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-sm text-amber-800 mb-3">
+            <div className={`p-4 rounded-lg ${step3Errors.scheduledDate ? 'bg-red-50 border border-red-200' : 'bg-amber-50 border border-amber-200'}`}>
+              <p className={`text-sm mb-3 ${step3Errors.scheduledDate ? 'text-red-800' : 'text-amber-800'}`}>
                 <CalendarIcon className="size-4 inline mr-1" />
                 Scheduled {formData.type === 'delivery' ? 'Delivery' : 'Pickup'} Date (Auto-filled)
               </p>
@@ -772,54 +872,90 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                 <span className="text-xs text-gray-600">Date:</span>
                 <p className="text-[#231F20] font-medium">{scheduledDate ? format(scheduledDate, 'PPP') : 'Not set'}</p>
               </div>
+              {step3Errors.scheduledDate && (
+                <p className="text-xs text-red-600 mt-2 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step3Errors.scheduledDate}
+                </p>
+              )}
             </div>
 
-            {/* Time Slot Selection - Driver fills this */}
-            <div className="space-y-2">
-              <Label>Time Slot (Select by Driver) *</Label>
-              <Select value={scheduleTimeSlot} onValueChange={setScheduleTimeSlot}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select time slot" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIME_SLOTS.map((slot) => (
-                    <SelectItem key={slot} value={slot}>
-                      {slot}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">Driver must select a time slot for the {formData.type === 'delivery' ? 'delivery' : 'pickup'}</p>
+            {/* Time Selection - Driver fills this */}
+            <div className="space-y-1">
+              <ScrollableTimePicker
+                value={scheduleTimeSlot}
+                onChange={(value) => {
+                  setScheduleTimeSlot(value);
+                  clearStep3Error('timeSlot');
+                }}
+                label={`${formData.type === 'delivery' ? 'Delivery' : 'Pickup'} Time (Select by Driver) *`}
+              />
+              {step3Errors.timeSlot && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step3Errors.timeSlot}
+                </p>
+              )}
             </div>
 
             {formData.type === 'delivery' && (
               <>
                 <div className="space-y-2">
-                  <Label>Driver Name *</Label>
+                  <Label className={step3Errors.driverName ? 'text-red-600' : ''}>Driver Name *</Label>
                   <Input
                     value={formData.driverName || ''}
-                    onChange={(e) => setFormData({ ...formData, driverName: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, driverName: e.target.value });
+                      if (e.target.value.trim()) clearStep3Error('driverName');
+                    }}
                     placeholder="Enter driver name"
+                    className={step3Errors.driverName ? 'border-red-500 bg-red-50' : ''}
                   />
+                  {step3Errors.driverName && (
+                    <p className="text-xs text-red-600 flex items-center">
+                      <AlertCircle className="size-3 mr-1" />
+                      {step3Errors.driverName}
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Driver Contact</Label>
+                    <Label className={step3Errors.driverContact ? 'text-red-600' : ''}>Driver Contact</Label>
                     <Input
                       value={formData.driverContact || ''}
-                      onChange={(e) => setFormData({ ...formData, driverContact: e.target.value })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, driverContact: e.target.value });
+                        clearStep3Error('driverContact');
+                      }}
                       placeholder="+60 12-345-6789"
+                      className={step3Errors.driverContact ? 'border-red-500 bg-red-50' : ''}
                     />
+                    {step3Errors.driverContact && (
+                      <p className="text-xs text-red-600 flex items-center">
+                        <AlertCircle className="size-3 mr-1" />
+                        {step3Errors.driverContact}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Vehicle Number *</Label>
+                    <Label className={step3Errors.vehicleNumber ? 'text-red-600' : ''}>Vehicle Number *</Label>
                     <Input
                       value={formData.vehicleNumber || ''}
-                      onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, vehicleNumber: e.target.value });
+                        if (e.target.value.trim()) clearStep3Error('vehicleNumber');
+                      }}
                       placeholder="ABC 1234"
+                      className={step3Errors.vehicleNumber ? 'border-red-500 bg-red-50' : ''}
                     />
+                    {step3Errors.vehicleNumber && (
+                      <p className="text-xs text-red-600 flex items-center">
+                        <AlertCircle className="size-3 mr-1" />
+                        {step3Errors.vehicleNumber}
+                      </p>
+                    )}
                   </div>
                 </div>
               </>
@@ -971,11 +1107,12 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
             {/* Customer Selection */}
             <div className="space-y-2">
-              <Label>Select Customer *</Label>
+              <Label className={step4Errors.customerId ? 'text-red-600' : ''}>Select Customer *</Label>
               <Select 
                 value={selectedCustomerId} 
                 onValueChange={(value) => {
                   setSelectedCustomerId(value);
+                  clearStep4Error('customerId');
                   const customer = customers.find(c => c.id === value);
                   if (customer) {
                     const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.email;
@@ -983,7 +1120,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                   }
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className={step4Errors.customerId ? 'border-red-500 bg-red-50' : ''}>
                   <SelectValue placeholder="Select a customer" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1001,7 +1138,13 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                   )}
                 </SelectContent>
               </Select>
-              {selectedCustomerId && (
+              {step4Errors.customerId && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step4Errors.customerId}
+                </p>
+              )}
+              {selectedCustomerId && !step4Errors.customerId && (
                 <p className="text-sm text-gray-500">
                   OTP will be sent to: {customers.find(c => c.id === selectedCustomerId)?.email}
                 </p>
@@ -1010,36 +1153,52 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
             {/* Customer Signature */}
             <div className="space-y-2">
-              <Label>Customer Signature</Label>
+              <Label className={step4Errors.signature ? 'text-red-600' : ''}>Customer Signature *</Label>
               {formData.customerSignature ? (
-                <div className="border rounded-lg p-4">
+                <div className={`border rounded-lg p-4 ${step4Errors.signature ? 'border-red-500 bg-red-50' : ''}`}>
                   <img src={formData.customerSignature} alt="Signature" className="max-h-32" />
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => openSignatureDialog('customer')}
+                    onClick={() => {
+                      openSignatureDialog('customer');
+                      clearStep4Error('signature');
+                    }}
                     className="mt-2"
                   >
                     Change Signature
                   </Button>
                 </div>
               ) : (
-                <Button variant="outline" onClick={() => openSignatureDialog('customer')} className="w-full">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    openSignatureDialog('customer');
+                    clearStep4Error('signature');
+                  }} 
+                  className={`w-full ${step4Errors.signature ? 'border-red-500 bg-red-50 text-red-700' : ''}`}
+                >
                   <FileSignature className="size-4 mr-2" />
                   Capture Customer Signature
                 </Button>
+              )}
+              {step4Errors.signature && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step4Errors.signature}
+                </p>
               )}
             </div>
 
             {/* OTP Section */}
             <div className="space-y-2">
-              <Label>OTP Verification</Label>
+              <Label className={step4Errors.otp ? 'text-red-600' : ''}>OTP Verification *</Label>
               {!otpSent ? (
                 <Button
                   variant="outline"
                   onClick={handleSendOTP}
                   className="w-full"
-                  disabled={!selectedCustomerId || isSendingOtp}
+                  disabled={isSendingOtp}
                 >
                   {isSendingOtp ? (
                     <>
@@ -1066,14 +1225,26 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                   </div>
                   <Input
                     value={otpInput}
-                    onChange={(e) => setOtpInput(e.target.value)}
+                    onChange={(e) => {
+                      setOtpInput(e.target.value);
+                      if (e.target.value.length === 6) {
+                        clearStep4Error('otp');
+                      }
+                    }}
                     placeholder="Enter 6-digit OTP"
                     maxLength={6}
+                    className={step4Errors.otp ? 'border-red-500 bg-red-50' : ''}
                   />
+                  {step4Errors.otp && (
+                    <p className="text-xs text-red-600 flex items-center">
+                      <AlertCircle className="size-3 mr-1" />
+                      {step4Errors.otp}
+                    </p>
+                  )}
                   <Button
                     onClick={handleVerifyOTP}
                     className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
-                    disabled={otpInput.length !== 6 || !formData.customerSignature || isSaving}
+                    disabled={isSaving}
                   >
                     {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
                     {isSaving ? 'Saving...' : 'Verify OTP & Complete'}

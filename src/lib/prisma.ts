@@ -55,10 +55,10 @@ function getPrismaClient(): PrismaClient {
       user: dbUser,
       password: dbPassword,
       database: dbName,
-      connectionLimit: 5,      // Reduced from 10 to be more conservative
-      connectTimeout: 60000,   // 60 seconds
-      acquireTimeout: 60000,   // 60 seconds
-      idleTimeout: 60000,      // Close idle connections after 60s
+      connectionLimit: 20,     // Increased to handle concurrent operations
+      connectTimeout: 30000,   // 30 seconds
+      acquireTimeout: 30000,   // 30 seconds
+      idleTimeout: 30000,      // Close idle connections after 30s to recycle faster
     });
   }
 

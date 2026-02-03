@@ -243,7 +243,6 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-gray-600">Qty: {item.quantityReturned}</p>
-                    <div className="mt-1">{getItemStatusBadge(item.status)}</div>
                   </div>
                 </div>
                 {item.notes && (
