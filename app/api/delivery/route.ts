@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { createChargeForDelivery } from '@/lib/additional-charge-utils';
 
 // Roles allowed to manage delivery requests
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
@@ -557,6 +558,7 @@ export async function PUT(request: NextRequest) {
       const existingSet = await prisma.deliverySet.findUnique({
         where: { id: setId },
         include: {
+          deliveryRequest: true,
           packingList: true,
           stockCheck: true,
           schedule: true,
@@ -588,6 +590,29 @@ export async function PUT(request: NextRequest) {
         where: { id: setId },
         data: setUpdateData,
       });
+
+      // Additional Charge: create when quotation agreed, cleanup when reverted
+      const deliveryFeeNum = updateData.deliveryFee !== undefined
+        ? Number(updateData.deliveryFee)
+        : Number(existingSet.deliveryFee ?? 0);
+      const dr = existingSet.deliveryRequest;
+      if (updateData.status === 'Confirmed' && deliveryFeeNum > 0 && dr) {
+        const existingCharge = await prisma.additionalCharge.findUnique({
+          where: { deliverySetId: setId },
+        });
+        if (!existingCharge) {
+          await createChargeForDelivery({
+            deliverySetId: setId,
+            deliveryFee: deliveryFeeNum,
+            customerName: dr.customerName,
+            agreementNo: dr.agreementNo,
+          });
+        }
+      } else if (updateData.status === 'Pending' && updateData.deliveryFee === null) {
+        await prisma.additionalCharge.deleteMany({
+          where: { deliverySetId: setId },
+        });
+      }
 
       // Upsert Packing List step
       if (updateData.packingListNumber !== undefined || updateData.packingListDate !== undefined) {

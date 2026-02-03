@@ -283,11 +283,14 @@ model InventoryAdjustment {
 }
 
 // Additional Charges (Billing & Payments) – one-to-one with OpenRepairSlip via openRepairSlipId on charge
+// Also linked from Delivery & Return when quotation with fee is agreed (deliverySetId, returnRequestId)
 model AdditionalCharge {
   id                  String                 @id @default(cuid())
   invoiceNo           String                 @unique
   openRepairSlipId     String?                @unique
   openRepairSlip       OpenRepairSlip?        @relation(fields: [openRepairSlipId], references: [id], onDelete: SetNull)
+  returnRequestId     String?                @unique
+  deliverySetId       String?                @unique
   conditionReportId   String?
   customerName         String
   doId                 String
@@ -306,6 +309,8 @@ model AdditionalCharge {
   updatedAt            DateTime               @updatedAt
 
   @@index([openRepairSlipId])
+  @@index([returnRequestId])
+  @@index([deliverySetId])
   @@index([status])
 }
 

@@ -6,13 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-
-function generateInvoiceNo(): string {
-  const now = new Date();
-  const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-  const random = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
-  return `AC-${dateStr}-${random}`;
-}
+import { generateAdditionalChargeInvoiceNo } from '@/lib/additional-charge-utils';
 
 /** Build AdditionalChargeItem rows from RepairItem[] (Damage + Repair from repairActionEntries) */
 function buildChargeItemsFromRepairItems(repairItems: Array<{
@@ -124,7 +118,7 @@ export async function POST(request: NextRequest) {
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 7);
 
-    const invoiceNo = generateInvoiceNo();
+    const invoiceNo = generateAdditionalChargeInvoiceNo();
     const conditionReport = slip.conditionReport;
     const customerName = conditionReport?.customerName ?? 'Customer';
     const doId = conditionReport?.deliveryOrderNumber ?? slip.rcfNumber;

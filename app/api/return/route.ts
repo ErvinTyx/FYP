@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { appendFileSync } from 'fs';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { createChargeForReturn } from '@/lib/additional-charge-utils';
 
 // Roles allowed to manage return requests
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
@@ -418,6 +419,28 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: dataToUpdate,
     });
+
+    // Additional Charge: create when quotation agreed, cleanup when reverted
+    const pickupFeeNum = updateData.pickupFee !== undefined
+      ? Number(updateData.pickupFee)
+      : Number(existingRequest.pickupFee ?? 0);
+    if (updateData.status === 'Agreed' && pickupFeeNum > 0) {
+      const existingCharge = await prisma.additionalCharge.findUnique({
+        where: { returnRequestId: id },
+      });
+      if (!existingCharge) {
+        await createChargeForReturn({
+          returnRequestId: id,
+          pickupFee: pickupFeeNum,
+          customerName: existingRequest.customerName,
+          agreementNo: existingRequest.agreementNo,
+        });
+      }
+    } else if (updateData.status === 'Requested' && updateData.pickupFee === null) {
+      await prisma.additionalCharge.deleteMany({
+        where: { returnRequestId: id },
+      });
+    }
 
     // Upsert Schedule step
     if (updateData.scheduledDate !== undefined || updateData.pickupDate !== undefined || 
