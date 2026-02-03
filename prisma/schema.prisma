@@ -192,6 +192,7 @@ model OpenRepairSlip {
   inventoryLevel        String?              // very-low, low, normal, high
   items                 RepairItem[]
   inventoryAdjustments  InventoryAdjustment[]
+  additionalCharge      AdditionalCharge?    // reverse 1:1 – charge has openRepairSlipId
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 }
@@ -279,6 +280,49 @@ model InventoryAdjustment {
   notes                 String?              @db.Text
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
+}
+
+// Additional Charges (Billing & Payments) – one-to-one with OpenRepairSlip via openRepairSlipId on charge
+model AdditionalCharge {
+  id                  String                 @id @default(cuid())
+  invoiceNo           String                 @unique
+  openRepairSlipId     String?                @unique
+  openRepairSlip       OpenRepairSlip?        @relation(fields: [openRepairSlipId], references: [id], onDelete: SetNull)
+  conditionReportId   String?
+  customerName         String
+  doId                 String
+  returnedDate         String?
+  dueDate              DateTime
+  status               String                 @default("pending_payment") // pending_payment, pending_approval, approved, rejected
+  totalCharges         Decimal                @default(0) @db.Decimal(15, 2)
+  proofOfPaymentUrl   String?                @db.Text
+  referenceId          String?                @db.Text
+  rejectionReason      String?                @db.Text
+  approvalDate         DateTime?
+  rejectionDate        DateTime?
+  uploadedByEmail      String?                @db.Text
+  items                AdditionalChargeItem[]
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([openRepairSlipId])
+  @@index([status])
+}
+
+model AdditionalChargeItem {
+  id                  String            @id @default(cuid())
+  additionalChargeId  String
+  additionalCharge    AdditionalCharge   @relation(fields: [additionalChargeId], references: [id], onDelete: Cascade)
+  itemName            String
+  itemType            String             // Damage, Repair
+  repairDescription   String?            @db.Text
+  quantity            Int
+  unitPrice           Decimal            @db.Decimal(15, 2)
+  amount              Decimal            @db.Decimal(15, 2)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([additionalChargeId])
 }
 
 //Rental Agreements

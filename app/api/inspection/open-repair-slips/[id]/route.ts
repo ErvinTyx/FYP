@@ -41,6 +41,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       where: { id: slipId },
       include: {
         items: true,
+        additionalCharge: true,
       },
     });
 

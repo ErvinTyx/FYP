@@ -86,6 +86,8 @@ export interface OpenRepairSlip {
   createdAt: string;
   updatedAt: string;
   inventoryLevel?: 'very-low' | 'low' | 'normal' | 'high'; // Added for priority calculation
+  /** When set, an Additional Charge exists for this slip; hide "Generate Invoice" */
+  additionalCharge?: { id: string } | null;
 }
 
 // Repair action entry: one quantity drives cost (UI shows single "Quantity" field)

@@ -1,4 +1,5 @@
-export type AdditionalChargeStatus = 
+// API status values (snake_case); display as "Pending Payment", etc.
+export type AdditionalChargeStatus =
   | "Pending Payment"
   | "Pending Approval"
   | "Approved"
@@ -9,7 +10,8 @@ export type ItemType = "Missing" | "Damaged" | "Repair" | "Cleaning";
 export interface AdditionalChargeItem {
   id: string;
   itemName: string;
-  itemType: ItemType;
+  itemType: ItemType | string;
+  repairDescription?: string | null;
   quantity: number;
   unitPrice: number;
   amount: number;
@@ -21,17 +23,19 @@ export interface AdditionalCharge {
   invoiceNo: string;
   doId: string;
   customerName: string;
-  customerId: string;
-  returnedDate: string;
-  inspectionReportId?: string;
+  returnedDate?: string | null;
+  conditionReportId?: string | null;
   totalCharges: number;
   status: AdditionalChargeStatus;
   dueDate: string;
-  lastUpdated: string;
+  lastUpdated?: string;
   items: AdditionalChargeItem[];
   proofOfPayment?: string;
-  referenceId?: string;
-  rejectionReason?: string;
-  approvalDate?: string;
-  rejectionDate?: string;
+  proofOfPaymentUrl?: string | null;
+  referenceId?: string | null;
+  rejectionReason?: string | null;
+  approvalDate?: string | null;
+  rejectionDate?: string | null;
+  uploadedByEmail?: string | null;
+  openRepairSlipId?: string | null;
 }

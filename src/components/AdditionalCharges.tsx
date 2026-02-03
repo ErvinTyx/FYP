@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { AdditionalChargesList } from "./additional-charges/AdditionalChargesList";
 import { AdditionalChargesDetail } from "./additional-charges/AdditionalChargesDetail";
 import { AdditionalCharge } from "../types/additionalCharge";
@@ -6,20 +6,20 @@ import { AdditionalCharge } from "../types/additionalCharge";
 export function AdditionalCharges() {
   const [view, setView] = useState<"list" | "detail">("list");
   const [selectedCharge, setSelectedCharge] = useState<AdditionalCharge | null>(null);
+  const [listKey, setListKey] = useState(0);
 
   const handleViewDetails = (charge: AdditionalCharge) => {
     setSelectedCharge(charge);
     setView("detail");
   };
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     setSelectedCharge(null);
     setView("list");
-  };
+    setListKey((k) => k + 1);
+  }, []);
 
   const handleUpdate = (updatedCharge: AdditionalCharge) => {
-    // In a real app, this would update the backend
-    // For now, we just update the local state
     setSelectedCharge(updatedCharge);
   };
 
@@ -33,5 +33,7 @@ export function AdditionalCharges() {
     );
   }
 
-  return <AdditionalChargesList onViewDetails={handleViewDetails} />;
+  return (
+    <AdditionalChargesList key={listKey} onViewDetails={handleViewDetails} />
+  );
 }

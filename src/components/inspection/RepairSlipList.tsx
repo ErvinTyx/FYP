@@ -128,7 +128,7 @@ export function RepairSlipList({ repairSlips, searchQuery, onView, onUpdateStatu
                   <Eye className="size-4 mr-2" />
                   View Details
                 </Button>
-                {!slip.damageInvoiceId && (
+                {slip.additionalCharge == null && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -139,7 +139,7 @@ export function RepairSlipList({ repairSlips, searchQuery, onView, onUpdateStatu
                     Generate Invoice
                   </Button>
                 )}
-                {slip.damageInvoiceId && (
+                {slip.additionalCharge != null && (
                   <Badge className="bg-green-100 text-green-800">
                     Invoice Generated
                   </Badge>

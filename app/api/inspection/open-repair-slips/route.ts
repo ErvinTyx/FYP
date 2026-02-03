@@ -218,11 +218,12 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Get all repair slips with filters
+    // Get all repair slips with filters (include additionalCharge for "Generate Invoice" visibility)
     const repairSlips = await prisma.openRepairSlip.findMany({
       where,
       include: {
         items: true,
+        additionalCharge: true,
       },
       orderBy: {
         createdAt: 'desc',

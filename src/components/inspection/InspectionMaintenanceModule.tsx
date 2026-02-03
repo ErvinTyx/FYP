@@ -537,103 +537,46 @@ export function InspectionMaintenanceModule() {
       toast.error('Repair slip not found');
       return;
     }
-
-    // Generate invoice from repair slip (not condition report)
-    const invoiceItems = slip.items
-      .filter(item => item.totalCost > 0)
-      .map(item => ({
-        description: `${item.scaffoldingItemName} - ${item.damageDescription || 'Damage repair'}`,
-        quantity: item.quantity,
-        unitPrice: item.quantity > 0 ? item.totalCost / item.quantity : item.totalCost,
-        total: item.totalCost
-      }));
-
-    // Check if there are items with cost
-    if (invoiceItems.length === 0) {
-      toast.error('No items with repair costs found in this repair slip. Please ensure items have cost values.');
+    if (slip.additionalCharge != null) {
+      toast.info('An additional charge already exists for this repair slip');
       return;
     }
 
-    const subtotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
-    const taxRate = 0.06; // 6% SST
-    const tax = subtotal * taxRate;
-    const total = subtotal + tax;
-
     try {
-      // Call API to save damage invoice
-      const response = await fetch('/api/inspection/damage-invoices', {
+      const response = await fetch('/api/additional-charges', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orpNumber: slip.orpNumber,
-          invoiceDate: new Date().toISOString().split('T')[0],
-          vendor: '',
-          items: invoiceItems,
-          subtotal,
-          tax,
-          total,
-          paymentStatus: 'pending',
-          notes: `Damage charges for items in repair slip: ${slip.orpNumber}. Based on completed repairs.`
-        })
+        credentials: 'include',
+        body: JSON.stringify({ openRepairSlipId: slip.id }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save damage invoice');
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.message || 'Failed to create additional charge');
       }
 
       const result = await response.json();
-      const newInvoice = result.data;
+      const newCharge = result.data;
 
-      // Update local state
-      const updatedInvoices = [...damageInvoices, newInvoice];
-      setDamageInvoices(updatedInvoices);
-      localStorage.setItem('damageInvoices', JSON.stringify(updatedInvoices));
-      
-      // Update repair slip with invoice number (and damageInvoiceId for UI badge)
-      const updatedSlips = repairSlips.map(s =>
-        s.id === repairSlipId
-          ? { ...s, invoiceNumber: newInvoice.invoiceNumber, damageInvoiceId: newInvoice.id }
-          : s
-      );
-
-      // Persist invoice reference onto repair slip (so Generate Invoice is disabled reliably)
-      try {
-        const updateSlipResponse = await fetch(`/api/inspection/open-repair-slips/${repairSlipId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            invoiceNumber: newInvoice.invoiceNumber,
-            damageInvoiceId: newInvoice.id,
-          }),
-        });
-
-        const updateSlipResult = await updateSlipResponse.json();
-        if (updateSlipResponse.ok && updateSlipResult?.data) {
-          const persistedSlip: OpenRepairSlip = updateSlipResult.data;
-          const persistedSlips = repairSlips.map(s => s.id === repairSlipId ? persistedSlip : s);
-          setRepairSlips(persistedSlips);
-          localStorage.setItem('repairSlips', JSON.stringify(persistedSlips));
+      // Refetch repair slips so additionalCharge is included and "Generate Invoice" is hidden
+      const listRes = await fetch('/api/inspection/open-repair-slips', { credentials: 'include' });
+      if (listRes.ok) {
+        const listResult = await listRes.json();
+        if (listResult.success && listResult.data) {
+          setRepairSlips(listResult.data);
+          localStorage.setItem('repairSlips', JSON.stringify(listResult.data));
           if (selectedRepairSlip?.id === repairSlipId) {
-            setSelectedRepairSlip(persistedSlip);
+            const updated = listResult.data.find((s: OpenRepairSlip) => s.id === repairSlipId);
+            if (updated) setSelectedRepairSlip(updated);
           }
-        } else {
-          // Fallback to local update if persistence fails
-          setRepairSlips(updatedSlips);
-          localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
         }
-      } catch (e) {
-        setRepairSlips(updatedSlips);
-        localStorage.setItem('repairSlips', JSON.stringify(updatedSlips));
       }
-      
-      toast.success(`Damage invoice ${newInvoice.invoiceNumber} generated and saved successfully with RM ${Number(total || 0).toFixed(2)} total`);
-      
-      // Switch to invoices tab to show the generated invoice
+
+      toast.success(`Additional charge ${newCharge.invoiceNo} created. Due in 7 days. View in Additional Charges.`);
       setActiveTab('invoices');
     } catch (error) {
-      console.error('Error saving damage invoice:', error);
-      toast.error('Failed to save damage invoice to database');
+      console.error('Error creating additional charge:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create additional charge');
     }
   };
 
