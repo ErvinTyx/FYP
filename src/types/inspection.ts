@@ -88,13 +88,15 @@ export interface OpenRepairSlip {
   inventoryLevel?: 'very-low' | 'low' | 'normal' | 'high'; // Added for priority calculation
 }
 
-// Repair action entry for tracking each repair action with quantities
+// Repair action entry: one quantity drives cost (UI shows single "Quantity" field)
 export interface RepairActionEntry {
   id: string;
-  action: string;              // e.g., "Wedge key missing/damaged", "Repairable bend"
-  affectedItems: number;       // Number of scaffolding items affected (for tracking repair progress)
-  issueQuantity: number;       // Quantity of issues (e.g., number of bends) - for cost calculation
-  costPerUnit: number;         // Cost per issue unit (from ScaffoldingDamageRepair)
+  action: string;              // e.g., "Major concrete cleaning", "Repairable bend"
+  /** Kept in sync with issueQuantity for backward compatibility; UI uses single Quantity. */
+  affectedItems: number;
+  /** Single quantity (items or bends) — used for cost: issueQuantity × costPerUnit. */
+  issueQuantity: number;
+  costPerUnit: number;         // From ScaffoldingDamageRepair (RM per item or per bend)
   totalCost: number;           // issueQuantity × costPerUnit
 }
 

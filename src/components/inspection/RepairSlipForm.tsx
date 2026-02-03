@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Info } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Info, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -16,6 +16,23 @@ import {
   getRepairActionsForItem,
   ScaffoldingRepairAction
 } from '../../types/inspection';
+
+// Interface for scaffolding items with damage repairs from database
+interface ScaffoldingDamageRepair {
+  description: string;
+  repairChargePerUnit: number;
+  partsLabourCostPerUnit: number;
+}
+
+interface ScaffoldingItemWithRepairs {
+  id: string;
+  itemCode: string;
+  name: string;
+  category: string;
+  price: number;
+  originPrice: number;
+  damageRepairs?: ScaffoldingDamageRepair[];
+}
 
 interface RepairSlipFormProps {
   repairSlip?: OpenRepairSlip | null;
@@ -40,15 +57,96 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
   });
 
   const [repairItems, setRepairItems] = useState<RepairItem[]>(repairSlip?.items || []);
+  
+  // Scaffolding items with damage repairs from database
+  const [scaffoldingItems, setScaffoldingItems] = useState<ScaffoldingItemWithRepairs[]>([]);
+  const [loadingScaffoldingItems, setLoadingScaffoldingItems] = useState(true);
+
+  // Fetch scaffolding items with damage repairs from database
+  useEffect(() => {
+    const fetchScaffoldingItems = async () => {
+      try {
+        const response = await fetch('/api/scaffolding', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const result = await response.json();
+          setScaffoldingItems(result.data || []);
+        } else {
+          console.error('Failed to fetch scaffolding items');
+        }
+      } catch (error) {
+        console.error('Error fetching scaffolding items:', error);
+      } finally {
+        setLoadingScaffoldingItems(false);
+      }
+    };
+    fetchScaffoldingItems();
+  }, []);
+
+  // Get repair actions from database for a specific scaffolding item
+  const getRepairActionsFromDB = (scaffoldingItemId: string, scaffoldingItemName: string): ScaffoldingRepairAction[] => {
+    // First try to find by ID
+    let scaffoldingItem = scaffoldingItems.find(s => s.id === scaffoldingItemId);
+    
+    // If not found by ID, try to match by name
+    if (!scaffoldingItem && scaffoldingItemName) {
+      scaffoldingItem = scaffoldingItems.find(s => 
+        s.name.toLowerCase() === scaffoldingItemName.toLowerCase() ||
+        scaffoldingItemName.toLowerCase().includes(s.name.toLowerCase())
+      );
+    }
+
+    // If scaffolding item found and has damage repairs, use them
+    if (scaffoldingItem?.damageRepairs && scaffoldingItem.damageRepairs.length > 0) {
+      return scaffoldingItem.damageRepairs.map(dr => ({
+        action: dr.description,
+        costPerUnit: dr.repairChargePerUnit,
+        costType: 'per-item' as const, // Database entries are per-item
+      }));
+    }
+
+    // Fallback to hardcoded values if no database entries
+    return getRepairActionsForItem(scaffoldingItemName);
+  };
+
+  // Get write-off cost (originPrice) from database for a scaffolding item
+  const getWriteOffCostFromDB = (scaffoldingItemId: string, scaffoldingItemName: string, fallbackPrice: number): number => {
+    // First try to find by ID
+    let scaffoldingItem = scaffoldingItems.find(s => s.id === scaffoldingItemId);
+    
+    // If not found by ID, try to match by name
+    if (!scaffoldingItem && scaffoldingItemName) {
+      scaffoldingItem = scaffoldingItems.find(s => 
+        s.name.toLowerCase() === scaffoldingItemName.toLowerCase() ||
+        scaffoldingItemName.toLowerCase().includes(s.name.toLowerCase())
+      );
+    }
+
+    // Return originPrice if available, otherwise price, otherwise fallback
+    if (scaffoldingItem) {
+      return scaffoldingItem.originPrice > 0 ? scaffoldingItem.originPrice : scaffoldingItem.price;
+    }
+
+    return fallbackPrice;
+  };
 
   useEffect(() => {
-    if (conditionReport && !repairSlip && conditionReport.items) {
+    // Wait for scaffolding items to load before initializing repair items
+    if (conditionReport && !repairSlip && conditionReport.items && !loadingScaffoldingItems) {
       const damagedItems = (conditionReport.items || []).filter(item => item.repairRequired);
       const initialItems: RepairItem[] = damagedItems.map(item => {
         const qtyRepair = Number(item.quantityRepair || 0);
         const qtyWriteOff = Number(item.quantityWriteOff || 0);
         const totalQty = qtyRepair + qtyWriteOff;
-        const originalPrice = Number(item.originalItemPrice || 0);
+        
+        // Get write-off cost from database (originPrice) instead of condition report price
+        const writeOffPrice = getWriteOffCostFromDB(
+          item.scaffoldingItemId, 
+          item.scaffoldingItemName, 
+          Number(item.originalItemPrice || 0)
+        );
+        
         return {
           id: `repair-item-${Date.now()}-${Math.random()}`,
           inspectionItemId: item.id,
@@ -64,18 +162,18 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
           repairActions: [],
           repairActionEntries: [],
           repairStatus: 'pending',
-          writeOffCostPerUnit: originalPrice,
-          writeOffTotalCost: qtyWriteOff * originalPrice,
+          writeOffCostPerUnit: writeOffPrice,
+          writeOffTotalCost: qtyWriteOff * writeOffPrice,
           totalRepairCost: 0,
           costPerUnit: 0,
-          totalCost: qtyWriteOff * originalPrice,
+          totalCost: qtyWriteOff * writeOffPrice,
           beforeImages: item.images.map(img => img.url),
           afterImages: [],
         };
       });
       setRepairItems(initialItems);
     }
-  }, [conditionReport, repairSlip]);
+  }, [conditionReport, repairSlip, loadingScaffoldingItems, scaffoldingItems]);
 
   useEffect(() => {
     const total = repairItems.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
@@ -122,7 +220,14 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     const qtyRepair = Number(selectedItem.quantityRepair || 0);
     const qtyWriteOff = Number(selectedItem.quantityWriteOff || 0);
     const totalQty = qtyRepair + qtyWriteOff;
-    const originalPrice = Number(selectedItem.originalItemPrice || 0);
+    
+    // Get write-off cost from database (originPrice) instead of condition report price
+    const writeOffPrice = getWriteOffCostFromDB(
+      selectedItem.scaffoldingItemId, 
+      selectedItem.scaffoldingItemName, 
+      Number(selectedItem.originalItemPrice || 0)
+    );
+    
     setRepairItems(repairItems.map(item => {
       if (item.id === repairItemId) {
         return {
@@ -135,9 +240,9 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
           quantityWriteOff: qtyWriteOff,
           quantityRemaining: qtyRepair,
           damageDescription: selectedItem.damageDescription || '',
-          writeOffCostPerUnit: originalPrice,
-          writeOffTotalCost: qtyWriteOff * originalPrice,
-          totalCost: qtyWriteOff * originalPrice,
+          writeOffCostPerUnit: writeOffPrice,
+          writeOffTotalCost: qtyWriteOff * writeOffPrice,
+          totalCost: qtyWriteOff * writeOffPrice,
           repairActionEntries: [],
           beforeImages: selectedItem.images.map(img => img.url),
         };
@@ -170,6 +275,9 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
         const entries = item.repairActionEntries.map(entry => {
           if (entry.id === actionId) {
             const updated = { ...entry, [field]: value };
+            // Single quantity drives cost; keep affectedItems in sync for stored data
+            if (field === 'issueQuantity') updated.affectedItems = value;
+            if (field === 'affectedItems') updated.issueQuantity = value;
             updated.totalCost = updated.issueQuantity * updated.costPerUnit;
             return updated;
           }
@@ -370,36 +478,55 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
                     <div className="space-y-2">
                       <Label>Write-off Cost/Unit (RM)</Label>
                       <Input type="number" value={Number(item.writeOffCostPerUnit || 0).toFixed(2)} onChange={(e) => handleUpdateWriteOffCost(item.id, parseFloat(e.target.value) || 0)} />
-                      <p className="text-xs text-gray-500">Write-off: RM {Number(item.writeOffTotalCost || 0).toFixed(2)}</p>
+                      <p className="text-xs text-gray-500">From inventory origin price. Write-off: RM {Number(item.writeOffTotalCost || 0).toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
 
                 {item.quantityRepair > 0 && item.scaffoldingItemName && (
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2"><Label>Repair Actions Required</Label><span className="text-xs text-gray-500">(Click to add/remove)</span></div>
-                    <div className="flex flex-wrap gap-2">
-                      {getRepairActionsForItem(item.scaffoldingItemName).map((repairAction) => {
-                        const isSelected = item.repairActionEntries.some(e => e.action === repairAction.action);
-                        return (
-                          <Badge key={repairAction.action} variant={isSelected ? 'default' : 'outline'} className={`cursor-pointer ${isSelected ? 'bg-[#F15929] hover:bg-[#d94d1f]' : 'hover:bg-gray-100'}`} onClick={() => handleToggleRepairAction(item.id, repairAction)}>
-                            {repairAction.action} (RM {repairAction.costPerUnit.toFixed(2)}/{repairAction.costType === 'per-bend' ? 'bend' : 'item'})
-                          </Badge>
-                        );
-                      })}
+                    <div className="flex items-center gap-2">
+                      <Label>Repair Actions Required</Label>
+                      <span className="text-xs text-gray-500">(Click to add/remove - from inventory database)</span>
                     </div>
+                    {loadingScaffoldingItems ? (
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span className="text-sm">Loading repair actions...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          {getRepairActionsFromDB(item.scaffoldingItemId, item.scaffoldingItemName).map((repairAction) => {
+                            const isSelected = item.repairActionEntries.some(e => e.action === repairAction.action);
+                            return (
+                              <Badge key={repairAction.action} variant={isSelected ? 'default' : 'outline'} className={`cursor-pointer ${isSelected ? 'bg-[#F15929] hover:bg-[#d94d1f]' : 'hover:bg-gray-100'}`} onClick={() => handleToggleRepairAction(item.id, repairAction)}>
+                                {repairAction.action} (RM {repairAction.costPerUnit.toFixed(2)}/{repairAction.costType === 'per-bend' ? 'bend' : 'item'})
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                        {getRepairActionsFromDB(item.scaffoldingItemId, item.scaffoldingItemName).length === 0 && (
+                          <p className="text-sm text-amber-600">No repair actions defined for this item in inventory. Please add repair types in the Inventory module.</p>
+                        )}
+                      </>
+                    )}
                     {item.repairActionEntries.length > 0 && (
                       <div className="space-y-3 p-4 bg-blue-50 rounded-lg">
                         <span className="text-sm font-medium text-blue-700">Repair Action Details</span>
                         {item.repairActionEntries.map((entry) => {
-                          const actionInfo = getRepairActionsForItem(item.scaffoldingItemName).find(a => a.action === entry.action);
+                          const actionInfo = getRepairActionsFromDB(item.scaffoldingItemId, item.scaffoldingItemName).find(a => a.action === entry.action);
                           const isBendType = actionInfo?.costType === 'per-bend';
+                          const qty = entry.issueQuantity; // single quantity for both display and cost
                           return (
-                            <div key={entry.id} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 bg-white rounded border">
+                            <div key={entry.id} className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-white rounded border">
                               <div><Label className="text-xs">{entry.action}</Label><p className="text-xs text-gray-500">RM {entry.costPerUnit.toFixed(2)}/{isBendType ? 'bend' : 'item'}</p></div>
-                              <div className="space-y-1"><Label className="text-xs">Affected Items</Label><Input type="number" value={entry.affectedItems} onChange={(e) => handleUpdateRepairActionEntry(item.id, entry.id, 'affectedItems', parseInt(e.target.value) || 0)} min="0" max={item.quantityRepair} className="h-8 text-sm" /><p className="text-xs text-gray-400">Scaffolding items affected</p></div>
-                              <div className="space-y-1"><Label className="text-xs">{isBendType ? 'Issue Qty (Bends)' : 'Issue Qty'}</Label><Input type="number" value={entry.issueQuantity} onChange={(e) => handleUpdateRepairActionEntry(item.id, entry.id, 'issueQuantity', parseInt(e.target.value) || 0)} min="0" className="h-8 text-sm" /><p className="text-xs text-gray-400">{isBendType ? 'Total bends to fix' : 'For cost calculation'}</p></div>
-                              <div className="space-y-1"><Label className="text-xs">Cost</Label><div className="h-8 flex items-center text-sm font-medium text-green-700">RM {Number(entry.totalCost || 0).toFixed(2)}</div><p className="text-xs text-gray-400">{entry.issueQuantity} x RM {entry.costPerUnit.toFixed(2)}</p></div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Quantity</Label>
+                                <Input type="number" value={qty} onChange={(e) => handleUpdateRepairActionEntry(item.id, entry.id, 'issueQuantity', parseInt(e.target.value) || 0)} min="0" max={item.quantityRepair} className="h-8 text-sm" />
+                                <p className="text-xs text-gray-400">{isBendType ? 'Number of bends' : 'Number of items'} — used for cost (qty × RM/unit)</p>
+                              </div>
+                              <div className="space-y-1"><Label className="text-xs">Cost</Label><div className="h-8 flex items-center text-sm font-medium text-green-700">RM {Number(entry.totalCost || 0).toFixed(2)}</div><p className="text-xs text-gray-400">{qty} × RM {entry.costPerUnit.toFixed(2)}</p></div>
                             </div>
                           );
                         })}

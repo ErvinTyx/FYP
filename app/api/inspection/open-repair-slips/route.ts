@@ -85,27 +85,43 @@ export async function POST(request: NextRequest) {
       // Create repair items if provided
       if (items && Array.isArray(items) && items.length > 0) {
         await tx.repairItem.createMany({
-          data: items.map((item: any) => ({
-            openRepairSlipId: openRepairSlip.id,
-            inspectionItemId: item.inspectionItemId || null,
-            scaffoldingItemId: item.scaffoldingItemId || '',
-            scaffoldingItemName: item.scaffoldingItemName || '',
-            quantity: item.quantity || 0,
-            quantityRepaired: item.quantityRepaired || 0,
-            quantityRemaining: item.quantityRemaining || item.quantity || 0,
-            damageType: item.damageType || 'other',
-            damageDescription: item.damageDescription || '',
-            repairActions: JSON.stringify(item.repairActions || []),
-            repairDescription: item.repairDescription || null,
-            repairStatus: item.repairStatus || 'pending',
-            costPerUnit: parseFloat((item.costPerUnit || 0).toString()),
-            totalCost: parseFloat((item.totalCost || 0).toString()),
-            estimatedCostFromRFQ: parseFloat((item.estimatedCostFromRFQ || 0).toString()),
-            finalCost: parseFloat((item.finalCost || 0).toString()),
-            beforeImages: JSON.stringify(item.beforeImages || []),
-            afterImages: JSON.stringify(item.afterImages || []),
-            completedDate: item.completedDate || null,
-          })),
+          data: items.map((item: any) => {
+            // Normalize repairActionEntries: single quantity (issueQuantity) drives cost; sync affectedItems
+            const entries = Array.isArray(item.repairActionEntries) ? item.repairActionEntries : [];
+            const normalizedEntries = entries.map((e: any) => ({
+              ...e,
+              issueQuantity: Number(e.issueQuantity ?? e.affectedItems ?? 0),
+              affectedItems: Number(e.issueQuantity ?? e.affectedItems ?? 0),
+              totalCost: Number(e.issueQuantity ?? e.affectedItems ?? 0) * Number(e.costPerUnit ?? 0),
+            }));
+            return {
+              openRepairSlipId: openRepairSlip.id,
+              inspectionItemId: item.inspectionItemId || null,
+              scaffoldingItemId: item.scaffoldingItemId || '',
+              scaffoldingItemName: item.scaffoldingItemName || '',
+              quantity: item.quantity || 0,
+              quantityRepair: item.quantityRepair ?? 0,
+              quantityWriteOff: item.quantityWriteOff ?? 0,
+              quantityRepaired: item.quantityRepaired || 0,
+              quantityRemaining: item.quantityRemaining ?? item.quantityRepair ?? item.quantity ?? 0,
+              damageType: item.damageType || 'other',
+              damageDescription: item.damageDescription || '',
+              repairActions: JSON.stringify(item.repairActions || []),
+              repairActionEntries: JSON.stringify(normalizedEntries),
+              repairDescription: item.repairDescription || null,
+              repairStatus: item.repairStatus || 'pending',
+              writeOffCostPerUnit: parseFloat((item.writeOffCostPerUnit ?? 0).toString()),
+              writeOffTotalCost: parseFloat((item.writeOffTotalCost ?? 0).toString()),
+              totalRepairCost: parseFloat((item.totalRepairCost ?? 0).toString()),
+              costPerUnit: parseFloat((item.costPerUnit || 0).toString()),
+              totalCost: parseFloat((item.totalCost || 0).toString()),
+              estimatedCostFromRFQ: parseFloat((item.estimatedCostFromRFQ || 0).toString()),
+              finalCost: parseFloat((item.finalCost || 0).toString()),
+              beforeImages: JSON.stringify(item.beforeImages || []),
+              afterImages: JSON.stringify(item.afterImages || []),
+              completedDate: item.completedDate || null,
+            };
+          }),
         });
       }
 
@@ -123,22 +139,37 @@ export async function POST(request: NextRequest) {
       });
     });
 
-    // Transform data to match frontend expectations
+    // Transform data to match frontend expectations; normalize repairActionEntries (single quantity)
+    const transformItem = (item: any) => {
+      const entries = JSON.parse(item.repairActionEntries || '[]');
+      const normalizedEntries = entries.map((e: any) => ({
+        ...e,
+        issueQuantity: Number(e.issueQuantity ?? e.affectedItems ?? 0),
+        affectedItems: Number(e.issueQuantity ?? e.affectedItems ?? 0),
+      }));
+      return {
+        ...item,
+        quantityRepair: item.quantityRepair ?? 0,
+        quantityWriteOff: item.quantityWriteOff ?? 0,
+        writeOffCostPerUnit: Number(item.writeOffCostPerUnit ?? 0),
+        writeOffTotalCost: Number(item.writeOffTotalCost ?? 0),
+        totalRepairCost: Number(item.totalRepairCost ?? 0),
+        costPerUnit: Number(item.costPerUnit),
+        totalCost: Number(item.totalCost),
+        estimatedCostFromRFQ: Number(item.estimatedCostFromRFQ),
+        finalCost: Number(item.finalCost),
+        repairActions: JSON.parse(item.repairActions || '[]'),
+        repairActionEntries: normalizedEntries,
+        beforeImages: JSON.parse(item.beforeImages || '[]'),
+        afterImages: JSON.parse(item.afterImages || '[]'),
+      };
+    };
     const transformedResult = result
       ? {
           ...result,
           estimatedCost: Number(result.estimatedCost),
           actualCost: Number(result.actualCost),
-          items: result.items.map((item: any) => ({
-            ...item,
-            costPerUnit: Number(item.costPerUnit),
-            totalCost: Number(item.totalCost),
-            estimatedCostFromRFQ: Number(item.estimatedCostFromRFQ),
-            finalCost: Number(item.finalCost),
-            repairActions: JSON.parse(item.repairActions || '[]'),
-            beforeImages: JSON.parse(item.beforeImages || '[]'),
-            afterImages: JSON.parse(item.afterImages || '[]'),
-          })),
+          items: result.items.map(transformItem),
         }
       : null;
 
@@ -198,21 +229,36 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Transform data to match frontend expectations
-    const transformedSlips = repairSlips.map((slip) => ({
-      ...slip,
-      estimatedCost: Number(slip.estimatedCost),
-      actualCost: Number(slip.actualCost),
-      items: slip.items.map((item) => ({
+    // Transform data to match frontend expectations; normalize repairActionEntries (single quantity)
+    const transformItem = (item: any) => {
+      const entries = JSON.parse(item.repairActionEntries || '[]');
+      const normalizedEntries = entries.map((e: any) => ({
+        ...e,
+        issueQuantity: Number(e.issueQuantity ?? e.affectedItems ?? 0),
+        affectedItems: Number(e.issueQuantity ?? e.affectedItems ?? 0),
+      }));
+      return {
         ...item,
+        quantityRepair: item.quantityRepair ?? 0,
+        quantityWriteOff: item.quantityWriteOff ?? 0,
+        writeOffCostPerUnit: Number(item.writeOffCostPerUnit ?? 0),
+        writeOffTotalCost: Number(item.writeOffTotalCost ?? 0),
+        totalRepairCost: Number(item.totalRepairCost ?? 0),
         costPerUnit: Number(item.costPerUnit),
         totalCost: Number(item.totalCost),
         estimatedCostFromRFQ: Number(item.estimatedCostFromRFQ),
         finalCost: Number(item.finalCost),
         repairActions: JSON.parse(item.repairActions || '[]'),
+        repairActionEntries: normalizedEntries,
         beforeImages: JSON.parse(item.beforeImages || '[]'),
         afterImages: JSON.parse(item.afterImages || '[]'),
-      })),
+      };
+    };
+    const transformedSlips = repairSlips.map((slip) => ({
+      ...slip,
+      estimatedCost: Number(slip.estimatedCost),
+      actualCost: Number(slip.actualCost),
+      items: slip.items.map(transformItem),
     }));
 
     return NextResponse.json(

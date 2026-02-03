@@ -16,6 +16,7 @@ interface ScaffoldingItem {
   quantity: number;
   available: number;
   price: number;
+  originPrice?: number; // Original purchase price for write-off calculations
   status: string;
   location: string;
   itemStatus: string;
@@ -117,6 +118,11 @@ export function ConditionReportForm({
         const returnedQty = returnItem.quantityReturned || returnItem.quantity;
         quantityMap[returnItem.scaffoldingItemId || returnItem.name] = returnedQty;
         
+        // Use originPrice for write-off cost calculations, fallback to price if not set
+        const itemPrice = scaffoldingItem?.originPrice && scaffoldingItem.originPrice > 0 
+          ? scaffoldingItem.originPrice 
+          : (scaffoldingItem?.price || 0);
+        
         return {
           id: `item-${Date.now()}-${index}`,
           scaffoldingItemId: returnItem.scaffoldingItemId || scaffoldingItem?.id || '',
@@ -130,7 +136,7 @@ export function ConditionReportForm({
           images: [],
           repairRequired: false,
           estimatedRepairCost: 0,
-          originalItemPrice: scaffoldingItem?.price || 0,
+          originalItemPrice: itemPrice, // Uses originPrice from inventory for write-off calculations
           inspectionChecklist: {
             structuralIntegrity: false,
             surfaceCondition: false,
@@ -187,7 +193,10 @@ export function ConditionReportForm({
           const selectedItem = scaffoldingItems.find((s: ScaffoldingItem) => s.id === value);
           if (selectedItem) {
             updated.scaffoldingItemName = selectedItem.name;
-            updated.originalItemPrice = selectedItem.price || 0;
+            // Use originPrice for write-off cost, fallback to price if not set
+            updated.originalItemPrice = (selectedItem.originPrice && selectedItem.originPrice > 0) 
+              ? selectedItem.originPrice 
+              : (selectedItem.price || 0);
           }
         }
         
@@ -509,7 +518,7 @@ export function ConditionReportForm({
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Original Item Price (RM)</Label>
+                    <Label>Write-off Price (RM)</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -518,7 +527,7 @@ export function ConditionReportForm({
                       onChange={(e) => updateItem(item.id, 'originalItemPrice', parseFloat(e.target.value) || 0)}
                       placeholder="0.00"
                     />
-                    <p className="text-xs text-gray-500">Auto-populated from RFQ</p>
+                    <p className="text-xs text-gray-500">Auto-populated from inventory origin price</p>
                   </div>
 
                   <div className="space-y-2">
@@ -680,7 +689,7 @@ export function ConditionReportForm({
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Estimated Repair Cost (RM) - Auto Calculated</Label>
+                      <Label>Estimated Cost (RM) - Auto Calculated</Label>
                       <Input
                         type="number"
                         value={Number(item.estimatedRepairCost || 0).toFixed(2)}
@@ -688,7 +697,10 @@ export function ConditionReportForm({
                         className="bg-gray-200"
                       />
                       <p className="text-xs text-gray-500">
-                        Repair: 60% × Price × Qty | Write-off: 120% × Price × Qty
+                        Repair: 60% × Origin Price × Qty | Write-off: 120% × Origin Price × Qty
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        (Actual costs will be calculated in Repair Slip using inventory repair charges)
                       </p>
                     </div>
 
