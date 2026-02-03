@@ -587,7 +587,7 @@ export default function App() {
       case "credit-notes":
         return <CreditNotes />;
       case "refund-management":
-        return <RefundManagementMain userRole={userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"} />;
+        return <RefundManagementMain userRole={userRole === "super_user" || userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"} />;
       case "additional-charges":
         return <AdditionalCharges />;
       case "statement-of-account":

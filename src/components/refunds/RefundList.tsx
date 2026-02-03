@@ -10,15 +10,29 @@ import {
   TableRow,
 } from "../ui/table";
 import { Badge } from "../ui/badge";
-import { RefundRecord, RefundStatus } from "./RefundManagementMain";
+import type { Refund, RefundStatus } from "../../types/refund";
 
-interface RefundListProps {
-  refunds: RefundRecord[];
-  onCreateNew: () => void;
-  onViewDetails: (refund: RefundRecord) => void;
+function invoiceTypeLabel(invoiceType: string): string {
+  switch (invoiceType) {
+    case "deposit":
+      return "Deposit";
+    case "monthlyRental":
+      return "Monthly Rental";
+    case "additionalCharge":
+      return "Additional Charge";
+    default:
+      return invoiceType;
+  }
 }
 
-export function RefundList({ refunds, onCreateNew, onViewDetails }: RefundListProps) {
+interface RefundListProps {
+  refunds: Refund[];
+  loading?: boolean;
+  onCreateNew: () => void;
+  onViewDetails: (refund: Refund) => void;
+}
+
+export function RefundList({ refunds, loading, onCreateNew, onViewDetails }: RefundListProps) {
   const getStatusBadge = (status: RefundStatus) => {
     switch (status) {
       case "Draft":
@@ -32,18 +46,12 @@ export function RefundList({ refunds, onCreateNew, onViewDetails }: RefundListPr
     }
   };
 
-  const totalAmount = refunds.reduce((acc, refund) => {
-    const amount = parseFloat(refund.refundAmount.replace("RM", "").replace(",", ""));
-    return acc + amount;
-  }, 0);
-
-  const pendingCount = refunds.filter(r => r.status === "Pending Approval").length;
-  const approvedCount = refunds.filter(r => r.status === "Approved").length;
-  const draftCount = refunds.filter(r => r.status === "Draft").length;
+  const totalAmount = refunds.reduce((acc, r) => acc + r.amount, 0);
+  const pendingCount = refunds.filter((r) => r.status === "Pending Approval").length;
+  const approvedCount = refunds.filter((r) => r.status === "Approved").length;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-start">
         <div className="space-y-2">
           <h1>Refund Management</h1>
@@ -58,7 +66,6 @@ export function RefundList({ refunds, onCreateNew, onViewDetails }: RefundListPr
         </Button>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="border-[#E5E7EB]">
           <CardHeader className="pb-2">
@@ -68,7 +75,6 @@ export function RefundList({ refunds, onCreateNew, onViewDetails }: RefundListPr
             <p className="text-[#111827]">{refunds.length}</p>
           </CardContent>
         </Card>
-
         <Card className="border-[#E5E7EB]">
           <CardHeader className="pb-2">
             <CardTitle className="text-[14px] text-[#6B7280]">Pending Approval</CardTitle>
@@ -77,7 +83,6 @@ export function RefundList({ refunds, onCreateNew, onViewDetails }: RefundListPr
             <p className="text-[#F59E0B]">{pendingCount}</p>
           </CardContent>
         </Card>
-
         <Card className="border-[#E5E7EB]">
           <CardHeader className="pb-2">
             <CardTitle className="text-[14px] text-[#6B7280]">Approved</CardTitle>
@@ -86,18 +91,18 @@ export function RefundList({ refunds, onCreateNew, onViewDetails }: RefundListPr
             <p className="text-[#059669]">{approvedCount}</p>
           </CardContent>
         </Card>
-
         <Card className="border-[#E5E7EB]">
           <CardHeader className="pb-2">
             <CardTitle className="text-[14px] text-[#6B7280]">Total Amount</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-[#111827]">RM{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="text-[#111827]">
+              RM{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Refunds Table */}
       <Card className="border-[#E5E7EB]">
         <CardHeader>
           <CardTitle className="text-[18px]">Refund Listing</CardTitle>
@@ -117,26 +122,36 @@ export function RefundList({ refunds, onCreateNew, onViewDetails }: RefundListPr
               </TableRow>
             </TableHeader>
             <TableBody>
-              {refunds.length === 0 ? (
+              {loading ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-[#6B7280] h-32">
-                    No refund records found. Click "Issue New Refund" to create one.
+                    Loading...
+                  </TableCell>
+                </TableRow>
+              ) : refunds.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-[#6B7280] h-32">
+                    No refund records found. Click &quot;Issue New Refund&quot; to create one.
                   </TableCell>
                 </TableRow>
               ) : (
                 refunds.map((refund) => (
                   <TableRow key={refund.id} className="h-14 hover:bg-[#F3F4F6]">
-                    <TableCell className="text-[#111827]">{refund.refundId}</TableCell>
-                    <TableCell className="text-[#374151]">{refund.invoiceNo}</TableCell>
+                    <TableCell className="text-[#111827]">{refund.refundNumber}</TableCell>
+                    <TableCell className="text-[#374151]">{refund.originalInvoice}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="bg-[#F3F4F6] text-[#374151]">
-                        {refund.invoiceType}
+                        {invoiceTypeLabel(refund.invoiceType)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-[#374151]">{refund.customer}</TableCell>
-                    <TableCell className="text-[#111827]">{refund.refundAmount}</TableCell>
+                    <TableCell className="text-[#374151]">{refund.customerName}</TableCell>
+                    <TableCell className="text-[#111827]">
+                      RM{refund.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
                     <TableCell>{getStatusBadge(refund.status)}</TableCell>
-                    <TableCell className="text-[#374151]">{refund.createdDate}</TableCell>
+                    <TableCell className="text-[#374151]">
+                      {refund.createdAt.split("T")[0]}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"
