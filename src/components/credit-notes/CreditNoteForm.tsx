@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { ArrowLeft, Plus, Trash2, Save, Send } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ArrowLeft, Plus, Trash2, Save, Send, Search } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -12,8 +12,23 @@ import {
   SelectValue,
 } from "../ui/select";
 import { ImageUpload } from "./ImageUpload";
-import { CreditNote, CreditNoteItem } from "../../types/creditNote";
+import { CreditNote, CreditNoteItem, CreditNoteInvoiceType } from "../../types/creditNote";
 import { toast } from "sonner";
+
+const REASONS: CreditNote['reason'][] = [
+  "Returned Items",
+  "Price Adjustment",
+  "Service Issue",
+  "Damaged Goods",
+  "Billing Error",
+  "Other",
+];
+
+interface CustomerOption {
+  customerName: string;
+  customerEmail: string | null;
+  customerId: string;
+}
 
 interface CreditNoteFormProps {
   onBack: () => void;
@@ -21,320 +36,541 @@ interface CreditNoteFormProps {
   editingNote?: CreditNote | null;
 }
 
-// Mock data for customers and invoices
-const customers = [
-  { id: "CUST-001", name: "Acme Construction Ltd." },
-  { id: "CUST-002", name: "BuildRight Inc." },
-  { id: "CUST-003", name: "Metro Builders" },
-  { id: "CUST-004", name: "Premium Projects" },
-  { id: "CUST-005", name: "Steel Masters Co." },
-];
-
-const invoices = [
-  { id: "INV-2024-045", customerId: "CUST-001", amount: 15500 },
-  { id: "INV-2024-046", customerId: "CUST-002", amount: 22300 },
-  { id: "INV-2024-047", customerId: "CUST-003", amount: 18900 },
-  { id: "INV-2024-048", customerId: "CUST-004", amount: 12750 },
-  { id: "INV-2024-049", customerId: "CUST-005", amount: 31200 },
-];
-
-// Mock data for Delivery Orders
-const deliveryOrders = [
-  { id: "DO-2024-001", customerId: "CUST-001", invoiceId: "INV-2024-045", doNumber: "DO-2024-001" },
-  { id: "DO-2024-002", customerId: "CUST-002", invoiceId: "INV-2024-046", doNumber: "DO-2024-002" },
-  { id: "DO-2024-003", customerId: "CUST-003", invoiceId: "INV-2024-047", doNumber: "DO-2024-003" },
-  { id: "DO-2024-004", customerId: "CUST-004", invoiceId: "INV-2024-048", doNumber: "DO-2024-004" },
-  { id: "DO-2024-005", customerId: "CUST-005", invoiceId: "INV-2024-049", doNumber: "DO-2024-005" },
-];
-
-// Mock DO Items with pricing
-const doItems = [
-  { id: "ITEM-001", doId: "DO-2024-001", name: "Steel Pipe Scaffolding - Standard (6m)", previousPrice: 85.00, currentPrice: 95.00, maxQty: 50 },
-  { id: "ITEM-002", doId: "DO-2024-001", name: "Scaffold Board - Wooden (3.9m)", previousPrice: 45.00, currentPrice: 50.00, maxQty: 30 },
-  { id: "ITEM-003", doId: "DO-2024-002", name: "H-Frame Scaffolding (1.7m x 1.2m)", previousPrice: 120.00, currentPrice: 135.00, maxQty: 20 },
-  { id: "ITEM-004", doId: "DO-2024-003", name: "Ringlock System - Vertical (3m)", previousPrice: 95.00, currentPrice: 105.00, maxQty: 60 },
-  { id: "ITEM-005", doId: "DO-2024-004", name: "Steel Tube - Heavy Duty (4m)", previousPrice: 75.00, currentPrice: 80.00, maxQty: 100 },
-  { id: "ITEM-006", doId: "DO-2024-004", name: "Swivel Coupler", previousPrice: 12.00, currentPrice: 15.00, maxQty: 150 },
-  { id: "ITEM-007", doId: "DO-2024-005", name: "Aluminum Mobile Tower (5m)", previousPrice: 450.00, currentPrice: 480.00, maxQty: 3 },
-];
-
 export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormProps) {
-  const [customerId, setCustomerId] = useState(editingNote?.customerId || "");
-  const [originalInvoice, setOriginalInvoice] = useState(editingNote?.originalInvoice || "");
-  const [deliveryOrderId, setDeliveryOrderId] = useState(editingNote?.deliveryOrderId || "");
-  const [reason, setReason] = useState<CreditNote['reason']>(editingNote?.reason || "Returned Items");
-  const [reasonDescription, setReasonDescription] = useState(editingNote?.reasonDescription || "");
-  const [date, setDate] = useState(editingNote?.date || new Date().toISOString().split('T')[0]);
+  const [customerSearch, setCustomerSearch] = useState(editingNote ? (editingNote.customerName ?? editingNote.customer) : "");
+  const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(
+    editingNote
+      ? {
+          customerName: editingNote.customerName ?? editingNote.customer,
+          customerEmail: editingNote.customerEmail ?? undefined,
+          customerId: editingNote.customerId,
+        }
+      : null
+  );
+  const [invoiceType, setInvoiceType] = useState<CreditNoteInvoiceType>(
+    (editingNote?.invoiceType as CreditNoteInvoiceType) || "monthlyRental"
+  );
+  const [invoicesList, setInvoicesList] = useState<Array<{ id: string; label: string; amount?: number }>>([]);
+  const [sourceId, setSourceId] = useState(editingNote?.sourceId ?? "");
+  const [originalInvoice, setOriginalInvoice] = useState(editingNote?.originalInvoice ?? "");
+  const [reason, setReason] = useState<CreditNote["reason"]>(editingNote?.reason ?? "Returned Items");
+  const [reasonDescription, setReasonDescription] = useState(editingNote?.reasonDescription ?? "");
+  const [date] = useState(editingNote?.date ?? new Date().toISOString().split("T")[0]);
   const [items, setItems] = useState<CreditNoteItem[]>(
-    editingNote?.items || [
-      {
-        id: "1",
-        description: "",
-        quantity: 1,
-        previousPrice: 0,
-        currentPrice: 0,
-        unitPrice: 0,
-        amount: 0,
-      },
-    ]
+    editingNote?.items?.length
+      ? editingNote.items.map((i) => ({ ...i, daysCharged: i.daysCharged }))
+      : [{ id: "1", description: "Reduction of deposit price", quantity: 1, previousPrice: 0, currentPrice: 0, unitPrice: 0, amount: 0 }]
   );
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [saving, setSaving] = useState(false);
 
-  const availableInvoices = invoices.filter((inv) => inv.customerId === customerId);
-  const availableDOs = deliveryOrders.filter((d) => d.invoiceId === originalInvoice);
-  const availableItems = doItems.filter((item) => item.doId === deliveryOrderId);
+  const [depositAmount, setDepositAmount] = useState(0);
+  const [monthlyInvoiceItems, setMonthlyInvoiceItems] = useState<Array<{ id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }>>([]);
+  const [additionalChargeItems, setAdditionalChargeItems] = useState<Array<{ id: string; itemName: string; itemType: string; quantity: number; unitPrice: number; amount: number }>>([]);
 
-  // Check if all available items have been selected
-  const selectedItemNames = items.map((item) => item.description).filter(Boolean);
-  const allItemsSelected = availableItems.length > 0 && selectedItemNames.length >= availableItems.length;
-
-  const handleAddItem = () => {
-    const newItem: CreditNoteItem = {
-      id: Date.now().toString(),
-      description: "",
-      quantity: 1,
-      previousPrice: 0,
-      currentPrice: 0,
-      unitPrice: 0,
-      amount: 0,
-    };
-    setItems([...items, newItem]);
-  };
-
-  const handleRemoveItem = (id: string) => {
-    if (items.length > 1) {
-      setItems(items.filter((item) => item.id !== id));
+  const fetchCustomers = useCallback(async (q: string) => {
+    if (q.length < 2) {
+      setCustomerResults([]);
+      return;
     }
+    try {
+      const res = await fetch(`/api/credit-notes/customers?q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.customers)) {
+        setCustomerResults(json.customers);
+      } else {
+        setCustomerResults([]);
+      }
+    } catch {
+      setCustomerResults([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => fetchCustomers(customerSearch), 300);
+    return () => clearTimeout(t);
+  }, [customerSearch, fetchCustomers]);
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setInvoicesList([]);
+      setSourceId("");
+      setOriginalInvoice("");
+      setMonthlyInvoiceItems([]);
+      setAdditionalChargeItems([]);
+      setDepositAmount(0);
+      if (invoiceType === "deposit") {
+        setItems([{ id: "1", description: "Reduction of deposit price", quantity: 1, previousPrice: 0, currentPrice: 0, unitPrice: 0, amount: 0 }]);
+      }
+      return;
+    }
+    const name = selectedCustomer.customerName;
+    const email = selectedCustomer.customerEmail ?? "";
+    if (invoiceType === "deposit") {
+      fetch(`/api/deposit?customerName=${encodeURIComponent(name)}`)
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.success && json.deposits) {
+            setInvoicesList(
+              json.deposits.map((d: { id: string; depositNumber: string; depositAmount: number }) => ({
+                id: d.id,
+                label: d.depositNumber,
+                amount: d.depositAmount,
+              }))
+            );
+          } else setInvoicesList([]);
+        })
+        .catch(() => setInvoicesList([]));
+    } else if (invoiceType === "monthlyRental") {
+      let url = `/api/monthly-rental?customerName=${encodeURIComponent(name)}`;
+      if (email) url += `&customerEmail=${encodeURIComponent(email)}`;
+      fetch(url)
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.success && json.invoices) {
+            setInvoicesList(
+              json.invoices.map((inv: { id: string; invoiceNumber: string; totalAmount: number }) => ({
+                id: inv.id,
+                label: inv.invoiceNumber,
+                amount: inv.totalAmount,
+              }))
+            );
+          } else setInvoicesList([]);
+        })
+        .catch(() => setInvoicesList([]));
+    } else {
+      fetch(`/api/additional-charges?customerName=${encodeURIComponent(name)}`)
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.success && json.data) {
+            setInvoicesList(
+              json.data.map((c: { id: string; invoiceNo: string; totalCharges: number }) => ({
+                id: c.id,
+                label: c.invoiceNo,
+                amount: c.totalCharges,
+              }))
+            );
+          } else setInvoicesList([]);
+        })
+        .catch(() => setInvoicesList([]));
+    }
+    setSourceId("");
+    setOriginalInvoice("");
+  }, [selectedCustomer, invoiceType]);
+
+  useEffect(() => {
+    if (!sourceId || !invoiceType) return;
+    if (invoiceType === "deposit") {
+      fetch(`/api/deposit?id=${encodeURIComponent(sourceId)}`)
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.success && json.deposit) {
+            setDepositAmount(Number(json.deposit.depositAmount) || 0);
+            setItems([
+              {
+                id: "1",
+                description: "Reduction of deposit price",
+                quantity: 1,
+                previousPrice: Number(json.deposit.depositAmount) || 0,
+                currentPrice: 0,
+                unitPrice: 0,
+                amount: 0,
+              },
+            ]);
+          }
+        })
+        .catch(() => {});
+    } else if (invoiceType === "monthlyRental") {
+      fetch(`/api/monthly-rental?id=${encodeURIComponent(sourceId)}`)
+        .then((r) => r.json())
+        .then((json) => {
+          if (json.success && json.invoice && json.invoice.items) {
+            const invItems = json.invoice.items.map(
+              (i: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }) => ({
+                id: i.id,
+                scaffoldingItemName: i.scaffoldingItemName,
+                quantityBilled: i.quantityBilled,
+                unitPrice: Number(i.unitPrice),
+                daysCharged: i.daysCharged,
+                lineTotal: Number(i.lineTotal),
+              })
+            );
+            setMonthlyInvoiceItems(invItems);
+            setItems(
+              invItems.map((invItem: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }) => ({
+                id: invItem.id,
+                description: invItem.scaffoldingItemName,
+                quantity: invItem.quantityBilled,
+                previousPrice: invItem.unitPrice,
+                currentPrice: invItem.unitPrice,
+                unitPrice: invItem.unitPrice,
+                amount: invItem.lineTotal ?? invItem.quantityBilled * invItem.unitPrice * (invItem.daysCharged || 1),
+                daysCharged: invItem.daysCharged,
+              }))
+            );
+          }
+        })
+        .catch(() => {});
+    } else {
+      fetch(`/api/additional-charges/${encodeURIComponent(sourceId)}`)
+        .then((r) => r.json())
+        .then((json) => {
+          const charge = json.data;
+          if (charge && charge.items) {
+            const chargeItems = charge.items.map(
+              (i: { id: string; itemName: string; itemType: string; quantity: number; unitPrice: number; amount: number }) => ({
+                id: i.id,
+                itemName: i.itemName,
+                itemType: i.itemType,
+                quantity: i.quantity,
+                unitPrice: Number(i.unitPrice),
+                amount: Number(i.amount),
+              })
+            );
+            setAdditionalChargeItems(chargeItems);
+            setItems(
+              chargeItems.map((ci: { id: string; itemName: string; quantity: number; unitPrice: number; amount: number }) => ({
+                id: ci.id,
+                description: ci.itemName,
+                quantity: ci.quantity,
+                previousPrice: ci.unitPrice,
+                currentPrice: ci.unitPrice,
+                unitPrice: ci.unitPrice,
+                amount: ci.amount,
+              }))
+            );
+          }
+        })
+        .catch(() => {});
+    }
+  }, [sourceId, invoiceType]);
+
+  const handleSelectCustomer = (c: CustomerOption) => {
+    setSelectedCustomer(c);
+    setCustomerSearch(c.customerName);
+    setCustomerResults([]);
   };
 
-  const handleItemChange = (id: string, field: keyof CreditNoteItem, value: any) => {
-    setItems(
-      items.map((item) => {
-        if (item.id === id) {
-          const updatedItem = { ...item, [field]: value };
-          
-          // If selecting from DO items dropdown
-          if (field === "description" && value) {
-            const selectedItem = availableItems.find(i => i.name === value);
-            if (selectedItem) {
-              updatedItem.previousPrice = selectedItem.previousPrice;
-              updatedItem.currentPrice = selectedItem.previousPrice; // Set current price to same as previous price
-              updatedItem.unitPrice = selectedItem.previousPrice; // Use previous price for calculation
-              updatedItem.amount = updatedItem.quantity * selectedItem.previousPrice; // Calculate amount with previous price
-            }
+  const handleOriginalInvoiceSelect = (id: string) => {
+    const inv = invoicesList.find((i) => i.id === id);
+    setSourceId(id);
+    setOriginalInvoice(inv?.label ?? id);
+  };
+
+  const handleItemChange = (id: string, field: keyof CreditNoteItem, value: number | string) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item, [field]: value };
+        if (field === "quantity" || field === "currentPrice" || field === "amount") {
+          const qty = Number(updated.quantity) || 0;
+          const curr = Number(updated.currentPrice) ?? 0;
+          updated.amount = qty * curr;
+          if (invoiceType === "monthlyRental" && updated.daysCharged != null) {
+            updated.amount = qty * curr * (updated.daysCharged || 0);
           }
-          
-          // Calculate amount using currentPrice (or unitPrice if currentPrice not set)
-          if (field === "quantity" || field === "currentPrice") {
-            const priceToUse = updatedItem.currentPrice || updatedItem.unitPrice;
-            updatedItem.amount = updatedItem.quantity * priceToUse;
-            updatedItem.unitPrice = priceToUse; // Keep unitPrice in sync
-          }
-          
-          return updatedItem;
         }
-        return item;
+        if (field === "daysCharged") {
+          const qty = Number(updated.quantity) || 0;
+          const curr = Number(updated.currentPrice) ?? 0;
+          const days = Number(value) || 0;
+          updated.amount = qty * curr * days;
+        }
+        return updated;
       })
     );
   };
 
+  const handleDepositAmountChange = (value: number) => {
+    setItems([
+      {
+        id: "1",
+        description: "Reduction of deposit price",
+        quantity: 1,
+        previousPrice: depositAmount,
+        currentPrice: depositAmount - value,
+        unitPrice: depositAmount - value,
+        amount: value,
+      },
+    ]);
+  };
+
   const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
 
-  const validateForm = () => {
-    if (!customerId) {
-      toast.error("Please select a customer");
+  const addMonthlyOrAdditionalItem = () => {
+    const sourceItems = invoiceType === "monthlyRental" ? monthlyInvoiceItems : additionalChargeItems;
+    const selectedDescriptions = items.map((i) => i.description).filter(Boolean);
+    const available = sourceItems.filter((s) => {
+      const name = invoiceType === "monthlyRental" ? (s as { scaffoldingItemName: string }).scaffoldingItemName : (s as { itemName: string }).itemName;
+      return !selectedDescriptions.includes(name) || selectedDescriptions.filter((d) => d === name).length < 2;
+    });
+    if (available.length === 0) return;
+    const first = available[0];
+    const desc = invoiceType === "monthlyRental" ? (first as { scaffoldingItemName: string }).scaffoldingItemName : (first as { itemName: string }).itemName;
+    const qty = invoiceType === "monthlyRental" ? (first as { quantityBilled: number }).quantityBilled : (first as { quantity: number }).quantity;
+    const price = Number(first.unitPrice) || 0;
+    setItems((prev) => [
+      ...prev,
+      {
+        id: first.id + "-" + Date.now(),
+        description: desc,
+        quantity: qty,
+        previousPrice: price,
+        currentPrice: price,
+        unitPrice: price,
+        amount: qty * price,
+        daysCharged: invoiceType === "monthlyRental" ? (first as { daysCharged: number }).daysCharged : undefined,
+      },
+    ]);
+  };
+
+  const removeItem = (id: string) => {
+    if (items.length <= 1) return;
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const uploadAttachments = async (): Promise<Array<{ fileName: string; fileUrl: string; fileSize: number }>> => {
+    const results: Array<{ fileName: string; fileUrl: string; fileSize: number }> = [];
+    for (const file of attachments) {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("folder", "credit-notes");
+      const res = await fetch("/api/upload", { method: "POST", body: form });
+      const json = await res.json();
+      if (json.success && json.url) {
+        results.push({ fileName: file.name, fileUrl: json.url, fileSize: file.size });
+      }
+    }
+    return results;
+  };
+
+  const buildPayload = (status: "Draft" | "Pending Approval") => ({
+    customerName: selectedCustomer?.customerName ?? "",
+    customerId: selectedCustomer?.customerId ?? "",
+    invoiceType,
+    sourceId: sourceId || undefined,
+    originalInvoice,
+    reason,
+    reasonDescription: reasonDescription || undefined,
+    date,
+    status,
+    items: items.map((i) => ({
+      description: i.description,
+      quantity: i.quantity,
+      previousPrice: i.previousPrice,
+      currentPrice: i.currentPrice,
+      amount: i.amount,
+      daysCharged: i.daysCharged,
+    })),
+  });
+
+  const validate = (forSubmit: boolean) => {
+    if (!selectedCustomer) {
+      toast.error("Please search and select a customer");
       return false;
     }
-    if (!originalInvoice) {
-      toast.error("Please select an original invoice");
+    if (!sourceId || !originalInvoice) {
+      toast.error("Please select the original invoice");
       return false;
     }
-    if (!date) {
-      toast.error("Please select a date");
-      return false;
-    }
-    if (items.some((item) => !item.description || item.quantity <= 0 || item.unitPrice <= 0)) {
-      toast.error("Please complete all item details");
-      return false;
-    }
-    if (totalAmount <= 0) {
-      toast.error("Total amount must be greater than zero");
-      return false;
+    if (forSubmit) {
+      if (items.some((i) => !i.description || i.quantity <= 0 || i.amount < 0)) {
+        toast.error("Please complete all line items with valid quantity and amount");
+        return false;
+      }
+      if (totalAmount <= 0) {
+        toast.error("Total amount must be greater than zero");
+        return false;
+      }
     }
     return true;
   };
 
-  const handleSaveDraft = () => {
-    const customer = customers.find((c) => c.id === customerId);
-    const creditNote: Partial<CreditNote> = {
-      id: editingNote?.id,
-      customer: customer?.name || "",
-      customerId,
-      originalInvoice,
-      amount: totalAmount,
-      reason,
-      reasonDescription,
-      date,
-      status: "Draft",
-      items,
-    };
-    onSave(creditNote, true);
+  const handleSaveDraft = async () => {
+    if (!validate(false)) return;
+    setSaving(true);
+    try {
+      const attachmentList = await uploadAttachments();
+      const payload = { ...buildPayload("Draft"), attachments: attachmentList };
+      const url = editingNote?.id ? `/api/credit-notes/${editingNote.id}` : "/api/credit-notes";
+      const method = editingNote?.id ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error(json.message || "Failed to save draft");
+        return;
+      }
+      const data = json.data;
+      const note: Partial<CreditNote> = {
+        ...data,
+        customer: data.customerName ?? data.customer,
+      };
+      toast.success("Draft saved");
+      onSave(note, true);
+    } catch (e) {
+      toast.error("Failed to save draft");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleSubmit = () => {
-    if (!validateForm()) return;
-
-    const customer = customers.find((c) => c.id === customerId);
-    const creditNote: Partial<CreditNote> = {
-      id: editingNote?.id,
-      customer: customer?.name || "",
-      customerId,
-      originalInvoice,
-      amount: totalAmount,
-      reason,
-      reasonDescription,
-      date,
-      status: "Pending Approval",
-      items,
-    };
-    onSave(creditNote, false);
+  const handleSubmit = async () => {
+    if (!validate(true)) return;
+    setSaving(true);
+    try {
+      const attachmentList = await uploadAttachments();
+      const payload = { ...buildPayload("Pending Approval"), attachments: attachmentList };
+      const url = editingNote?.id ? `/api/credit-notes/${editingNote.id}` : "/api/credit-notes";
+      const method = editingNote?.id ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error(json.message || "Failed to submit");
+        return;
+      }
+      const data = json.data;
+      const note: Partial<CreditNote> = {
+        ...data,
+        customer: data.customerName ?? data.customer,
+      };
+      toast.success("Submitted for approval");
+      onSave(note, false);
+    } catch (e) {
+      toast.error("Failed to submit");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const canAddItem = (invoiceType === "monthlyRental" && monthlyInvoiceItems.length > 0) || (invoiceType === "additionalCharge" && additionalChargeItems.length > 0);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          onClick={onBack}
-          className="hover:bg-[#F3F4F6]"
-        >
+        <Button variant="ghost" onClick={onBack} className="hover:bg-[#F3F4F6]">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
         <div className="flex-1">
           <h1>{editingNote ? "Edit Credit Note" : "Create Credit Note"}</h1>
           <p className="text-[#374151]">
-            {editingNote ? "Update credit note details" : "Fill in the details to create a new credit note"}
+            {editingNote ? "Update credit note details" : "Search customer, select invoice type and original invoice, then add line items."}
           </p>
         </div>
       </div>
 
-      {/* Form */}
       <Card className="border-[#E5E7EB]">
         <CardHeader>
-          <CardTitle className="text-[18px]">Credit Note Information</CardTitle>
+          <CardTitle className="text-[18px]">Customer & Invoice</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Customer & Invoice */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-[14px] text-[#374151]">
-                Customer <span className="text-[#DC2626]">*</span>
-              </label>
-              <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
-                  <SelectValue placeholder="Select customer..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[14px] text-[#374151]">
-                Original Invoice <span className="text-[#DC2626]">*</span>
-              </label>
-              <Select
-                value={originalInvoice}
-                onValueChange={setOriginalInvoice}
-                disabled={!customerId}
-              >
-                <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
-                  <SelectValue placeholder="Select invoice..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableInvoices.map((invoice) => (
-                    <SelectItem key={invoice.id} value={invoice.id}>
-                      {invoice.id} - RM{invoice.amount.toLocaleString()}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Delivery Order Selection */}
           <div className="space-y-2">
             <label className="text-[14px] text-[#374151]">
-              Delivery Order (DO) <span className="text-[#DC2626]">*</span>
+              Search customer (name or email) <span className="text-[#DC2626]">*</span>
             </label>
-            <Select
-              value={deliveryOrderId}
-              onValueChange={setDeliveryOrderId}
-              disabled={!originalInvoice}
-            >
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
+              <Input
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="Type to search..."
+                className="pl-9 h-10 bg-white border-[#D1D5DB] rounded-md"
+              />
+              {customerResults.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full bg-white border border-[#E5E7EB] rounded-md shadow-lg max-h-48 overflow-auto">
+                  {customerResults.map((c) => (
+                    <li
+                      key={c.customerId}
+                      className="px-4 py-2 hover:bg-[#F3F4F6] cursor-pointer text-sm"
+                      onClick={() => handleSelectCustomer(c)}
+                    >
+                      {c.customerName}
+                      {c.customerEmail ? ` (${c.customerEmail})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {selectedCustomer && (
+              <p className="text-sm text-[#059669]">
+                Selected: {selectedCustomer.customerName}
+                {selectedCustomer.customerEmail ? ` — ${selectedCustomer.customerEmail}` : ""}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[14px] text-[#374151]">Invoice type</label>
+            <Select value={invoiceType} onValueChange={(v) => setInvoiceType(v as CreditNoteInvoiceType)}>
               <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
-                <SelectValue placeholder="Select delivery order..." />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {availableDOs.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.doNumber}
+                <SelectItem value="deposit">Deposit</SelectItem>
+                <SelectItem value="monthlyRental">Monthly Rental</SelectItem>
+                <SelectItem value="additionalCharge">Additional Charge</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[14px] text-[#374151]">
+              Original invoice <span className="text-[#DC2626]">*</span>
+            </label>
+            <Select
+              value={sourceId}
+              onValueChange={handleOriginalInvoiceSelect}
+              disabled={!selectedCustomer || invoicesList.length === 0}
+            >
+              <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
+                <SelectValue placeholder="Select original invoice..." />
+              </SelectTrigger>
+              <SelectContent>
+                {invoicesList.map((inv) => (
+                  <SelectItem key={inv.id} value={inv.id}>
+                    {inv.label}
+                    {inv.amount != null ? ` — RM${Number(inv.amount).toLocaleString()}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-gray-500">
-              Select the DO to load items with price comparison (Previous Price from DO vs Current Price from Invoice)
-            </p>
           </div>
 
-          {/* Reason & Date */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[14px] text-[#374151]">
-                Reason <span className="text-[#DC2626]">*</span>
-              </label>
-              <Select value={reason} onValueChange={(value) => setReason(value as CreditNote['reason'])}>
+              <label className="text-[14px] text-[#374151]">Reason <span className="text-[#DC2626]">*</span></label>
+              <Select value={reason} onValueChange={(v) => setReason(v as CreditNote["reason"])}>
                 <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Returned Items">Returned Items</SelectItem>
-                  <SelectItem value="Price Adjustment">Price Adjustment</SelectItem>
-                  <SelectItem value="Service Issue">Service Issue</SelectItem>
-                  <SelectItem value="Damaged Goods">Damaged Goods</SelectItem>
-                  <SelectItem value="Billing Error">Billing Error</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {REASONS.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-2">
-              <label className="text-[14px] text-[#374151]">
-                Date
-              </label>
-              <Input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                disabled
-                className="h-10 bg-[#F3F4F6] border-[#D1D5DB] rounded-md"
-              />
+              <label className="text-[14px] text-[#374151]">Date</label>
+              <Input type="date" value={date} disabled className="h-10 bg-[#F3F4F6] rounded-md" />
             </div>
           </div>
 
-          {/* Reason Description */}
           <div className="space-y-2">
-            <label className="text-[14px] text-[#374151]">Additional Details</label>
+            <label className="text-[14px] text-[#374151]">Additional details</label>
             <Textarea
-              placeholder="Provide additional details about the credit note..."
+              placeholder="Provide additional details..."
               value={reasonDescription}
               onChange={(e) => setReasonDescription(e.target.value)}
               className="min-h-[100px] border-[#D1D5DB] rounded-md"
@@ -343,225 +579,133 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
         </CardContent>
       </Card>
 
-      {/* Items */}
       <Card className="border-[#E5E7EB]">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-[18px]">Line Items</CardTitle>
-          <Button
-            onClick={handleAddItem}
-            variant="outline"
-            className="h-9 px-4 rounded-lg"
-            disabled={allItemsSelected}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Item
-          </Button>
+          {invoiceType !== "deposit" && canAddItem && (
+            <Button type="button" variant="outline" className="h-9 px-4 rounded-lg" onClick={addMonthlyOrAdditionalItem}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add item
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {!deliveryOrderId && (
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-              Please select a Delivery Order (DO) above to load items with price comparison
+          {invoiceType === "deposit" && sourceId && (
+            <div className="space-y-2">
+              <label className="text-[14px] text-[#374151]">Reduction amount (RM) <span className="text-[#DC2626]">*</span></label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                max={depositAmount}
+                value={items[0]?.amount ?? 0}
+                onChange={(e) => handleDepositAmountChange(parseFloat(e.target.value) || 0)}
+                className="h-10 bg-white border-[#D1D5DB] rounded-md"
+              />
+              <p className="text-xs text-gray-500">Deposit amount: RM{depositAmount.toFixed(2)}</p>
             </div>
           )}
-          
-          {items.map((item, index) => (
-            <Card key={item.id} className="border-[#E5E7EB] bg-[#F9FAFB]">
-              <CardContent className="pt-6 pb-6">
-                {/* Two-column layout */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Left Column */}
-                  <div className="space-y-4">
-                    {/* Item Dropdown */}
-                    <div className="space-y-2">
-                      <label className="text-[14px] text-[#374151]">
-                        Select Item from DO <span className="text-[#DC2626]">*</span>
-                      </label>
-                      <Select
-                        value={item.description}
-                        onValueChange={(value) => handleItemChange(item.id, "description", value)}
-                        disabled={!deliveryOrderId}
-                      >
-                        <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
-                          <SelectValue placeholder="Select item from DO..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableItems
-                            .filter((doItem) => {
-                              // Show the item if it's the current item's selection, or if it's not selected by any other item
-                              const isCurrentSelection = doItem.name === item.description;
-                              const isSelectedElsewhere = items.some(
-                                (i) => i.id !== item.id && i.description === doItem.name
-                              );
-                              return isCurrentSelection || !isSelectedElsewhere;
-                            })
-                            .map((doItem) => (
-                              <SelectItem key={doItem.id} value={doItem.name}>
-                                {doItem.name}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
 
-                    {/* Previous Price (from Invoice) */}
+          {(invoiceType === "monthlyRental" || invoiceType === "additionalCharge") &&
+            items.map((item) => (
+              <Card key={item.id} className="border-[#E5E7EB] bg-[#F9FAFB]">
+                <CardContent className="pt-4 pb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-[14px] text-[#6B7280]">
-                        Previous Price (from Invoice)
-                      </label>
-                      <div className="h-10 px-3 bg-[#F9FAFB] border border-[#D1D5DB] rounded-md flex items-center">
-                        <span className="text-[#6B7280]">
-                          {item.previousPrice > 0 ? `RM${item.previousPrice.toFixed(2)}` : '-'}
-                        </span>
-                      </div>
+                      <label className="text-[14px] text-[#374151]">Description</label>
+                      <div className="h-10 px-3 bg-[#F9FAFB] border rounded-md flex items-center text-sm">{item.description}</div>
                     </div>
-
-                    {/* Current Price (from Invoice) */}
                     <div className="space-y-2">
-                      <label className="text-[14px] text-[#231F20]">
-                        Current Price <span className="text-[#DC2626]">*</span>
-                      </label>
+                      <label className="text-[14px] text-[#374151]">Quantity</label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => handleItemChange(item.id, "quantity", parseInt(e.target.value, 10) || 0)}
+                        className="h-10 bg-white border-[#D1D5DB] rounded-md"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[14px] text-[#374151]">Previous price (RM)</label>
+                      <div className="h-10 px-3 bg-[#F9FAFB] border rounded-md flex items-center">RM{item.previousPrice.toFixed(2)}</div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[14px] text-[#374151]">Current price (RM)</label>
                       <Input
                         type="number"
                         step="0.01"
                         min="0"
-                        max={item.previousPrice || undefined}
-                        value={item.currentPrice || ''}
-                        onChange={(e) =>
-                          handleItemChange(item.id, "currentPrice", parseFloat(e.target.value) || 0)
-                        }
-                        placeholder="Enter current price"
+                        value={item.currentPrice || ""}
+                        onChange={(e) => handleItemChange(item.id, "currentPrice", parseFloat(e.target.value) || 0)}
                         className="h-10 bg-white border-[#D1D5DB] rounded-md"
-                        disabled={!item.description}
                       />
-                      {item.currentPrice > item.previousPrice && item.previousPrice > 0 && (
-                        <p className="text-xs text-[#DC2626] flex items-center gap-1">
-                          <span className="font-semibold">⚠</span> Current price cannot exceed previous price (RM{item.previousPrice.toFixed(2)})
-                        </p>
-                      )}
                     </div>
-
-                    {/* Price Reduction */}
-                    {item.previousPrice > 0 && item.currentPrice > 0 && (
+                    {invoiceType === "monthlyRental" && (
                       <div className="space-y-2">
-                        <label className="text-[14px] text-[#6B7280]">
-                          Price Reduction
-                        </label>
-                        <div className="h-10 px-3 bg-[#FEF2F2] border border-[#DC2626] rounded-md flex items-center">
-                          <span className={item.previousPrice - item.currentPrice > 0 ? "text-[#DC2626]" : "text-[#16A34A]"}>
-                            {item.previousPrice - item.currentPrice > 0 ? '-' : '+'}RM{Math.abs(item.previousPrice - item.currentPrice).toFixed(2)}
-                          </span>
-                        </div>
+                        <label className="text-[14px] text-[#374151]">Days charged</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={item.daysCharged ?? ""}
+                          onChange={(e) => handleItemChange(item.id, "daysCharged", parseInt(e.target.value, 10) || 0)}
+                          className="h-10 bg-white border-[#D1D5DB] rounded-md"
+                        />
                       </div>
                     )}
-                  </div>
-
-                  {/* Right Column */}
-                  <div className="space-y-4">
-                    {/* Quantity to Credit */}
                     <div className="space-y-2">
-                      <label className="text-[14px] text-[#374151]">
-                        Quantity to Credit <span className="text-[#DC2626]">*</span>
-                      </label>
-                      <Input
-                        type="number"
-                        min="1"
-                        max={availableItems.find(i => i.name === item.description)?.maxQty || 999}
-                        value={item.quantity}
-                        onChange={(e) =>
-                          handleItemChange(item.id, "quantity", parseFloat(e.target.value) || 0)
-                        }
-                        placeholder="Enter quantity"
-                        className="h-10 bg-white border-[#D1D5DB] rounded-md"
-                        disabled={!item.description}
-                      />
-                      {item.description && (
-                        <p className="text-xs text-gray-500">
-                          Max quantity: {availableItems.find(i => i.name === item.description)?.maxQty || 0}
-                        </p>
-                      )}
+                      <label className="text-[14px] text-[#374151]">Amount (RM)</label>
+                      <div className="h-10 px-3 bg-[#F3F4F6] border rounded-md flex items-center">RM{(item.amount || 0).toFixed(2)}</div>
                     </div>
-
-                    {/* Amount (auto-calculated) */}
-                    <div className="space-y-2">
-                      <label className="text-[14px] text-[#374151]">
-                        Amount (RM)
-                      </label>
-                      <div className="h-10 px-3 bg-[#F3F4F6] border border-[#D1D5DB] rounded-md flex items-center">
-                        <span className="text-[#231F20]">
-                          RM{(item.amount || 0).toFixed(2)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        Calculated: {item.quantity} × RM{(item.currentPrice || 0).toFixed(2)}
-                      </p>
-                    </div>
-
-                    {/* Delete Button */}
                     {items.length > 1 && (
-                      <div className="flex items-end h-10">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRemoveItem(item.id)}
-                          className="hover:bg-[#FEF2F2] text-[#DC2626] border-[#DC2626]"
-                        >
+                      <div className="flex items-end">
+                        <Button type="button" variant="outline" size="sm" onClick={() => removeItem(item.id)} className="text-[#DC2626] border-[#DC2626]">
                           <Trash2 className="h-4 w-4 mr-2" />
-                          Remove Item
+                          Remove
                         </Button>
                       </div>
                     )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))}
 
-          {/* Total */}
-          <div className="flex justify-end">
-            <div className="w-full md:w-1/3 space-y-2">
-              <div className="flex justify-between items-center p-4 bg-[#FEF2F2] border border-[#DC2626] rounded-lg">
-                <span className="text-[#231F20]">Total Amount Reduce (RM)</span>
-                <span className="text-[#DC2626]">
-                  -RM{items.reduce((sum, item) => sum + ((item.previousPrice - item.currentPrice) * item.quantity), 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center p-4 bg-[#F15929] bg-opacity-10 border border-[#F15929] rounded-lg">
-                <span className="text-[#231F20]">Total Amount Charge:</span>
-                <span className="text-[#231F20]">
-                  RM{totalAmount.toLocaleString()}
-                </span>
+          {invoiceType === "deposit" && items.length === 1 && (
+            <div className="flex justify-between items-center p-4 bg-[#F3F4F6] rounded-lg">
+              <span className="text-[#374151]">Total credit (RM)</span>
+              <span className="font-medium">RM{totalAmount.toFixed(2)}</span>
+            </div>
+          )}
+
+          {(invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && items.length > 0 && (
+            <div className="flex justify-end">
+              <div className="w-full md:w-1/3 space-y-2">
+                <div className="flex justify-between items-center p-4 bg-[#F15929] bg-opacity-10 border border-[#F15929] rounded-lg">
+                  <span className="text-[#231F20]">Total (RM)</span>
+                  <span className="text-[#231F20]">RM{totalAmount.toLocaleString()}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Attachments */}
       <Card className="border-[#E5E7EB]">
         <CardHeader>
-          <CardTitle className="text-[18px]">Supporting Documents</CardTitle>
+          <CardTitle className="text-[18px]">Supporting documents</CardTitle>
         </CardHeader>
         <CardContent>
           <ImageUpload onFilesChange={setAttachments} maxFiles={5} />
         </CardContent>
       </Card>
 
-      {/* Actions */}
       <div className="flex justify-end gap-3 pb-6">
-        <Button
-          variant="outline"
-          onClick={handleSaveDraft}
-          className="h-10 px-6 rounded-lg"
-        >
+        <Button variant="outline" onClick={handleSaveDraft} className="h-10 px-6 rounded-lg" disabled={saving}>
           <Save className="mr-2 h-4 w-4" />
-          Save as Draft
+          Save as draft
         </Button>
-        <Button
-          onClick={handleSubmit}
-          className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
-        >
+        <Button onClick={handleSubmit} className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg" disabled={saving}>
           <Send className="mr-2 h-4 w-4" />
-          Submit for Approval
+          Submit for approval
         </Button>
       </div>
     </div>

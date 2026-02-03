@@ -202,6 +202,8 @@ export async function GET(request: NextRequest) {
     const agreementId = searchParams.get('agreementId');
     const month = searchParams.get('month');
     const year = searchParams.get('year');
+    const customerName = searchParams.get('customerName') || undefined;
+    const customerEmail = searchParams.get('customerEmail') || undefined;
 
     // If id is provided, return single invoice
     if (id) {
@@ -276,6 +278,12 @@ export async function GET(request: NextRequest) {
     }
     if (year) {
       where.billingYear = parseInt(year, 10);
+    }
+    if (customerName) {
+      where.customerName = { contains: customerName };
+    }
+    if (customerEmail) {
+      where.customerEmail = { contains: customerEmail };
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

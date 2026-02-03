@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../ui/button";
 import { CreditNotesList } from "./CreditNotesList";
@@ -9,178 +9,75 @@ import { toast } from "sonner";
 
 type View = "list" | "create" | "edit" | "details";
 
-// Mock data - in a real app, this would come from an API
-const initialCreditNotes: CreditNote[] = [
-  {
-    id: "1",
-    creditNoteNumber: "CN-2024-001",
-    customer: "Acme Construction Ltd.",
-    customerId: "CUST-001",
-    originalInvoice: "INV-2024-045",
-    amount: 750,
-    reason: "Returned Items",
-    reasonDescription: "Customer returned 5 units of steel bars due to excess inventory",
-    date: "2024-11-03",
-    status: "Approved",
-    createdBy: "John Smith",
-    createdAt: "2024-11-03T09:00:00Z",
-    updatedAt: "2024-11-03T14:30:00Z",
-    approvedBy: "Jane Doe (Finance Manager)",
-    approvedAt: "2024-11-03T14:30:00Z",
-    attachments: [
-      {
-        id: "att-1",
-        fileName: "return_receipt.pdf",
-        fileUrl: "#",
-        fileSize: 245600,
-        uploadedAt: "2024-11-03T09:00:00Z",
-      },
-    ],
-    items: [
-      {
-        id: "item-1",
-        description: "Steel Bar - 12mm x 6m",
-        quantity: 5,
-        unitPrice: 150,
-        amount: 750,
-      },
-    ],
-  },
-  {
-    id: "2",
-    creditNoteNumber: "CN-2024-002",
-    customer: "BuildRight Inc.",
-    customerId: "CUST-002",
-    originalInvoice: "INV-2024-043",
-    amount: 1200,
-    reason: "Price Adjustment",
-    reasonDescription: "Volume discount applied retroactively for bulk order",
-    date: "2024-11-02",
-    status: "Pending Approval",
-    createdBy: "Sarah Johnson",
-    createdAt: "2024-11-02T10:15:00Z",
-    updatedAt: "2024-11-02T10:15:00Z",
-    attachments: [],
-    items: [
-      {
-        id: "item-1",
-        description: "Price adjustment for scaffolding rental",
-        quantity: 1,
-        unitPrice: 1200,
-        amount: 1200,
-      },
-    ],
-  },
-  {
-    id: "3",
-    creditNoteNumber: "CN-2024-003",
-    customer: "Metro Builders",
-    customerId: "CUST-003",
-    originalInvoice: "INV-2024-038",
-    amount: 450,
-    reason: "Service Issue",
-    reasonDescription: "Late delivery compensation",
-    date: "2024-10-30",
-    status: "Approved",
-    createdBy: "Mike Chen",
-    createdAt: "2024-10-30T11:20:00Z",
-    updatedAt: "2024-10-30T16:45:00Z",
-    approvedBy: "Robert Lee (Admin)",
-    approvedAt: "2024-10-30T16:45:00Z",
-    attachments: [],
-    items: [
-      {
-        id: "item-1",
-        description: "Service credit for late delivery",
-        quantity: 1,
-        unitPrice: 450,
-        amount: 450,
-      },
-    ],
-  },
-  {
-    id: "4",
-    creditNoteNumber: "CN-2024-004",
-    customer: "Premium Projects",
-    customerId: "CUST-004",
-    originalInvoice: "INV-2024-047",
-    amount: 2100,
-    reason: "Returned Items",
-    date: "2024-11-01",
-    status: "Draft",
-    createdBy: "Emily Wong",
-    createdAt: "2024-11-01T08:30:00Z",
-    updatedAt: "2024-11-01T08:30:00Z",
-    attachments: [],
-    items: [
-      {
-        id: "item-1",
-        description: "Scaffolding Tubes - 6m",
-        quantity: 10,
-        unitPrice: 180,
-        amount: 1800,
-      },
-      {
-        id: "item-2",
-        description: "Couplers - Standard",
-        quantity: 20,
-        unitPrice: 15,
-        amount: 300,
-      },
-    ],
-  },
-  {
-    id: "5",
-    creditNoteNumber: "CN-2024-005",
-    customer: "Steel Masters Co.",
-    customerId: "CUST-005",
-    originalInvoice: "INV-2024-049",
-    amount: 850,
-    reason: "Damaged Goods",
-    reasonDescription: "3 units received with minor rust damage",
-    date: "2024-11-05",
-    status: "Rejected",
-    createdBy: "Tom Williams",
-    createdAt: "2024-11-05T13:00:00Z",
-    updatedAt: "2024-11-05T15:20:00Z",
-    rejectedBy: "Jane Doe (Finance Manager)",
-    rejectedAt: "2024-11-05T15:20:00Z",
-    rejectionReason: "Insufficient documentation. Please provide photos of the damaged goods and inspection report before resubmitting.",
-    attachments: [],
-    items: [
-      {
-        id: "item-1",
-        description: "Steel Plates - 10mm",
-        quantity: 3,
-        unitPrice: 283.33,
-        amount: 850,
-      },
-    ],
-  },
-];
+function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
+  return {
+    id: data.id as string,
+    creditNoteNumber: data.creditNoteNumber as string,
+    customer: (data.customerName as string) ?? (data.customer as string),
+    customerName: data.customerName as string,
+    customerId: data.customerId as string,
+    customerEmail: data.customerEmail as string | undefined,
+    invoiceType: (data.invoiceType as CreditNote["invoiceType"]) ?? "monthlyRental",
+    sourceId: data.sourceId as string | undefined,
+    originalInvoice: data.originalInvoice as string,
+    deliveryOrderId: data.deliveryOrderId as string | undefined,
+    amount: Number(data.amount),
+    reason: data.reason as CreditNote["reason"],
+    reasonDescription: data.reasonDescription as string | undefined,
+    date: typeof data.date === "string" ? data.date : (data.date as Date)?.toISOString?.()?.split("T")[0] ?? "",
+    status: data.status as CreditNote["status"],
+    createdBy: data.createdBy as string,
+    createdAt: (data.createdAt as string) ?? "",
+    updatedAt: (data.updatedAt as string) ?? "",
+    approvedBy: data.approvedBy as string | undefined,
+    approvedAt: data.approvedAt as string | undefined,
+    rejectedBy: data.rejectedBy as string | undefined,
+    rejectedAt: data.rejectedAt as string | undefined,
+    rejectionReason: data.rejectionReason as string | undefined,
+    attachments: Array.isArray(data.attachments) ? (data.attachments as CreditNote["attachments"]) : [],
+    items: Array.isArray(data.items)
+      ? (data.items as Array<Record<string, unknown>>).map((i) => ({
+          id: (i.id as string) ?? "",
+          description: (i.description as string) ?? "",
+          quantity: Number(i.quantity) ?? 0,
+          previousPrice: Number(i.previousPrice) ?? 0,
+          currentPrice: Number(i.currentPrice) ?? 0,
+          unitPrice: Number(i.unitPrice) ?? 0,
+          amount: Number(i.amount) ?? 0,
+          daysCharged: i.daysCharged != null ? Number(i.daysCharged) : undefined,
+        }))
+      : [],
+  };
+}
 
 export function CreditNotesMain() {
   const [currentView, setCurrentView] = useState<View>("list");
-  const [creditNotes, setCreditNotes] = useState<CreditNote[]>(initialCreditNotes);
+  const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [userRole] = useState<"Admin" | "Finance" | "Staff" | "Viewer">("Admin");
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem("creditNotes");
-    if (stored) {
-      try {
-        setCreditNotes(JSON.parse(stored));
-      } catch (e) {
-        console.error("Failed to load credit notes from storage");
+  const fetchCreditNotes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/credit-notes");
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setCreditNotes(json.data.map((d: Record<string, unknown>) => mapApiToCreditNote(d)));
+      } else {
+        setCreditNotes([]);
       }
+    } catch (e) {
+      console.error("Failed to fetch credit notes", e);
+      toast.error("Failed to load credit notes");
+      setCreditNotes([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Save to localStorage when creditNotes change
   useEffect(() => {
-    localStorage.setItem("creditNotes", JSON.stringify(creditNotes));
-  }, [creditNotes]);
+    fetchCreditNotes();
+  }, [fetchCreditNotes]);
 
   const selectedNote = selectedNoteId
     ? creditNotes.find((note) => note.id === selectedNoteId)
@@ -205,94 +102,58 @@ export function CreditNotesMain() {
     const note = creditNotes.find((n) => n.id === id);
     if (note && note.status === "Draft") {
       setCreditNotes(creditNotes.filter((n) => n.id !== id));
-      toast.success("Credit note deleted successfully");
+      toast.success("Credit note removed from list");
     }
   };
 
-  const handleSave = (creditNote: Partial<CreditNote>, isDraft: boolean) => {
-    const now = new Date().toISOString();
+  const handleSave = (creditNote: Partial<CreditNote>) => {
+    const full = mapApiToCreditNote(creditNote as Record<string, unknown>);
+    setCreditNotes((prev) => {
+      const idx = prev.findIndex((n) => n.id === full.id);
+      if (idx >= 0) return prev.map((n) => (n.id === full.id ? full : n));
+      return [full, ...prev];
+    });
+    setSelectedNoteId(full.id);
+    fetchCreditNotes();
+    setCurrentView("list");
+  };
 
-    if (creditNote.id) {
-      // Update existing
-      setCreditNotes(
-        creditNotes.map((note) =>
-          note.id === creditNote.id
-            ? {
-                ...note,
-                ...creditNote,
-                updatedAt: now,
-              }
-            : note
-        )
-      );
-      toast.success(
-        isDraft ? "Draft saved successfully" : "Credit note submitted for approval"
-      );
-    } else {
-      // Create new
-      const newNote: CreditNote = {
-        id: Date.now().toString(),
-        creditNoteNumber: `CN-2024-${String(creditNotes.length + 1).padStart(3, "0")}`,
-        customer: creditNote.customer || "",
-        customerId: creditNote.customerId || "",
-        originalInvoice: creditNote.originalInvoice || "",
-        amount: creditNote.amount || 0,
-        reason: creditNote.reason || "Other",
-        reasonDescription: creditNote.reasonDescription,
-        date: creditNote.date || new Date().toISOString().split("T")[0],
-        status: creditNote.status || "Draft",
-        createdBy: "Current User",
-        createdAt: now,
-        updatedAt: now,
-        attachments: [],
-        items: creditNote.items || [],
-      };
-      setCreditNotes([newNote, ...creditNotes]);
-      toast.success(
-        isDraft ? "Draft created successfully" : "Credit note submitted for approval"
-      );
+  const handleApprove = async (id: string) => {
+    try {
+      const res = await fetch(`/api/credit-notes/${id}/approve`, { method: "PUT" });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error(json.message || "Failed to approve");
+        return;
+      }
+      toast.success("Credit note approved");
+      await fetchCreditNotes();
+      setCurrentView("list");
+      setSelectedNoteId(null);
+    } catch (e) {
+      toast.error("Failed to approve credit note");
     }
-
-    setCurrentView("list");
   };
 
-  const handleApprove = (id: string) => {
-    const now = new Date().toISOString();
-    setCreditNotes(
-      creditNotes.map((note) =>
-        note.id === id
-          ? {
-              ...note,
-              status: "Approved",
-              approvedBy: "Current User (Admin)",
-              approvedAt: now,
-              updatedAt: now,
-            }
-          : note
-      )
-    );
-    toast.success("Credit note approved successfully");
-    setCurrentView("list");
-  };
-
-  const handleReject = (id: string, reason: string) => {
-    const now = new Date().toISOString();
-    setCreditNotes(
-      creditNotes.map((note) =>
-        note.id === id
-          ? {
-              ...note,
-              status: "Rejected",
-              rejectedBy: "Current User (Admin)",
-              rejectedAt: now,
-              rejectionReason: reason,
-              updatedAt: now,
-            }
-          : note
-      )
-    );
-    toast.error("Credit note rejected");
-    setCurrentView("list");
+  const handleReject = async (id: string, reason: string) => {
+    try {
+      const res = await fetch(`/api/credit-notes/${id}/reject`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error(json.message || "Failed to reject");
+        return;
+      }
+      toast.success("Credit note rejected");
+      await fetchCreditNotes();
+      setCurrentView("list");
+      setSelectedNoteId(null);
+    } catch (e) {
+      toast.error("Failed to reject credit note");
+    }
   };
 
   const handleBack = () => {
@@ -300,9 +161,16 @@ export function CreditNotesMain() {
     setSelectedNoteId(null);
   };
 
+  if (loading && creditNotes.length === 0) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <p className="text-[#6B7280]">Loading credit notes...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header - only show on list view */}
       {currentView === "list" && (
         <>
           <div className="flex items-center justify-between">
@@ -323,7 +191,6 @@ export function CreditNotesMain() {
         </>
       )}
 
-      {/* Content */}
       {currentView === "list" && (
         <CreditNotesList
           creditNotes={creditNotes}
@@ -337,7 +204,7 @@ export function CreditNotesMain() {
         <CreditNoteForm
           onBack={handleBack}
           onSave={handleSave}
-          editingNote={currentView === "edit" ? selectedNote : null}
+          editingNote={currentView === "edit" ? selectedNote ?? null : null}
         />
       )}
 

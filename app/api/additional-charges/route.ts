@@ -184,10 +184,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const openRepairSlipId = searchParams.get('openRepairSlipId') || undefined;
     const status = searchParams.get('status') || undefined;
+    const customerName = searchParams.get('customerName') || undefined;
 
-    const where: { openRepairSlipId?: string; status?: string } = {};
+    const where: { openRepairSlipId?: string; status?: string; customerName?: { contains: string } } = {};
     if (openRepairSlipId) where.openRepairSlipId = openRepairSlipId;
     if (status) where.status = status;
+    if (customerName) where.customerName = { contains: customerName };
 
     const list = await prisma.additionalCharge.findMany({
       where,

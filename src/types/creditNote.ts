@@ -1,10 +1,16 @@
+export type CreditNoteInvoiceType = 'deposit' | 'monthlyRental' | 'additionalCharge';
+
 export interface CreditNote {
   id: string;
   creditNoteNumber: string;
   customer: string;
+  customerName?: string;
   customerId: string;
+  customerEmail?: string;
+  invoiceType: CreditNoteInvoiceType;
+  sourceId?: string;
   originalInvoice: string;
-  deliveryOrderId?: string; // DO selection
+  deliveryOrderId?: string;
   amount: number;
   reason: 'Returned Items' | 'Price Adjustment' | 'Service Issue' | 'Damaged Goods' | 'Billing Error' | 'Other';
   reasonDescription?: string;
@@ -34,15 +40,20 @@ export interface CreditNoteItem {
   id: string;
   description: string;
   quantity: number;
-  previousPrice: number; // Price from DO
-  currentPrice: number;  // Price from Invoice
-  unitPrice: number;     // Legacy field (keep for backward compatibility)
-  amount: number;        // Calculated as: quantity × currentPrice
+  previousPrice: number;
+  currentPrice: number;
+  unitPrice: number;
+  amount: number;
+  daysCharged?: number;  // For monthly rental / additional charge lines
 }
 
 export interface CreditNoteFormData {
   customer: string;
+  customerName: string;
   customerId: string;
+  customerEmail?: string;
+  invoiceType: CreditNoteInvoiceType;
+  sourceId?: string;
   originalInvoice: string;
   deliveryOrderId?: string;
   reason: CreditNote['reason'];

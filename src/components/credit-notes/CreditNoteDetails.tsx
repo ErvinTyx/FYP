@@ -153,6 +153,18 @@ export function CreditNoteDetails({
               <p className="text-[#111827]">{creditNote.customerId}</p>
             </div>
             <div>
+              <p className="text-[14px] text-[#6B7280]">Invoice type</p>
+              <p className="text-[#111827]">
+                {creditNote.invoiceType === "deposit"
+                  ? "Deposit"
+                  : creditNote.invoiceType === "monthlyRental"
+                    ? "Monthly Rental"
+                    : creditNote.invoiceType === "additionalCharge"
+                      ? "Additional Charge"
+                      : creditNote.invoiceType ?? "—"}
+              </p>
+            </div>
+            <div>
               <p className="text-[14px] text-[#6B7280]">Original Invoice</p>
               <p className="text-[#111827]">{creditNote.originalInvoice}</p>
             </div>
@@ -204,40 +216,49 @@ export function CreditNoteDetails({
           <CardTitle className="text-[18px]">Line Items</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Quantity</TableHead>
-                <TableHead className="text-right">Unit Price</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {creditNote.items.map((item) => (
-                <TableRow key={item.id} className="hover:bg-[#F3F4F6]">
-                  <TableCell className="text-[#111827]">{item.description}</TableCell>
-                  <TableCell className="text-right text-[#374151]">
-                    {item.quantity}
-                  </TableCell>
-                  <TableCell className="text-right text-[#374151]">
-                    RM{item.unitPrice.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right text-[#111827]">
-                    RM{item.amount.toLocaleString()}
-                  </TableCell>
-                </TableRow>
-              ))}
-              <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
-                <TableCell colSpan={3} className="text-right">
-                  Total
-                </TableCell>
-                <TableCell className="text-right text-[#111827]">
-                  RM{creditNote.amount.toLocaleString()}
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+          {(() => {
+            const showDays = creditNote.items.some((i) => i.daysCharged != null && i.daysCharged > 0);
+            return (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    {showDays && <TableHead className="text-right">Days</TableHead>}
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {creditNote.items.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-[#F3F4F6]">
+                      <TableCell className="text-[#111827]">{item.description}</TableCell>
+                      <TableCell className="text-right text-[#374151]">{item.quantity}</TableCell>
+                      {showDays && (
+                        <TableCell className="text-right text-[#374151]">
+                          {item.daysCharged ?? "—"}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right text-[#374151]">
+                        RM{(item.unitPrice ?? 0).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right text-[#111827]">
+                        RM{(item.amount ?? 0).toLocaleString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
+                    <TableCell colSpan={showDays ? 4 : 3} className="text-right">
+                      Total
+                    </TableCell>
+                    <TableCell className="text-right text-[#111827]">
+                      RM{creditNote.amount.toLocaleString()}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            );
+          })()}
         </CardContent>
       </Card>
 
