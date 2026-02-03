@@ -2117,7 +2117,8 @@ async function main() {
   }
 
   // ============================================
-  // CREDIT NOTES
+  // CREDIT NOTES (for testing: customer search, invoice type, approve/reject)
+  // Uses same customer names as deposits/MRI so customer search returns results.
   // ============================================
   console.log("Creating sample credit notes...");
 
@@ -2129,16 +2130,19 @@ async function main() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (prisma as any).creditNote.deleteMany({});
 
+  // CN-001: Deposit type – linked to deposit1 (ABC Construction), Approved
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const creditNote1 = await (prisma as any).creditNote.create({
     data: {
       creditNoteNumber: "CN-2024-001",
-      customerName: "Acme Construction Ltd.",
-      customerId: "CUST-001",
-      originalInvoice: "INV-2024-045",
+      customerName: "ABC Construction Sdn Bhd",
+      customerId: "ABC Construction Sdn Bhd|project@abcconstruction.com.my",
+      invoiceType: "deposit",
+      sourceId: deposit1.id,
+      originalInvoice: deposit1.depositNumber,
       amount: 750,
       reason: "Returned Items",
-      reasonDescription: "Customer returned 5 units of steel bars due to excess inventory",
+      reasonDescription: "Partial refund of deposit after early contract termination",
       date: new Date("2024-11-03"),
       status: "Approved",
       createdBy: "John Smith",
@@ -2147,11 +2151,11 @@ async function main() {
       items: {
         create: [
           {
-            description: "Steel Bar - 12mm x 6m",
-            quantity: 5,
-            previousPrice: 150,
-            currentPrice: 150,
-            unitPrice: 150,
+            description: "Reduction of deposit price",
+            quantity: 1,
+            previousPrice: 1500000,
+            currentPrice: 1499250,
+            unitPrice: 750,
             amount: 750,
           },
         ],
@@ -2160,22 +2164,25 @@ async function main() {
         create: [
           {
             fileName: "return_receipt.pdf",
-            fileUrl: "#",
+            fileUrl: "/uploads/credit-notes/sample_receipt.pdf",
             fileSize: 245600,
           },
         ],
       },
     },
   });
-  console.log(`  - Credit Note: ${creditNote1.creditNoteNumber}`);
+  console.log(`  - Credit Note: ${creditNote1.creditNoteNumber} (deposit, Approved - ABC Construction)`);
 
+  // CN-002: Monthly rental type – linked to mriInvoice2 (XYZ Development), Pending Approval
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const creditNote2 = await (prisma as any).creditNote.create({
     data: {
       creditNoteNumber: "CN-2024-002",
-      customerName: "BuildRight Inc.",
-      customerId: "CUST-002",
-      originalInvoice: "INV-2024-043",
+      customerName: "XYZ Development Sdn Bhd",
+      customerId: "XYZ Development Sdn Bhd|ops@xyzdevelopment.com.my",
+      invoiceType: "monthlyRental",
+      sourceId: mriInvoice2.id,
+      originalInvoice: mriInvoice2.invoiceNumber,
       amount: 1200,
       reason: "Price Adjustment",
       reasonDescription: "Volume discount applied retroactively for bulk order",
@@ -2185,26 +2192,39 @@ async function main() {
       items: {
         create: [
           {
-            description: "Price adjustment for scaffolding rental",
-            quantity: 1,
-            previousPrice: 1200,
-            currentPrice: 1200,
-            unitPrice: 1200,
-            amount: 1200,
+            description: "CRAB STANDARD 0.75M C60",
+            quantity: 16,
+            previousPrice: 1.21,
+            currentPrice: 1.21,
+            unitPrice: 1.21,
+            amount: 600,
+            daysCharged: 31,
+          },
+          {
+            description: "CRAB LEDGER 0.70M",
+            quantity: 35,
+            previousPrice: 0.56,
+            currentPrice: 0.56,
+            unitPrice: 0.56,
+            amount: 600,
+            daysCharged: 31,
           },
         ],
       },
     },
   });
-  console.log(`  - Credit Note: ${creditNote2.creditNoteNumber}`);
+  console.log(`  - Credit Note: ${creditNote2.creditNoteNumber} (monthlyRental, Pending Approval - XYZ Development)`);
 
+  // CN-003: Monthly rental type – linked to mriInvoice1 (ABC Construction), Approved
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const creditNote3 = await (prisma as any).creditNote.create({
     data: {
       creditNoteNumber: "CN-2024-003",
-      customerName: "Metro Builders",
-      customerId: "CUST-003",
-      originalInvoice: "INV-2024-038",
+      customerName: "ABC Construction Sdn Bhd",
+      customerId: "ABC Construction Sdn Bhd|project@abcconstruction.com.my",
+      invoiceType: "monthlyRental",
+      sourceId: mriInvoice1.id,
+      originalInvoice: mriInvoice1.invoiceNumber,
       amount: 450,
       reason: "Service Issue",
       reasonDescription: "Late delivery compensation",
@@ -2216,62 +2236,72 @@ async function main() {
       items: {
         create: [
           {
-            description: "Service credit for late delivery",
-            quantity: 1,
-            previousPrice: 450,
-            currentPrice: 450,
-            unitPrice: 450,
-            amount: 450,
+            description: "CRAB JACK BASE C60 / 600",
+            quantity: 10,
+            previousPrice: 1.30,
+            currentPrice: 0.85,
+            unitPrice: 0.85,
+            amount: 110.5,
+            daysCharged: 31,
           },
         ],
       },
     },
   });
-  console.log(`  - Credit Note: ${creditNote3.creditNoteNumber}`);
+  console.log(`  - Credit Note: ${creditNote3.creditNoteNumber} (monthlyRental, Approved - ABC Construction)`);
 
+  // CN-004: Monthly rental type – linked to mriInvoice3 (ABC Construction), Draft
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const creditNote4 = await (prisma as any).creditNote.create({
     data: {
       creditNoteNumber: "CN-2024-004",
-      customerName: "Premium Projects",
-      customerId: "CUST-004",
-      originalInvoice: "INV-2024-047",
+      customerName: "ABC Construction Sdn Bhd",
+      customerId: "ABC Construction Sdn Bhd|project@abcconstruction.com.my",
+      invoiceType: "monthlyRental",
+      sourceId: mriInvoice3.id,
+      originalInvoice: mriInvoice3.invoiceNumber,
       amount: 2100,
       reason: "Returned Items",
+      reasonDescription: "Early return of 20 CRAB STANDARD 2.00M C60",
       date: new Date("2024-11-01"),
       status: "Draft",
       createdBy: "Emily Wong",
       items: {
         create: [
           {
-            description: "Scaffolding Tubes - 6m",
-            quantity: 10,
-            previousPrice: 180,
-            currentPrice: 180,
-            unitPrice: 180,
-            amount: 1800,
+            description: "CRAB STANDARD 2.00M C60",
+            quantity: 20,
+            previousPrice: 2.59,
+            currentPrice: 2.59,
+            unitPrice: 2.59,
+            amount: 1450.4,
+            daysCharged: 28,
           },
           {
-            description: "Couplers - Standard",
-            quantity: 20,
-            previousPrice: 15,
-            currentPrice: 15,
-            unitPrice: 15,
-            amount: 300,
+            description: "CRAB JACK BASE C60 / 600",
+            quantity: 15,
+            previousPrice: 1.30,
+            currentPrice: 1.30,
+            unitPrice: 1.30,
+            amount: 546,
+            daysCharged: 28,
           },
         ],
       },
     },
   });
-  console.log(`  - Credit Note: ${creditNote4.creditNoteNumber}`);
+  console.log(`  - Credit Note: ${creditNote4.creditNoteNumber} (monthlyRental, Draft - ABC Construction)`);
 
+  // CN-005: Deposit type – linked to deposit2 (XYZ Development), Rejected
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const creditNote5 = await (prisma as any).creditNote.create({
     data: {
       creditNoteNumber: "CN-2024-005",
-      customerName: "Steel Masters Co.",
-      customerId: "CUST-005",
-      originalInvoice: "INV-2024-049",
+      customerName: "XYZ Development Sdn Bhd",
+      customerId: "XYZ Development Sdn Bhd|ops@xyzdevelopment.com.my",
+      invoiceType: "deposit",
+      sourceId: deposit2.id,
+      originalInvoice: deposit2.depositNumber,
       amount: 850,
       reason: "Damaged Goods",
       reasonDescription: "3 units received with minor rust damage",
@@ -2284,18 +2314,20 @@ async function main() {
       items: {
         create: [
           {
-            description: "Steel Plates - 10mm",
-            quantity: 3,
-            previousPrice: 283.33,
-            currentPrice: 283.33,
-            unitPrice: 283.33,
+            description: "Reduction of deposit price",
+            quantity: 1,
+            previousPrice: 3420000,
+            currentPrice: 3419150,
+            unitPrice: 850,
             amount: 850,
           },
         ],
       },
     },
   });
-  console.log(`  - Credit Note: ${creditNote5.creditNoteNumber}`);
+  console.log(`  - Credit Note: ${creditNote5.creditNoteNumber} (deposit, Rejected - XYZ Development)`);
+
+  console.log("  Summary: 2 deposit-type, 3 monthlyRental-type; 1 Draft, 1 Pending Approval, 2 Approved, 1 Rejected");
 
   // ============================================
   // RFQ NOTIFICATIONS
