@@ -8,11 +8,15 @@ import { Loader2 } from 'lucide-react';
 
 type View = 'list' | 'details';
 
+type SOANavigationAction = 'view' | 'viewDocument' | 'downloadReceipt';
+
 interface MonthlyRentalBillingProps {
   userRole?: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
+  onConsumedSOANavigation?: () => void;
 }
 
-export function MonthlyRentalBilling({ userRole = 'Admin' }: MonthlyRentalBillingProps) {
+export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, onConsumedSOANavigation }: MonthlyRentalBillingProps) {
   const [currentView, setCurrentView] = useState<View>('list');
   const [invoices, setInvoices] = useState<MonthlyRentalInvoice[]>([]);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -44,6 +48,16 @@ export function MonthlyRentalBilling({ userRole = 'Admin' }: MonthlyRentalBillin
   useEffect(() => {
     fetchInvoices();
   }, [fetchInvoices]);
+
+  // Open entity from SOA navigation
+  useEffect(() => {
+    if (!initialOpenFromSOA?.entityId || invoices.length === 0) return;
+    const found = invoices.find((i) => i.id === initialOpenFromSOA.entityId);
+    if (!found) return;
+    setSelectedInvoiceId(initialOpenFromSOA.entityId);
+    setCurrentView('details');
+    onConsumedSOANavigation?.();
+  }, [invoices, initialOpenFromSOA, onConsumedSOANavigation]);
 
   const handleView = (id: string) => {
     setSelectedInvoiceId(id);

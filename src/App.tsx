@@ -143,6 +143,14 @@ type AuthScreen =
 
 type SystemMode = "ERP" | "CRM";
 
+export type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
+
+export type SOANavigation = {
+  page: Page;
+  entityId: string;
+  action: SOANavigationAction;
+} | null;
+
 export default function App() {
   const { data: session, status } = useSession();
   const [authScreen, setAuthScreen] = useState<AuthScreen>("portal-selector");
@@ -153,6 +161,7 @@ export default function App() {
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [soaNavigation, setSOANavigation] = useState<SOANavigation>(null);
   
   // Track previous auth status to detect session expiry
   const prevStatusRef = useRef<string | null>(null);
@@ -579,19 +588,57 @@ export default function App() {
           onNavigateToMonthlyRental={() => setCurrentPage("monthly-rental")}
           onNavigateToManageDeposits={() => setCurrentPage("manage-deposits")}
           onNavigateToRefunds={() => setCurrentPage("refund-management")}
+          onNavigateToPage={(page, entityId, action) => {
+            setSOANavigation({ page: page as Page, entityId, action });
+            setCurrentPage(page as Page);
+          }}
         />; 
       case "manage-deposits":
-        return <ManageDepositFlow userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"} />;
+        return (
+          <ManageDepositFlow
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"}
+            initialOpenFromSOA={soaNavigation?.page === "manage-deposits" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
+            onConsumedSOANavigation={() => setSOANavigation(null)}
+          />
+        );
       case "monthly-rental":
-        return <MonthlyRentalBilling />;
+        return (
+          <MonthlyRentalBilling
+            initialOpenFromSOA={soaNavigation?.page === "monthly-rental" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
+            onConsumedSOANavigation={() => setSOANavigation(null)}
+          />
+        );
       case "credit-notes":
-        return <CreditNotes />;
+        return (
+          <CreditNotes
+            initialOpenFromSOA={soaNavigation?.page === "credit-notes" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
+            onConsumedSOANavigation={() => setSOANavigation(null)}
+          />
+        );
       case "refund-management":
-        return <RefundManagementMain userRole={userRole === "super_user" || userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"} />;
+        return (
+          <RefundManagementMain
+            userRole={userRole === "super_user" || userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"}
+            initialOpenFromSOA={soaNavigation?.page === "refund-management" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
+            onConsumedSOANavigation={() => setSOANavigation(null)}
+          />
+        );
       case "additional-charges":
-        return <AdditionalCharges />;
+        return (
+          <AdditionalCharges
+            initialOpenFromSOA={soaNavigation?.page === "additional-charges" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
+            onConsumedSOANavigation={() => setSOANavigation(null)}
+          />
+        );
       case "statement-of-account":
-        return <StatementOfAccount />;
+        return (
+          <StatementOfAccount
+            onNavigateToPage={(page, entityId, action) => {
+              setSOANavigation({ page: page as Page, entityId, action });
+              setCurrentPage(page as Page);
+            }}
+          />
+        );
       case "scaffolding-management":
         return <ScaffoldingManagement />;
       case "order-sales":

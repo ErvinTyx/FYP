@@ -4,11 +4,15 @@ import { CreateRefund } from "./CreateRefund";
 import { RefundDetails } from "./RefundDetails";
 import type { Refund } from "../../types/refund";
 
+type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
+
 interface RefundManagementMainProps {
   userRole?: "Admin" | "Finance" | "Staff" | "Customer" | "super_user";
+  initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
+  onConsumedSOANavigation?: () => void;
 }
 
-export function RefundManagementMain({ userRole = "Staff" }: RefundManagementMainProps) {
+export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, onConsumedSOANavigation }: RefundManagementMainProps) {
   const [currentView, setCurrentView] = useState<"list" | "create" | "details">("list");
   const [selectedRefundId, setSelectedRefundId] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<Refund[]>([]);
@@ -34,6 +38,16 @@ export function RefundManagementMain({ userRole = "Staff" }: RefundManagementMai
   useEffect(() => {
     fetchRefunds();
   }, [fetchRefunds]);
+
+  // Open entity from SOA navigation
+  useEffect(() => {
+    if (!initialOpenFromSOA?.entityId || refunds.length === 0) return;
+    const found = refunds.find((r) => r.id === initialOpenFromSOA.entityId);
+    if (!found) return;
+    setSelectedRefundId(initialOpenFromSOA.entityId);
+    setCurrentView("details");
+    onConsumedSOANavigation?.();
+  }, [refunds, initialOpenFromSOA, onConsumedSOANavigation]);
 
   const handleCreateNew = () => {
     setCurrentView("create");

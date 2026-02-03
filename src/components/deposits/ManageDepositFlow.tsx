@@ -22,11 +22,15 @@ import { uploadPaymentProof } from "@/lib/upload";
 
 type View = "list" | "details" | "receipt";
 
+type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
+
 interface ManageDepositFlowProps {
   userRole?: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
+  initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
+  onConsumedSOANavigation?: () => void;
 }
 
-export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps) {
+export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onConsumedSOANavigation }: ManageDepositFlowProps) {
   const [currentView, setCurrentView] = useState<View>("list");
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
@@ -100,6 +104,20 @@ export function ManageDepositFlow({ userRole = "Admin" }: ManageDepositFlowProps
   useEffect(() => {
     fetchDeposits();
   }, [fetchDeposits]);
+
+  // Open entity from SOA navigation
+  useEffect(() => {
+    if (!initialOpenFromSOA?.entityId || deposits.length === 0) return;
+    const found = deposits.find((d) => d.id === initialOpenFromSOA.entityId);
+    if (!found) return;
+    setSelectedDepositId(initialOpenFromSOA.entityId);
+    if (initialOpenFromSOA.action === "viewDocument" || initialOpenFromSOA.action === "downloadReceipt") {
+      setCurrentView("receipt");
+    } else {
+      setCurrentView("details");
+    }
+    onConsumedSOANavigation?.();
+  }, [deposits, initialOpenFromSOA, onConsumedSOANavigation]);
 
   const selectedDeposit = selectedDepositId
     ? deposits.find((d) => d.id === selectedDepositId)

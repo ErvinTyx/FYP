@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, FileText, CheckCircle, XCircle, ExternalLink } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { ArrowLeft, FileText, CheckCircle, XCircle, ExternalLink, Printer, Download } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -26,6 +26,12 @@ import {
 import { toast } from "sonner";
 import type { Refund, RefundStatus } from "../../types/refund";
 import type { RelatedCreditNote } from "../../types/refund";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 interface RefundDetailsData extends Refund {
   relatedCreditNotes?: RelatedCreditNote[];
@@ -50,6 +56,19 @@ export function RefundDetails({
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [actioning, setActioning] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showPrintModal && autoPrint) {
+      const t = setTimeout(() => {
+        window.print();
+        setAutoPrint(false);
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [showPrintModal, autoPrint]);
 
   const fetchRefund = useCallback(async () => {
     setLoading(true);
@@ -176,6 +195,16 @@ export function RefundDetails({
           <div className="space-y-1">
             <h1>{refund.refundNumber}</h1>
             <p className="text-[#374151]">Refund request details and approval workflow</p>
+            <div className="flex gap-2 mt-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}>
+                <FileText className="h-4 w-4 mr-2" />
+                View Document
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}>
+                <Download className="h-4 w-4 mr-2" />
+                Download Receipt
+              </Button>
+            </div>
           </div>
         </div>
         {getStatusBadge(refund.status)}
@@ -468,6 +497,39 @@ export function RefundDetails({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none">
+          <div className="flex justify-between items-center print:hidden mb-4">
+            <DialogHeader>
+              <DialogTitle>Refund - Print Preview</DialogTitle>
+            </DialogHeader>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => window.print()}>
+                <Printer className="h-4 w-4 mr-2" />
+                Print
+              </Button>
+              <Button variant="outline" onClick={() => setShowPrintModal(false)}>Close</Button>
+            </div>
+          </div>
+          <div ref={printRef} className="space-y-4 p-4 border rounded-lg">
+            <div className="border-b-2 border-[#F15929] pb-4">
+              <h2 className="text-xl font-semibold text-[#231F20]">Power Metal & Steel</h2>
+              <p className="text-sm text-[#6B7280]">Refund</p>
+              <p className="text-lg font-medium mt-2">{refund.refundNumber}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <p><span className="text-[#6B7280]">Customer:</span> {refund.customerName}</p>
+              <p><span className="text-[#6B7280]">Created:</span> {refund.createdAt.split("T")[0]}</p>
+              <p><span className="text-[#6B7280]">Status:</span> {refund.status}</p>
+              <p><span className="text-[#6B7280]">Amount:</span> RM {refund.amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</p>
+              <p><span className="text-[#6B7280]">Invoice:</span> {refund.originalInvoice}</p>
+              <p><span className="text-[#6B7280]">Type:</span> {invoiceTypeLabel}</p>
+              <p className="col-span-2"><span className="text-[#6B7280]">Reason:</span> {refund.reason || "—"}</p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

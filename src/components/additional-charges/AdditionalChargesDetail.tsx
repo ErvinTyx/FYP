@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   ArrowLeft,
   Calendar,
@@ -8,6 +8,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Printer,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -25,6 +26,12 @@ import { ApproveModal } from "./ApproveModal";
 import { RejectModal } from "./RejectModal";
 import { AdditionalCharge } from "../../types/additionalCharge";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 const API_STATUS_TO_DISPLAY: Record<string, AdditionalCharge["status"]> = {
   pending_payment: "Pending Payment",
@@ -92,6 +99,19 @@ export function AdditionalChargesDetail({
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showPrintModal && autoPrint) {
+      const t = setTimeout(() => {
+        window.print();
+        setAutoPrint(false);
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [showPrintModal, autoPrint]);
 
   const handlePopUploaded = async (file: File) => {
     try {
@@ -213,6 +233,16 @@ export function AdditionalChargesDetail({
           </Button>
           <div>
             <h1>Additional Charge Details</h1>
+            <div className="flex gap-2 mt-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}>
+                <FileText className="h-4 w-4 mr-2" />
+                View Document
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}>
+                <Download className="h-4 w-4 mr-2" />
+                Download Receipt
+              </Button>
+            </div>
             <p className="text-[#374151]">View and manage additional charge information</p>
           </div>
         </div>
@@ -454,6 +484,60 @@ export function AdditionalChargesDetail({
         onReject={handleRejectConfirmed}
         chargeId={charge.id}
       />
+
+      <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none">
+          <div className="flex justify-between items-center print:hidden mb-4">
+            <DialogHeader>
+              <DialogTitle>Additional Charge - Print Preview</DialogTitle>
+            </DialogHeader>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => window.print()}>
+                <Printer className="h-4 w-4 mr-2" />
+                Print
+              </Button>
+              <Button variant="outline" onClick={() => setShowPrintModal(false)}>Close</Button>
+            </div>
+          </div>
+          <div ref={printRef} className="space-y-4 p-4 border rounded-lg">
+            <div className="border-b-2 border-[#F15929] pb-4">
+              <h2 className="text-xl font-semibold text-[#231F20]">Power Metal & Steel</h2>
+              <p className="text-sm text-[#6B7280]">Additional Charge</p>
+              <p className="text-lg font-medium mt-2">{charge.invoiceNo}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <p><span className="text-[#6B7280]">Customer:</span> {charge.customerName}</p>
+              <p><span className="text-[#6B7280]">DO ID:</span> {charge.doId}</p>
+              <p><span className="text-[#6B7280]">Status:</span> {charge.status}</p>
+              <p><span className="text-[#6B7280]">Total:</span> RM {charge.totalCharges.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</p>
+            </div>
+            {charge.items && charge.items.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {charge.items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.itemName}</TableCell>
+                      <TableCell>{item.itemType}</TableCell>
+                      <TableCell className="text-right">{item.quantity}</TableCell>
+                      <TableCell className="text-right">RM {Number(item.unitPrice).toFixed(2)}</TableCell>
+                      <TableCell className="text-right">RM {Number(item.amount).toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

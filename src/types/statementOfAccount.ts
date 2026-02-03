@@ -26,6 +26,8 @@ export interface Customer {
   phone: string;
 }
 
+export type SOAEntityType = 'deposit' | 'monthlyRental' | 'additionalCharge' | 'creditNote' | 'refund';
+
 export interface Transaction {
   id: string;
   date: string;
@@ -37,6 +39,8 @@ export interface Transaction {
   balance: number; // Running balance
   status: TransactionStatus;
   linkedDocuments?: string[]; // Invoice IDs, POP files, etc.
+  entityType?: SOAEntityType;
+  entityId?: string;
 }
 
 export interface Project {

@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Search, Calendar, User, Briefcase } from "lucide-react";
+import { Search, Calendar, User, Briefcase, Loader2 } from "lucide-react";
 import { Card, CardContent } from "../ui/card";
 import {
   Select,
@@ -8,36 +7,65 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Input } from "../ui/input";
 import { Project, Customer } from "../../types/statementOfAccount";
 
 interface ProjectSelectorProps {
+  searchQuery?: string;
+  onSearchChange?: (value: string) => void;
   customers: Customer[];
   projects: Project[];
   selectedCustomer: Customer | null;
   selectedProject: Project | null;
   onCustomerChange: (customer: Customer) => void;
   onProjectChange: (project: Project) => void;
+  loadingProjects?: boolean;
 }
 
 export function ProjectSelector({
+  searchQuery = "",
+  onSearchChange,
   customers,
   projects,
   selectedCustomer,
   selectedProject,
   onCustomerChange,
   onProjectChange,
+  loadingProjects = false,
 }: ProjectSelectorProps) {
   return (
     <Card className="border-[#E5E7EB]">
       <CardContent className="pt-6">
         <div className="space-y-4">
-          {/* Project Selector - Now the primary selector */}
+          {/* Name / project search */}
+          {onSearchChange && (
+            <div>
+              <label className="text-sm text-[#374151] mb-2 block">
+                Search by project or customer name
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF]" />
+                <Input
+                  type="text"
+                  placeholder="Type project or customer name..."
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  className="pl-9 h-10 border-[#D1D5DB] rounded-md"
+                />
+                {loadingProjects && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-[#F15929]" />
+                )}
+              </div>
+            </div>
+          )}
+          {/* Project Selector */}
           <div>
             <label className="text-sm text-[#374151] mb-2 block">
               Select Project
             </label>
             <Select
               value={selectedProject?.id}
+              disabled={loadingProjects}
               onValueChange={(value) => {
                 const project = projects.find((p) => p.id === value);
                 if (project) {

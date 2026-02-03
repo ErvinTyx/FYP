@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, Upload, Check, X, FileText, AlertCircle, Calendar, Info, ExternalLink, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { ArrowLeft, Upload, Check, X, FileText, AlertCircle, Calendar, Info, ExternalLink, Loader2, Printer, Download } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -25,6 +25,12 @@ import {
 } from '../ui/alert-dialog';
 import { MonthlyRentalInvoice } from '../../types/monthly-rental';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 
 interface MonthlyRentalInvoiceDetailsProps {
   invoice: MonthlyRentalInvoice;
@@ -55,6 +61,19 @@ export function MonthlyRentalInvoiceDetails({
   const [referenceNumber, setReferenceNumber] = useState('');
   const [referenceNumberError, setReferenceNumberError] = useState('');
   const [rejectionReasonError, setRejectionReasonError] = useState('');
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showPrintModal && autoPrint) {
+      const t = setTimeout(() => {
+        window.print();
+        setAutoPrint(false);
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [showPrintModal, autoPrint]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -187,7 +206,25 @@ export function MonthlyRentalInvoiceDetails({
             <p className="text-sm text-gray-600 mt-1">{invoice.invoiceNumber}</p>
           </div>
         </div>
-        {getStatusBadge(invoice.status)}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}
+            className="h-10 px-4"
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            View Document
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}
+            className="h-10 px-4"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Download Receipt
+          </Button>
+          {getStatusBadge(invoice.status)}
+        </div>
       </div>
 
       {/* Overdue Warning */}
@@ -642,6 +679,59 @@ export function MonthlyRentalInvoiceDetails({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Print / Document Modal */}
+      <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none">
+          <div className="flex justify-between items-center print:hidden mb-4">
+            <DialogHeader>
+              <DialogTitle>Monthly Rental Invoice - Print Preview</DialogTitle>
+            </DialogHeader>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => window.print()}>
+                <Printer className="h-4 w-4 mr-2" />
+                Print
+              </Button>
+              <Button variant="outline" onClick={() => setShowPrintModal(false)}>Close</Button>
+            </div>
+          </div>
+          <div ref={printRef} className="space-y-4 p-4 border rounded-lg">
+            <div className="border-b-2 border-[#F15929] pb-4">
+              <h2 className="text-xl font-semibold text-[#231F20]">Power Metal & Steel</h2>
+              <p className="text-sm text-[#6B7280]">Monthly Rental Invoice</p>
+              <p className="text-lg font-medium mt-2">{invoice.invoiceNumber}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <p><span className="text-[#6B7280]">Customer:</span> {invoice.customerName}</p>
+              <p><span className="text-[#6B7280]">Due Date:</span> {new Date(invoice.dueDate).toLocaleDateString()}</p>
+              <p><span className="text-[#6B7280]">Status:</span> {invoice.status}</p>
+              <p><span className="text-[#6B7280]">Total:</span> RM {invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</p>
+            </div>
+            {invoice.items && invoice.items.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoice.items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.scaffoldingItemName}</TableCell>
+                      <TableCell className="text-right">{item.quantityBilled}</TableCell>
+                      <TableCell className="text-right">RM {Number(item.unitPrice).toFixed(2)}</TableCell>
+                      <TableCell className="text-right">RM {Number(item.lineTotal).toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

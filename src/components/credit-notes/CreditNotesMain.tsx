@@ -50,7 +50,14 @@ function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
   };
 }
 
-export function CreditNotesMain() {
+type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
+
+interface CreditNotesMainProps {
+  initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
+  onConsumedSOANavigation?: () => void;
+}
+
+export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }: CreditNotesMainProps = {}) {
   const [currentView, setCurrentView] = useState<View>("list");
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
@@ -78,6 +85,16 @@ export function CreditNotesMain() {
   useEffect(() => {
     fetchCreditNotes();
   }, [fetchCreditNotes]);
+
+  // Open entity from SOA navigation
+  useEffect(() => {
+    if (!initialOpenFromSOA?.entityId || creditNotes.length === 0) return;
+    const found = creditNotes.find((n) => n.id === initialOpenFromSOA.entityId);
+    if (!found) return;
+    setSelectedNoteId(initialOpenFromSOA.entityId);
+    setCurrentView("details");
+    onConsumedSOANavigation?.();
+  }, [creditNotes, initialOpenFromSOA, onConsumedSOANavigation]);
 
   const selectedNote = selectedNoteId
     ? creditNotes.find((note) => note.id === selectedNoteId)

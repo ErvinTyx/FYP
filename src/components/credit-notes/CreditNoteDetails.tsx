@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, Download, CheckCircle, XCircle, FileText, Image as ImageIcon } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { ArrowLeft, Download, CheckCircle, XCircle, FileText, Image as ImageIcon, Printer } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -15,6 +15,12 @@ import { StatusBadge } from "./StatusBadge";
 import { RejectionModal } from "./RejectionModal";
 import { CreditNote } from "../../types/creditNote";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 interface CreditNoteDetailsProps {
   creditNote: CreditNote;
@@ -32,6 +38,19 @@ export function CreditNoteDetails({
   userRole,
 }: CreditNoteDetailsProps) {
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showPrintModal && autoPrint) {
+      const t = setTimeout(() => {
+        window.print();
+        setAutoPrint(false);
+      }, 300);
+      return () => clearTimeout(t);
+    }
+  }, [showPrintModal, autoPrint]);
 
   const canApprove = (userRole === "Admin" || userRole === "Finance") && 
                      creditNote.status === "Pending Approval";
@@ -42,11 +61,6 @@ export function CreditNoteDetails({
 
   const handleReject = (reason: string) => {
     onReject(creditNote.id, reason);
-  };
-
-  const handleDownloadPDF = () => {
-    toast.success("PDF download started");
-    // In a real app, this would generate and download a PDF
   };
 
   return (
@@ -68,14 +82,24 @@ export function CreditNoteDetails({
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleDownloadPDF}
-          className="h-10 px-6 rounded-lg"
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Download PDF
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}
+            className="h-10 px-6 rounded-lg"
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            View Document
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}
+            className="h-10 px-6 rounded-lg"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Download Receipt
+          </Button>
+        </div>
       </div>
 
       {/* Approval Actions */}
@@ -344,6 +368,58 @@ export function CreditNoteDetails({
           </div>
         </CardContent>
       </Card>
+
+      {/* Print / Document Modal */}
+      <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none">
+          <div className="flex justify-between items-center print:hidden mb-4">
+            <DialogHeader>
+              <DialogTitle>Credit Note - Print Preview</DialogTitle>
+            </DialogHeader>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => window.print()}>
+                <Printer className="mr-2 h-4 w-4" />
+                Print
+              </Button>
+              <Button variant="outline" onClick={() => setShowPrintModal(false)}>Close</Button>
+            </div>
+          </div>
+          <div ref={printRef} className="space-y-4 p-4 border rounded-lg">
+            <div className="border-b-2 border-[#F15929] pb-4">
+              <h2 className="text-xl font-semibold text-[#231F20]">Power Metal & Steel</h2>
+              <p className="text-sm text-[#6B7280]">Credit Note</p>
+              <p className="text-lg font-medium mt-2">{creditNote.creditNoteNumber}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <p><span className="text-[#6B7280]">Customer:</span> {creditNote.customerName}</p>
+              <p><span className="text-[#6B7280]">Date:</span> {creditNote.date}</p>
+              <p><span className="text-[#6B7280]">Status:</span> {creditNote.status}</p>
+              <p><span className="text-[#6B7280]">Amount:</span> RM {creditNote.amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</p>
+              <p className="col-span-2"><span className="text-[#6B7280]">Reason:</span> {creditNote.reason}</p>
+            </div>
+            {creditNote.items && creditNote.items.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {creditNote.items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.description}</TableCell>
+                      <TableCell className="text-right">{item.quantity}</TableCell>
+                      <TableCell className="text-right">RM {Number(item.amount).toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Rejection Modal */}
       <RejectionModal

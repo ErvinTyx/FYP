@@ -19,29 +19,37 @@ import { Transaction } from "../../types/statementOfAccount";
 import { TransactionTypeBadge } from "./TransactionTypeBadge";
 import { TransactionStatusBadge } from "./TransactionStatusBadge";
 
+type SOAAction = "view" | "viewDocument" | "downloadReceipt";
+
 interface TransactionLedgerProps {
   transactions: Transaction[];
   onViewDetails?: (transaction: Transaction) => void;
+  onNavigate?: (transaction: Transaction, action: SOAAction) => void;
 }
 
 export function TransactionLedger({
   transactions,
   onViewDetails,
+  onNavigate,
 }: TransactionLedgerProps) {
   const handleViewDetails = (transaction: Transaction) => {
-    if (onViewDetails) {
+    if (onNavigate && transaction.entityType && transaction.entityId) {
+      onNavigate(transaction, "view");
+    } else if (onViewDetails) {
       onViewDetails(transaction);
     }
   };
 
   const handleViewDocument = (transaction: Transaction) => {
-    console.log("View document for:", transaction.reference);
-    // Implement document viewing logic
+    if (onNavigate && transaction.entityType && transaction.entityId) {
+      onNavigate(transaction, "viewDocument");
+    }
   };
 
   const handleDownload = (transaction: Transaction) => {
-    console.log("Download document for:", transaction.reference);
-    // Implement download logic
+    if (onNavigate && transaction.entityType && transaction.entityId) {
+      onNavigate(transaction, "downloadReceipt");
+    }
   };
 
   return (
