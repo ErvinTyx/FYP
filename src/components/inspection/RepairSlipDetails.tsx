@@ -187,11 +187,11 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
                   <TableHead>Item Description</TableHead>
-                  <TableHead>Quantity</TableHead>
+                  <TableHead>Qty Breakdown</TableHead>
                   <TableHead>Damage Type</TableHead>
-                  <TableHead>Repair Actions</TableHead>
+                  <TableHead>Repair Actions & Costs</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Cost (RM)</TableHead>
+                  <TableHead className="text-right">Total Cost (RM)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -206,19 +206,43 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>{item.quantity}</TableCell>
+                    <TableCell>
+                      <div className="space-y-1 text-sm">
+                        <div>Total: <span className="font-medium">{item.quantity}</span></div>
+                        {item.quantityRepair > 0 && (
+                          <div className="text-orange-600">Repair: {item.quantityRepair}</div>
+                        )}
+                        {item.quantityWriteOff > 0 && (
+                          <div className="text-red-600">Write-off: {item.quantityWriteOff}</div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline">
                         {item.damageType.replace('-', ' ').toUpperCase()}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-1">
-                        {item.repairActions.map((action, idx) => (
-                          <div key={idx} className="text-sm text-gray-600">
-                            • {action}
-                          </div>
-                        ))}
+                      <div className="space-y-2">
+                        {item.repairActionEntries && item.repairActionEntries.length > 0 ? (
+                          item.repairActionEntries.map((entry, idx) => (
+                            <div key={idx} className="text-sm border-l-2 border-blue-300 pl-2 py-1">
+                              <div className="font-medium text-gray-700">{entry.action}</div>
+                              <div className="text-xs text-gray-500">
+                                {entry.affectedItems} items × {entry.issueQuantity} issues @ RM {Number(entry.costPerUnit || 0).toFixed(2)}
+                              </div>
+                              <div className="text-xs font-medium text-green-600">
+                                = RM {Number(entry.totalCost || 0).toFixed(2)}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          item.repairActions.map((action, idx) => (
+                            <div key={idx} className="text-sm text-gray-600">
+                              • {action}
+                            </div>
+                          ))
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -227,7 +251,21 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {Number(item.totalCost || 0).toFixed(2)}
+                      <div className="space-y-1">
+                        {item.totalRepairCost > 0 && (
+                          <div className="text-xs text-gray-500">
+                            Repair: {Number(item.totalRepairCost || 0).toFixed(2)}
+                          </div>
+                        )}
+                        {item.writeOffTotalCost > 0 && (
+                          <div className="text-xs text-gray-500">
+                            Write-off: {Number(item.writeOffTotalCost || 0).toFixed(2)}
+                          </div>
+                        )}
+                        <div className="font-medium">
+                          {Number(item.totalCost || 0).toFixed(2)}
+                        </div>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

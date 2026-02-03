@@ -135,7 +135,6 @@ export interface DamageInvoice {
   id: string;
   invoiceNumber: string;
   orpNumber: string;
-  repairSlipId: string;
   invoiceDate: string;
   vendor?: string;
   items: InvoiceItem[];

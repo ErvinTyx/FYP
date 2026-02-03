@@ -275,10 +275,8 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
         const entries = item.repairActionEntries.map(entry => {
           if (entry.id === actionId) {
             const updated = { ...entry, [field]: value };
-            // Single quantity drives cost; keep affectedItems in sync for stored data
-            if (field === 'issueQuantity') updated.affectedItems = value;
-            if (field === 'affectedItems') updated.issueQuantity = value;
-            updated.totalCost = updated.issueQuantity * updated.costPerUnit;
+            // Calculate total cost based only on issue quantity
+            updated.totalCost = (updated.issueQuantity || 0) * updated.costPerUnit;
             return updated;
           }
           return entry;
@@ -521,12 +519,19 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
                           return (
                             <div key={entry.id} className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-white rounded border">
                               <div><Label className="text-xs">{entry.action}</Label><p className="text-xs text-gray-500">RM {entry.costPerUnit.toFixed(2)}/{isBendType ? 'bend' : 'item'}</p></div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Quantity</Label>
-                                <Input type="number" value={qty} onChange={(e) => handleUpdateRepairActionEntry(item.id, entry.id, 'issueQuantity', parseInt(e.target.value) || 0)} min="0" max={item.quantityRepair} className="h-8 text-sm" />
-                                <p className="text-xs text-gray-400">{isBendType ? 'Number of bends' : 'Number of items'} — used for cost (qty × RM/unit)</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Affected Items</Label>
+                                  <Input type="number" value={entry.affectedItems || 0} onChange={(e) => handleUpdateRepairActionEntry(item.id, entry.id, 'affectedItems', parseInt(e.target.value) || 0)} min="0" max={item.quantityRepair} className="h-8 text-sm" />
+                                  <p className="text-xs text-gray-400">Items affected</p>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Issue Qty</Label>
+                                  <Input type="number" value={entry.issueQuantity || 0} onChange={(e) => handleUpdateRepairActionEntry(item.id, entry.id, 'issueQuantity', parseInt(e.target.value) || 0)} min="0" max={item.quantityRepair} className="h-8 text-sm" />
+                                  <p className="text-xs text-gray-400">{isBendType ? 'Bends' : 'Issues'} per item</p>
+                                </div>
                               </div>
-                              <div className="space-y-1"><Label className="text-xs">Cost</Label><div className="h-8 flex items-center text-sm font-medium text-green-700">RM {Number(entry.totalCost || 0).toFixed(2)}</div><p className="text-xs text-gray-400">{qty} × RM {entry.costPerUnit.toFixed(2)}</p></div>
+                              <div className="space-y-1"><Label className="text-xs">Cost</Label><div className="h-8 flex items-center text-sm font-medium text-green-700">RM {Number(entry.totalCost || 0).toFixed(2)}</div><p className="text-xs text-gray-400">{entry.issueQuantity || 0} × RM {entry.costPerUnit.toFixed(2)}</p></div>
                             </div>
                           );
                         })}

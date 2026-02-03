@@ -16,7 +16,7 @@ interface ScaffoldingItem {
   quantity: number;
   available: number;
   price: number;
-  originPrice?: number; // Original purchase price for write-off calculations
+  originPrice?: number; // Original/replacement price
   status: string;
   location: string;
   itemStatus: string;
@@ -136,7 +136,7 @@ export function ConditionReportForm({
           images: [],
           repairRequired: false,
           estimatedRepairCost: 0,
-          originalItemPrice: itemPrice, // Uses originPrice from inventory for write-off calculations
+          originalItemPrice: scaffoldingItem?.originPrice || scaffoldingItem?.price || 0,
           inspectionChecklist: {
             structuralIntegrity: false,
             surfaceCondition: false,
@@ -200,7 +200,7 @@ export function ConditionReportForm({
           }
         }
         
-        // Auto-calculate total quantity with validation
+        // Validate quantity breakdown without changing total
         if (field === 'quantityGood' || field === 'quantityRepair' || field === 'quantityWriteOff') {
           const newTotal = (updated.quantityGood || 0) + (updated.quantityRepair || 0) + (updated.quantityWriteOff || 0);
           
@@ -208,11 +208,21 @@ export function ConditionReportForm({
           const maxQuantity = returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || item.quantity;
           
           if (newTotal > maxQuantity) {
-            toast.error(`Total quantity (${newTotal}) cannot exceed returned quantity (${maxQuantity})`);
+            const remaining = maxQuantity - newTotal;
+            toast.error(`Breakdown exceeds limit by ${Math.abs(remaining)}. Current: ${newTotal}, Max: ${maxQuantity}`);
             return item; // Don't update if exceeds limit
           }
           
-          updated.quantity = newTotal;
+          // Show helpful warning if breakdown doesn't match total
+          if (newTotal < maxQuantity) {
+            const remaining = maxQuantity - newTotal;
+            toast.info(`Remaining: ${remaining} items not assigned (Good: ${updated.quantityGood}, Repair: ${updated.quantityRepair}, Write-off: ${updated.quantityWriteOff})`, {
+              duration: 3000
+            });
+          }
+          
+          // Keep the original quantity unchanged - only validate the breakdown
+          // DO NOT update: updated.quantity = newTotal;
           
           // Auto-set repair required and calculate costs
           updated.repairRequired = (updated.quantityRepair || 0) > 0 || (updated.quantityWriteOff || 0) > 0;

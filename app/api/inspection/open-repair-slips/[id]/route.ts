@@ -65,17 +65,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }));
       return {
         ...item,
-        quantityRepair: item.quantityRepair ?? 0,
-        quantityWriteOff: item.quantityWriteOff ?? 0,
-        writeOffCostPerUnit: Number(item.writeOffCostPerUnit ?? 0),
-        writeOffTotalCost: Number(item.writeOffTotalCost ?? 0),
-        totalRepairCost: Number(item.totalRepairCost ?? 0),
+        quantityRepair: item.quantityRepair || 0,
+        quantityWriteOff: item.quantityWriteOff || 0,
         costPerUnit: Number(item.costPerUnit),
         totalCost: Number(item.totalCost),
+        writeOffCostPerUnit: Number(item.writeOffCostPerUnit || 0),
+        writeOffTotalCost: Number(item.writeOffTotalCost || 0),
+        totalRepairCost: Number(item.totalRepairCost || 0),
         estimatedCostFromRFQ: Number(item.estimatedCostFromRFQ),
         finalCost: Number(item.finalCost),
         repairActions: JSON.parse(item.repairActions || '[]'),
-        repairActionEntries: normalizedEntries,
+        repairActionEntries: JSON.parse(item.repairActionEntries || '[]'),
         beforeImages: JSON.parse(item.beforeImages || '[]'),
         afterImages: JSON.parse(item.afterImages || '[]'),
       };

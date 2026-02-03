@@ -17,10 +17,108 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
     window.print();
   };
 
-  const handleDownload = () => {
-    // Note: Browser print dialog can save as PDF
-    toast.info('Use the Print dialog and select "Save as PDF" to download');
-    window.print();
+  const handleDownload = async () => {
+    try {
+      // Create a new window for printing
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        toast.error('Please allow popups for this website');
+        return;
+      }
+
+      // Get the print content
+      const printContent = document.querySelector('.print-area');
+      if (!printContent) {
+        toast.error('Print content not found');
+        return;
+      }
+
+      // Write the content to the new window
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Repair Slip - ${repairSlip.orpNumber}</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 20px; 
+              color: #231F20;
+            }
+            .header { 
+              border-bottom: 4px solid #F15929; 
+              padding-bottom: 20px; 
+              margin-bottom: 20px; 
+            }
+            .company-info { margin-bottom: 20px; }
+            .slip-info { 
+              display: flex; 
+              justify-content: space-between; 
+              margin-bottom: 30px; 
+            }
+            .info-grid { 
+              display: grid; 
+              grid-template-columns: 1fr 1fr; 
+              gap: 20px; 
+              margin-bottom: 20px; 
+            }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-bottom: 20px; 
+            }
+            th, td { 
+              border: 1px solid #ddd; 
+              padding: 8px; 
+              text-align: left; 
+            }
+            th { 
+              background-color: #f5f5f5; 
+              font-weight: bold; 
+            }
+            .signatures { 
+              display: grid; 
+              grid-template-columns: 1fr 1fr; 
+              gap: 40px; 
+              margin-top: 40px; 
+            }
+            .signature-box { 
+              border-top: 2px solid #231F20; 
+              padding-top: 10px; 
+            }
+            .footer { 
+              margin-top: 30px; 
+              padding-top: 20px; 
+              border-top: 1px solid #ccc; 
+              text-align: center; 
+              font-size: 12px; 
+              color: #666; 
+            }
+            @page { 
+              margin: 1cm; 
+              size: A4; 
+            }
+          </style>
+        </head>
+        <body>
+          ${printContent.innerHTML}
+        </body>
+        </html>
+      `);
+
+      printWindow.document.close();
+      
+      // Wait for content to load, then trigger print
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+
+      toast.success('Print dialog opened - use "Save as PDF" to download');
+    } catch (error) {
+      console.error('Download error:', error);
+      toast.error('Failed to open print dialog');
+    }
   };
 
   return (
@@ -45,7 +143,7 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
       </div>
 
       {/* Printable Repair Slip */}
-      <Card className="max-w-4xl mx-auto">
+      <Card className="max-w-4xl mx-auto print-area">
         <CardContent className="p-12" ref={printRef}>
           {/* Header */}
           <div className="border-b-4 border-[#F15929] pb-6 mb-6">
@@ -244,13 +342,18 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
           .print\\:hidden {
             display: none !important;
           }
-          #root, #root * {
+          .print-area, .print-area * {
             visibility: visible;
           }
-          ${printRef.current ? `#${printRef.current.id}` : ''} {
+          .print-area {
             position: absolute;
             left: 0;
             top: 0;
+            width: 100%;
+          }
+          @page {
+            margin: 1cm;
+            size: A4;
           }
         }
       `}</style>

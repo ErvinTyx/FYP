@@ -28,6 +28,11 @@ function generateInvoiceNumber(): string {
  */
 export async function POST(request: NextRequest) {
   try {
+    console.log('[Damage Invoice API] POST request received');
+    
+    const body = await request.json();
+    console.log('[Damage Invoice API] Request body:', body);
+    
     const {
       orpNumber,
       invoiceDate,
@@ -39,7 +44,7 @@ export async function POST(request: NextRequest) {
       paymentStatus,
       notes,
       createdFrom,
-    } = await request.json();
+    } = body;
 
     // Validate required fields
     if (!orpNumber) {
@@ -53,9 +58,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Create damage invoice with transaction
+    console.log('[Damage Invoice API] Starting database transaction');
     const result = await prisma.$transaction(async (tx) => {
+      console.log('[Damage Invoice API] Generating invoice number');
       const invoiceNumber = generateInvoiceNumber();
+      console.log('[Damage Invoice API] Invoice number:', invoiceNumber);
 
+      console.log('[Damage Invoice API] Creating damage invoice record');
       // Create Damage Invoice header
       const damageInvoice = await tx.damageInvoice.create({
         data: {
@@ -72,8 +81,11 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      console.log('[Damage Invoice API] Damage invoice created with ID:', damageInvoice.id);
+
       // Create invoice items if provided
       if (items && Array.isArray(items) && items.length > 0) {
+        console.log('[Damage Invoice API] Creating invoice items:', items.length);
         await tx.invoiceItem.createMany({
           data: items.map((item: any) => ({
             damageInvoiceId: damageInvoice.id,
@@ -83,8 +95,10 @@ export async function POST(request: NextRequest) {
             total: parseFloat((item.total || 0).toString()),
           })),
         });
+        console.log('[Damage Invoice API] Invoice items created');
       }
 
+      console.log('[Damage Invoice API] Fetching created invoice with items');
       // Fetch the created invoice with items
       return await tx.damageInvoice.findUnique({
         where: { id: damageInvoice.id },
@@ -118,9 +132,13 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    console.log('[Damage Invoice API] GET request received');
+    
     const searchParams = request.nextUrl.searchParams;
     const paymentStatus = searchParams.get('paymentStatus');
     const orpNumber = searchParams.get('orpNumber');
+
+    console.log('[Damage Invoice API] Search params:', { paymentStatus, orpNumber });
 
     // Build filter conditions
     const where: any = {};
@@ -133,6 +151,8 @@ export async function GET(request: NextRequest) {
       };
     }
 
+    console.log('[Damage Invoice API] Where clause:', where);
+
     // Get all damage invoices with filters
     const invoices = await prisma.damageInvoice.findMany({
       where,
@@ -143,6 +163,8 @@ export async function GET(request: NextRequest) {
         createdAt: 'desc',
       },
     });
+
+    console.log('[Damage Invoice API] Raw invoices from DB:', invoices);
 
     // Transform data to match frontend expectations
     const transformedInvoices = invoices.map((invoice: any) => ({
@@ -156,6 +178,8 @@ export async function GET(request: NextRequest) {
         total: Number(item.total),
       })),
     }));
+
+    console.log('[Damage Invoice API] Transformed invoices:', transformedInvoices);
 
     return NextResponse.json(
       {

@@ -75,6 +75,22 @@ model UserRole {
   @@index([roleId], map: "UserRole_roleId_fkey")
 }
 
+model ContentItem {
+  id        String   @id @default(cuid())
+  type      String   // about, faq, terms, delivery-zones, banners, safety, announcements, permits, site-access, blogs
+  title     String
+  content   String   @db.Text
+  status    String   @default("draft") // published, draft
+  imageUrl  String?  @db.Text // For storing uploaded image URLs
+  metadata  String?  @db.Text // JSON string for category-specific data (question/answer, zone/price, priority, etc.)
+  updatedBy String   @default("System")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+}
+
 // ============================================
 // RFQ & QUOTATION MODELS
 // ============================================

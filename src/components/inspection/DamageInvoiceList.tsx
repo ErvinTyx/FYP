@@ -15,10 +15,17 @@ export function DamageInvoiceList({ invoices, searchQuery }: DamageInvoiceListPr
   const [selectedInvoice, setSelectedInvoice] = useState<DamageInvoice | null>(null);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
 
+  // Debug: Log the invoices prop
+  console.log('DamageInvoiceList received invoices:', invoices);
+  console.log('DamageInvoiceList searchQuery:', searchQuery);
+
   const filteredInvoices = invoices.filter(invoice =>
     invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
     invoice.orpNumber.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Debug: Log filtered results
+  console.log('DamageInvoiceList filtered invoices:', filteredInvoices);
 
   const getPaymentStatusColor = (status: DamageInvoice['paymentStatus']) => {
     const colors = {

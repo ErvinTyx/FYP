@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   FileText,
   HelpCircle,
@@ -16,6 +16,8 @@ import {
   Eye,
   Save,
   X,
+  Upload,
+  Loader2,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -234,17 +236,87 @@ const mockContentItems: ContentItem[] = [
 
 export function ContentManagement() {
   const [selectedCategory, setSelectedCategory] = useState<ContentType>("about");
-  const [contentItems, setContentItems] = useState<ContentItem[]>(mockContentItems);
+  const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [currentItem, setCurrentItem] = useState<ContentItem | null>(null);
   const [isNewItem, setIsNewItem] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Form states
   const [formTitle, setFormTitle] = useState("");
   const [formContent, setFormContent] = useState("");
   const [formStatus, setFormStatus] = useState<"published" | "draft">("draft");
   const [formMetadata, setFormMetadata] = useState<any>({});
+  const [formImageUrl, setFormImageUrl] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch content from API on mount
+  useEffect(() => {
+    fetchContent();
+  }, []);
+
+  const fetchContent = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/content');
+      const result = await response.json();
+      if (result.success && result.data) {
+        setContentItems(result.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch content:', error);
+      toast.error('Failed to load content');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle image upload
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5MB');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('folder', 'content'); // Store content images in /uploads/content/
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      if (result.success && result.url) {
+        setFormImageUrl(result.url);
+        setFormMetadata({ ...formMetadata, imageUrl: result.url });
+        toast.success('Image uploaded successfully');
+      } else {
+        throw new Error(result.message || 'Upload failed');
+      }
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      toast.error('Failed to upload image');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const filteredItems = contentItems.filter((item) => item.type === selectedCategory);
 
@@ -255,6 +327,7 @@ export function ContentManagement() {
     setFormContent("");
     setFormStatus("draft");
     setFormMetadata({});
+    setFormImageUrl("");
     setIsEditorOpen(true);
   };
 
@@ -265,6 +338,7 @@ export function ContentManagement() {
     setFormContent(item.content);
     setFormStatus(item.status);
     setFormMetadata(item.metadata || {});
+    setFormImageUrl(item.metadata?.imageUrl || "");
     setIsEditorOpen(true);
   };
 
@@ -273,49 +347,86 @@ export function ContentManagement() {
     setIsViewerOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    setContentItems(contentItems.filter((item) => item.id !== id));
-    toast.success("Content deleted successfully");
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this content?")) return;
+    
+    try {
+      const response = await fetch(`/api/content/${id}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        setContentItems(contentItems.filter((item) => item.id !== id));
+        toast.success("Content deleted successfully");
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      console.error('Failed to delete content:', error);
+      toast.error("Failed to delete content");
+    }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formTitle || !formContent) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    if (isNewItem) {
-      const newItem: ContentItem = {
-        id: Date.now().toString(),
+    setIsSaving(true);
+    try {
+      const payload = {
         type: selectedCategory,
         title: formTitle,
         content: formContent,
         status: formStatus,
-        lastUpdated: new Date().toISOString().split("T")[0],
+        imageUrl: formImageUrl || formMetadata.imageUrl || null,
+        metadata: { ...formMetadata, imageUrl: formImageUrl || formMetadata.imageUrl },
         updatedBy: "Current User",
-        metadata: formMetadata,
       };
-      setContentItems([...contentItems, newItem]);
-      toast.success("Content created successfully");
-    } else if (currentItem) {
-      setContentItems(
-        contentItems.map((item) =>
-          item.id === currentItem.id
-            ? {
-                ...item,
-                title: formTitle,
-                content: formContent,
-                status: formStatus,
-                lastUpdated: new Date().toISOString().split("T")[0],
-                metadata: formMetadata,
-              }
-            : item
-        )
-      );
-      toast.success("Content updated successfully");
-    }
 
-    setIsEditorOpen(false);
+      if (isNewItem) {
+        const response = await fetch('/api/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          setContentItems([...contentItems, result.data]);
+          toast.success("Content created successfully");
+        } else {
+          throw new Error(result.message);
+        }
+      } else if (currentItem) {
+        const response = await fetch(`/api/content/${currentItem.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          setContentItems(
+            contentItems.map((item) =>
+              item.id === currentItem.id ? result.data : item
+            )
+          );
+          toast.success("Content updated successfully");
+        } else {
+          throw new Error(result.message);
+        }
+      }
+
+      setIsEditorOpen(false);
+    } catch (error) {
+      console.error('Failed to save content:', error);
+      toast.error("Failed to save content");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getCategoryInfo = () => {
@@ -383,17 +494,6 @@ export function ContentManagement() {
         return (
           <>
             <div className="space-y-2">
-              <Label htmlFor="imageUrl">Banner Image URL</Label>
-              <Input
-                id="imageUrl"
-                value={formMetadata.imageUrl || ""}
-                onChange={(e) =>
-                  setFormMetadata({ ...formMetadata, imageUrl: e.target.value })
-                }
-                placeholder="Enter image URL"
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="priority">Priority (1-10)</Label>
               <Input
                 id="priority"
@@ -415,6 +515,82 @@ export function ContentManagement() {
       default:
         return null;
     }
+  };
+
+  // Render image upload section (available for all content types)
+  const renderImageUpload = () => {
+    return (
+      <div className="space-y-2">
+        <Label>Content Image</Label>
+        <div className="flex flex-col gap-3">
+          {/* Image preview */}
+          {(formImageUrl || formMetadata.imageUrl) && (
+            <div className="relative w-full h-40 rounded-lg overflow-hidden border bg-gray-50">
+              <img
+                src={formImageUrl || formMetadata.imageUrl}
+                alt="Content image"
+                className="w-full h-full object-cover"
+              />
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="absolute top-2 right-2 h-6 w-6"
+                onClick={() => {
+                  setFormImageUrl("");
+                  setFormMetadata({ ...formMetadata, imageUrl: "" });
+                }}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+          
+          {/* Upload controls */}
+          <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="flex-1"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Image
+                </>
+              )}
+            </Button>
+          </div>
+          
+          {/* Manual URL input */}
+          <div className="flex gap-2">
+            <Input
+              value={formImageUrl || formMetadata.imageUrl || ""}
+              onChange={(e) => {
+                setFormImageUrl(e.target.value);
+                setFormMetadata({ ...formMetadata, imageUrl: e.target.value });
+              }}
+              placeholder="Or enter image URL manually"
+              className="flex-1"
+            />
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -634,6 +810,9 @@ export function ContentManagement() {
             {/* Category-specific metadata fields */}
             {renderMetadataFields()}
 
+            {/* Image Upload (available for all content types) */}
+            {renderImageUpload()}
+
             {/* Status */}
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
@@ -670,10 +849,20 @@ export function ContentManagement() {
             </Button>
             <Button
               onClick={handleSave}
+              disabled={isSaving || isUploading}
               className="bg-[#1E40AF] hover:bg-[#1E3A8A] text-white"
             >
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -684,8 +873,8 @@ export function ContentManagement() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{currentItem?.title}</DialogTitle>
-            <DialogDescription>
-              <div className="flex items-center gap-2 mt-2">
+            <DialogDescription asChild>
+              <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
                 <Badge
                   variant={
                     currentItem?.status === "published" ? "default" : "secondary"

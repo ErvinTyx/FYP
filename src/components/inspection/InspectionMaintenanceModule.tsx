@@ -107,12 +107,43 @@ export function InspectionMaintenanceModule() {
     fetchConditionReports();
     fetchRepairSlips();
 
-    // Load other data from localStorage
-    const savedInvoices = localStorage.getItem('damageInvoices');
-    const savedAdjustments = localStorage.getItem('inventoryAdjustments');
+    // Load damage invoices from API
+    const fetchDamageInvoices = async () => {
+      try {
+        const response = await fetch('/api/inspection/damage-invoices', { credentials: 'include' });
+        console.log('Damage invoices API response status:', response.status);
+        
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Damage invoices API response:', result);
+          
+          if (result.success && result.data) {
+            console.log('Setting damage invoices:', result.data);
+            setDamageInvoices(result.data);
+            localStorage.setItem('damageInvoices', JSON.stringify(result.data));
+          } else {
+            console.log('API response unsuccessful or no data:', result);
+          }
+        } else {
+          console.log('API response not ok:', response.status);
+        }
+      } catch (error) {
+        console.error('Error fetching damage invoices:', error);
+        // Fallback to localStorage
+        const savedInvoices = localStorage.getItem('damageInvoices');
+        if (savedInvoices) {
+          console.log('Using localStorage fallback:', JSON.parse(savedInvoices));
+          setDamageInvoices(JSON.parse(savedInvoices));
+        }
+      }
+    };
 
-    if (savedInvoices) setDamageInvoices(JSON.parse(savedInvoices));
+    // Load other data from localStorage
+    const savedAdjustments = localStorage.getItem('inventoryAdjustments');
     if (savedAdjustments) setAdjustments(JSON.parse(savedAdjustments));
+
+    // Fetch damage invoices
+    fetchDamageInvoices();
   }, []);
 
   const handleCreateReport = () => {
@@ -327,19 +358,19 @@ export function InspectionMaintenanceModule() {
           scaffoldingItemId: item.scaffoldingItemId,
           scaffoldingItemName: item.scaffoldingItemName,
           quantity: item.quantity,
-          quantityRepair: item.quantityRepair ?? 0,
-          quantityWriteOff: item.quantityWriteOff ?? 0,
+          quantityRepair: item.quantityRepair || 0,
+          quantityWriteOff: item.quantityWriteOff || 0,
           quantityRepaired: item.quantityRepaired,
           quantityRemaining: item.quantityRemaining,
           damageType: item.damageType,
           damageDescription: item.damageDescription,
           repairActions: item.repairActions,
-          repairActionEntries: item.repairActionEntries ?? [],
+          repairActionEntries: item.repairActionEntries || [],
           repairDescription: item.repairDescription,
           repairStatus: item.repairStatus,
-          writeOffCostPerUnit: item.writeOffCostPerUnit ?? 0,
-          writeOffTotalCost: item.writeOffTotalCost ?? 0,
-          totalRepairCost: item.totalRepairCost ?? 0,
+          writeOffCostPerUnit: item.writeOffCostPerUnit || 0,
+          writeOffTotalCost: item.writeOffTotalCost || 0,
+          totalRepairCost: item.totalRepairCost || 0,
           costPerUnit: item.costPerUnit,
           totalCost: item.totalCost,
           estimatedCostFromRFQ: item.estimatedCostFromRFQ,
@@ -455,19 +486,19 @@ export function InspectionMaintenanceModule() {
           scaffoldingItemId: item.scaffoldingItemId,
           scaffoldingItemName: item.scaffoldingItemName,
           quantity: item.quantity,
-          quantityRepair: item.quantityRepair ?? 0,
-          quantityWriteOff: item.quantityWriteOff ?? 0,
+          quantityRepair: item.quantityRepair || 0,
+          quantityWriteOff: item.quantityWriteOff || 0,
           quantityRepaired: item.quantityRepaired,
           quantityRemaining: item.quantityRemaining,
           damageType: item.damageType,
           damageDescription: item.damageDescription,
           repairActions: item.repairActions,
-          repairActionEntries: item.repairActionEntries ?? [],
+          repairActionEntries: item.repairActionEntries || [],
           repairDescription: item.repairDescription,
           repairStatus: item.repairStatus,
-          writeOffCostPerUnit: item.writeOffCostPerUnit ?? 0,
-          writeOffTotalCost: item.writeOffTotalCost ?? 0,
-          totalRepairCost: item.totalRepairCost ?? 0,
+          writeOffCostPerUnit: item.writeOffCostPerUnit || 0,
+          writeOffTotalCost: item.writeOffTotalCost || 0,
+          totalRepairCost: item.totalRepairCost || 0,
           costPerUnit: item.costPerUnit,
           totalCost: item.totalCost,
           estimatedCostFromRFQ: item.estimatedCostFromRFQ,
@@ -537,26 +568,71 @@ export function InspectionMaintenanceModule() {
       toast.error('Repair slip not found');
       return;
     }
-    if (slip.additionalCharge != null) {
-      toast.info('An additional charge already exists for this repair slip');
+
+    // Generate invoice from repair slip with detailed breakdown
+    const invoiceItems: { id: string; description: string; quantity: number; unitPrice: number; total: number }[] = [];
+    
+    slip.items.forEach(item => {
+      // Add repair action entries with detailed breakdown
+      if (item.repairActionEntries && item.repairActionEntries.length > 0) {
+        item.repairActionEntries.forEach(entry => {
+          if (entry.totalCost > 0) {
+            invoiceItems.push({
+              id: `inv-item-${Date.now()}-${Math.random()}`,
+              description: `${item.scaffoldingItemName} - ${entry.action} (${entry.affectedItems} items × ${entry.issueQuantity} issues)`,
+              quantity: entry.issueQuantity,
+              unitPrice: entry.costPerUnit,
+              total: entry.totalCost
+            });
+          }
+        });
+      }
+      
+      // Add write-off cost as separate line item
+      if (item.writeOffTotalCost > 0 && item.quantityWriteOff > 0) {
+        invoiceItems.push({
+          id: `inv-item-${Date.now()}-${Math.random()}`,
+          description: `${item.scaffoldingItemName} - Write-off (${item.quantityWriteOff} items @ RM ${Number(item.writeOffCostPerUnit || 0).toFixed(2)}/item)`,
+          quantity: item.quantityWriteOff,
+          unitPrice: item.writeOffCostPerUnit,
+          total: item.writeOffTotalCost
+        });
+      }
+      
+      // Fallback for legacy items without detailed entries
+      if ((!item.repairActionEntries || item.repairActionEntries.length === 0) && item.writeOffTotalCost <= 0 && item.totalCost > 0) {
+        invoiceItems.push({
+          id: `inv-item-${Date.now()}-${Math.random()}`,
+          description: `${item.scaffoldingItemName} - ${item.damageDescription || 'Damage repair'}`,
+          quantity: item.quantity,
+          unitPrice: item.quantity > 0 ? item.totalCost / item.quantity : item.totalCost,
+          total: item.totalCost
+        });
+      }
+    });
+
+    // Check if there are items with cost
+    if (invoiceItems.length === 0) {
+      toast.error('No items with repair costs found in this repair slip. Please ensure items have cost values.');
       return;
     }
 
     try {
-      const response = await fetch('/api/additional-charges', {
+      // First, create additional charge (original functionality)
+      const chargeResponse = await fetch('/api/additional-charges', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ openRepairSlipId: slip.id }),
       });
 
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.message || 'Failed to create additional charge');
+      if (!chargeResponse.ok) {
+        const chargeResult = await chargeResponse.json().catch(() => ({}));
+        throw new Error(chargeResult.message || 'Failed to create additional charge');
       }
 
-      const result = await response.json();
-      const newCharge = result.data;
+      const chargeResult = await chargeResponse.json();
+      const newCharge = chargeResult.data;
 
       // Refetch repair slips so additionalCharge is included and "Generate Invoice" is hidden
       const listRes = await fetch('/api/inspection/open-repair-slips', { credentials: 'include' });
@@ -572,11 +648,62 @@ export function InspectionMaintenanceModule() {
         }
       }
 
+      // Second, create damage invoice
+      const subtotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
+      const tax = subtotal * 0.06; // 6% tax
+      const total = subtotal + tax;
+
+      console.log('Creating damage invoice with data:', {
+        orpNumber: slip.orpNumber,
+        invoiceItems: invoiceItems,
+        subtotal,
+        tax,
+        total
+      });
+
+      const invoiceResponse = await fetch('/api/inspection/damage-invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          orpNumber: slip.orpNumber,
+          invoiceDate: new Date().toISOString().split('T')[0],
+          vendor: 'Power Metal & Steel - Repair Services',
+          items: invoiceItems,
+          subtotal,
+          tax,
+          total,
+          paymentStatus: 'pending',
+          notes: `Generated from repair slip ${slip.orpNumber}`,
+          createdFrom: 'repair-slip'
+        }),
+      });
+
+      console.log('Damage invoice creation response status:', invoiceResponse.status);
+
+      if (!invoiceResponse.ok) {
+        const invoiceResult = await invoiceResponse.json().catch(() => ({}));
+        console.error('Failed to create damage invoice:', invoiceResult);
+        // Don't throw error - additional charge was still created
+      } else {
+        const invoiceResult = await invoiceResponse.json();
+        console.log('Damage invoice creation response:', invoiceResult);
+        const newInvoice = invoiceResult.data;
+
+        // Add to local state
+        setDamageInvoices(prev => {
+          const updated = [newInvoice, ...prev];
+          console.log('Updated damage invoices state:', updated);
+          localStorage.setItem('damageInvoices', JSON.stringify(updated));
+          return updated;
+        });
+      }
+
       toast.success(`Additional charge ${newCharge.invoiceNo} created. Due in 7 days. View in Additional Charges.`);
       setActiveTab('invoices');
     } catch (error) {
-      console.error('Error creating additional charge:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create additional charge');
+      console.error('Error creating documents:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create documents');
     }
   };
 
@@ -603,7 +730,6 @@ export function InspectionMaintenanceModule() {
   if (viewMode === 'create-report') {
     return (
       <ConditionReportForm
-// ... (rest of the code remains the same)
         report={selectedReport}
         onSave={handleSaveReport}
         onCancel={handleCancelReport}
