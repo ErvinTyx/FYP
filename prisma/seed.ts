@@ -317,11 +317,344 @@ async function main() {
   });
   console.log(`  - Customer 4: ${customer4User.email} (Individual - NRIC, Pending)`);
 
+  // Customer 5 - Business with BRN (Active) - Construction Company
+  const customer5User = await prisma.user.upsert({
+    where: { email: "procurement@megaheng.com.my" },
+    update: {
+      password: customerPassword,
+      firstName: "Lee",
+      lastName: "Chee Keong",
+      phone: "+60167654321",
+      status: "active",
+    },
+    create: {
+      email: "procurement@megaheng.com.my",
+      firstName: "Lee",
+      lastName: "Chee Keong",
+      phone: "+60167654321",
+      password: customerPassword,
+      status: "active",
+    },
+  });
+  
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: customer5User.id,
+        roleId: customerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: customer5User.id,
+      roleId: customerRole.id,
+    },
+  });
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).customer.upsert({
+    where: { id: customer5User.id },
+    update: {
+      customerType: "business",
+      tin: "TIN-MY-MEGAH2024",
+      idType: "BRN",
+      idNumber: "201901045678",
+      identityDocumentUrl: "/uploads/customers/brn_megaheng.pdf",
+    },
+    create: {
+      id: customer5User.id,
+      customerType: "business",
+      tin: "TIN-MY-MEGAH2024",
+      idType: "BRN",
+      idNumber: "201901045678",
+      identityDocumentUrl: "/uploads/customers/brn_megaheng.pdf",
+    },
+  });
+  console.log(`  - Customer 5: ${customer5User.email} (Business - BRN)`);
+
+  // Customer 6 - Individual with Army ID (Active)
+  const customer6User = await prisma.user.upsert({
+    where: { email: "razak.hassan@email.com" },
+    update: {
+      password: customerPassword,
+      firstName: "Mohd Razak",
+      lastName: "Hassan",
+      phone: "+60134567890",
+      status: "active",
+    },
+    create: {
+      email: "razak.hassan@email.com",
+      firstName: "Mohd Razak",
+      lastName: "Hassan",
+      phone: "+60134567890",
+      password: customerPassword,
+      status: "active",
+    },
+  });
+  
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: customer6User.id,
+        roleId: customerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: customer6User.id,
+      roleId: customerRole.id,
+    },
+  });
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).customer.upsert({
+    where: { id: customer6User.id },
+    update: {
+      customerType: "individual",
+      tin: "TIN-MY-ARMY00123",
+      idType: "ARMY",
+      idNumber: "ARMY-780315-0843",
+      identityDocumentUrl: "/uploads/customers/army_razak.pdf",
+    },
+    create: {
+      id: customer6User.id,
+      customerType: "individual",
+      tin: "TIN-MY-ARMY00123",
+      idType: "ARMY",
+      idNumber: "ARMY-780315-0843",
+      identityDocumentUrl: "/uploads/customers/army_razak.pdf",
+    },
+  });
+  console.log(`  - Customer 6: ${customer6User.email} (Individual - Army ID)`);
+
+  // Customer 7 - Business with BRN (Active) - Property Developer
+  const customer7User = await prisma.user.upsert({
+    where: { email: "projects@sunriseholdings.com.my" },
+    update: {
+      password: customerPassword,
+      firstName: "Jennifer",
+      lastName: "Lim",
+      phone: "+60191234567",
+      status: "active",
+    },
+    create: {
+      email: "projects@sunriseholdings.com.my",
+      firstName: "Jennifer",
+      lastName: "Lim",
+      phone: "+60191234567",
+      password: customerPassword,
+      status: "active",
+    },
+  });
+  
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: customer7User.id,
+        roleId: customerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: customer7User.id,
+      roleId: customerRole.id,
+    },
+  });
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).customer.upsert({
+    where: { id: customer7User.id },
+    update: {
+      customerType: "business",
+      tin: "TIN-MY-SUNRISE88",
+      idType: "BRN",
+      idNumber: "202201098765",
+      identityDocumentUrl: "/uploads/customers/brn_sunriseholdings.pdf",
+    },
+    create: {
+      id: customer7User.id,
+      customerType: "business",
+      tin: "TIN-MY-SUNRISE88",
+      idType: "BRN",
+      idNumber: "202201098765",
+      identityDocumentUrl: "/uploads/customers/brn_sunriseholdings.pdf",
+    },
+  });
+  console.log(`  - Customer 7: ${customer7User.email} (Business - BRN)`);
+
+  // Customer 8 - Individual with Passport (Active) - Foreign Contractor
+  const customer8User = await prisma.user.upsert({
+    where: { email: "chen.wei@buildright.sg" },
+    update: {
+      password: customerPassword,
+      firstName: "Wei",
+      lastName: "Chen",
+      phone: "+6598765432",
+      status: "active",
+    },
+    create: {
+      email: "chen.wei@buildright.sg",
+      firstName: "Wei",
+      lastName: "Chen",
+      phone: "+6598765432",
+      password: customerPassword,
+      status: "active",
+    },
+  });
+  
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: customer8User.id,
+        roleId: customerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: customer8User.id,
+      roleId: customerRole.id,
+    },
+  });
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).customer.upsert({
+    where: { id: customer8User.id },
+    update: {
+      customerType: "individual",
+      tin: "TIN-SG-CHEN2024",
+      idType: "PASSPORT",
+      idNumber: "K9876543A",
+      identityDocumentUrl: "/uploads/customers/passport_chenwei.pdf",
+    },
+    create: {
+      id: customer8User.id,
+      customerType: "individual",
+      tin: "TIN-SG-CHEN2024",
+      idType: "PASSPORT",
+      idNumber: "K9876543A",
+      identityDocumentUrl: "/uploads/customers/passport_chenwei.pdf",
+    },
+  });
+  console.log(`  - Customer 8: ${customer8User.email} (Individual - Passport, Singapore)`);
+
+  // Customer 9 - Individual with NRIC (Inactive/Rejected)
+  const customer9User = await prisma.user.upsert({
+    where: { email: "kumar.raj@email.com" },
+    update: {
+      password: customerPassword,
+      firstName: "Raj",
+      lastName: "Kumar",
+      phone: "+60145678901",
+      status: "inactive",
+    },
+    create: {
+      email: "kumar.raj@email.com",
+      firstName: "Raj",
+      lastName: "Kumar",
+      phone: "+60145678901",
+      password: customerPassword,
+      status: "inactive",
+    },
+  });
+  
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: customer9User.id,
+        roleId: customerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: customer9User.id,
+      roleId: customerRole.id,
+    },
+  });
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).customer.upsert({
+    where: { id: customer9User.id },
+    update: {
+      customerType: "individual",
+      tin: "TIN-MY-RAJ12345",
+      idType: "NRIC",
+      idNumber: "880915-08-5432",
+      identityDocumentUrl: "/uploads/customers/nric_kumar.pdf",
+      rejectionReason: "Identity document expired. Please upload a valid NRIC.",
+    },
+    create: {
+      id: customer9User.id,
+      customerType: "individual",
+      tin: "TIN-MY-RAJ12345",
+      idType: "NRIC",
+      idNumber: "880915-08-5432",
+      identityDocumentUrl: "/uploads/customers/nric_kumar.pdf",
+      rejectionReason: "Identity document expired. Please upload a valid NRIC.",
+    },
+  });
+  console.log(`  - Customer 9: ${customer9User.email} (Individual - NRIC, Inactive/Rejected)`);
+
+  // Customer 10 - Business with BRN (Pending approval)
+  const customer10User = await prisma.user.upsert({
+    where: { email: "admin@urbanconstruction.com.my" },
+    update: {
+      password: customerPassword,
+      firstName: "David",
+      lastName: "Wong",
+      phone: "+60178889999",
+      status: "pending",
+    },
+    create: {
+      email: "admin@urbanconstruction.com.my",
+      firstName: "David",
+      lastName: "Wong",
+      phone: "+60178889999",
+      password: customerPassword,
+      status: "pending",
+    },
+  });
+  
+  await prisma.userRole.upsert({
+    where: {
+      userId_roleId: {
+        userId: customer10User.id,
+        roleId: customerRole.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: customer10User.id,
+      roleId: customerRole.id,
+    },
+  });
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (prisma as any).customer.upsert({
+    where: { id: customer10User.id },
+    update: {
+      customerType: "business",
+      tin: "TIN-MY-URBAN2025",
+      idType: "BRN",
+      idNumber: "202401012345",
+      identityDocumentUrl: "/uploads/customers/brn_urbanconstruction.pdf",
+    },
+    create: {
+      id: customer10User.id,
+      customerType: "business",
+      tin: "TIN-MY-URBAN2025",
+      idType: "BRN",
+      idNumber: "202401012345",
+      identityDocumentUrl: "/uploads/customers/brn_urbanconstruction.pdf",
+    },
+  });
+  console.log(`  - Customer 10: ${customer10User.email} (Business - BRN, Pending)`);
+
   console.log("Customer users created successfully!");
   console.log("  Summary:");
-  console.log("  - 2 Individual customers with NRIC (1 active, 1 pending)");
-  console.log("  - 1 Individual customer with Passport (active)");
-  console.log("  - 1 Business customer with BRN (active)");
+  console.log("  - 3 Individual customers with NRIC (1 active, 1 pending, 1 inactive/rejected)");
+  console.log("  - 2 Individual customers with Passport (active)");
+  console.log("  - 1 Individual customer with Army ID (active)");
+  console.log("  - 4 Business customers with BRN (3 active, 1 pending)");
 
   // Create sample rental agreements
   console.log("Creating sample rental agreements...");
