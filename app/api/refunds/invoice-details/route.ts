@@ -45,6 +45,12 @@ export async function GET(request: NextRequest) {
     });
     const toNum = (v: unknown) => (typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0));
     const totalCredited = creditNotes.reduce((sum, cn) => sum + toNum(cn.amount), 0);
+    const approvedRefunds = await prisma.refund.findMany({
+      where: { sourceId, status: 'Approved' },
+      select: { amount: true },
+    });
+    const totalRefunded = approvedRefunds.reduce((sum, refund) => sum + toNum(refund.amount), 0);
+    const amountToReturn = Math.max(0, totalCredited - totalRefunded);
     const relatedCreditNotes = creditNotes.map((cn) => ({
       id: cn.id,
       creditNoteNumber: cn.creditNoteNumber,
@@ -75,6 +81,7 @@ export async function GET(request: NextRequest) {
         },
         relatedCreditNotes,
         totalCredited,
+        amountToReturn,
       });
     }
 
@@ -111,6 +118,7 @@ export async function GET(request: NextRequest) {
         },
         relatedCreditNotes,
         totalCredited,
+        amountToReturn,
       });
     }
 
@@ -143,6 +151,7 @@ export async function GET(request: NextRequest) {
       },
       relatedCreditNotes,
       totalCredited,
+      amountToReturn,
     });
   } catch (error) {
     console.error('[Refunds invoice-details] GET error:', error);

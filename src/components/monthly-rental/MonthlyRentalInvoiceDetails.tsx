@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
+import { useCreditNotesForSource } from '../../hooks/useCreditNotesForSource';
 
 interface MonthlyRentalInvoiceDetailsProps {
   invoice: MonthlyRentalInvoice;
@@ -74,6 +75,21 @@ export function MonthlyRentalInvoiceDetails({
       return () => clearTimeout(t);
     }
   }, [showPrintModal, autoPrint]);
+
+  const {
+    creditNotes: appliedCreditNotes,
+    totalCredited,
+    amountToReturn,
+    loading: creditNotesLoading,
+    error: creditNotesError,
+    hasData: hasCreditNoteData,
+  } = useCreditNotesForSource('monthlyRental', invoice.id);
+
+  const shouldShowPaymentBreakdown =
+    ['Pending Payment', 'Pending Approval', 'Rejected', 'Overdue'].includes(invoice.status) &&
+    (creditNotesLoading || hasCreditNoteData);
+  const payableAmount = Math.max(0, invoice.totalAmount - totalCredited);
+  const showRefundSummary = invoice.status === 'Paid' && amountToReturn > 0;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -269,6 +285,108 @@ export function MonthlyRentalInvoiceDetails({
                   Total Amount Due: <span className="text-orange-900">RM {invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
                 </p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {shouldShowPaymentBreakdown && (
+        <Card className="border-[#BFDBFE] bg-[#EFF6FF]">
+          <CardHeader>
+            <CardTitle className="text-[18px]">Credit Note Adjustments</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {creditNotesLoading ? (
+              <p className="text-sm text-[#6B7280]">Loading credit note adjustments...</p>
+            ) : creditNotesError ? (
+              <p className="text-sm text-[#DC2626]">{creditNotesError}</p>
+            ) : (
+              <>
+                {appliedCreditNotes.length > 0 && (
+                  <div className="rounded-md border border-[#DBEAFE] bg-white">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-[#DBEAFE] hover:bg-[#DBEAFE]">
+                          <TableHead className="text-[#1E3A8A]">Credit Note</TableHead>
+                          <TableHead className="text-[#1E3A8A] text-right">Amount (RM)</TableHead>
+                          <TableHead className="text-[#1E3A8A]">Issued Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {appliedCreditNotes.map((note) => (
+                          <TableRow key={note.id} className="hover:bg-[#F8FAFC]">
+                            <TableCell className="text-[#1F2937]">{note.creditNoteNumber}</TableCell>
+                            <TableCell className="text-[#DC2626] text-right">
+                              -RM{note.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell className="text-[#4B5563]">{note.date}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#6B7280]">Original amount</span>
+                    <span className="text-[#111827]">
+                      RM{invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#6B7280]">Total credit notes applied</span>
+                    <span className="text-[#DC2626]">
+                      -RM{totalCredited.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-[#2563EB] bg-white px-4 py-3">
+                  <p className="text-sm text-[#1F2937] font-medium">Amount to collect</p>
+                  <p className="text-lg font-semibold text-[#1D4ED8]">
+                    RM{payableAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <p className="text-xs text-[#1D4ED8]">
+                  Share the reduced amount above with the customer when requesting payment.
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {showRefundSummary && (
+        <Card className="border-[#FCD34D] bg-[#FFFBEB]">
+          <CardHeader>
+            <CardTitle className="text-[18px]">Amount to Return</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-[#92400E]">
+              Credit notes were issued after this invoice was paid. The customer is entitled to the refund amount below.
+            </p>
+            <div className="flex items-center justify-between rounded-lg border border-[#F59E0B] bg-white px-4 py-3">
+              <span className="text-sm font-medium text-[#1F2937]">Refund due</span>
+              <span className="text-lg font-semibold text-[#B45309]">
+                RM{amountToReturn.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-[#92400E]">
+                Use the Refund Management module to issue the refund and attach the relevant credit notes.
+              </p>
+              <Button
+                variant="outline"
+                className="h-9 px-4 border-[#F59E0B] text-[#B45309]"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.open(`/refund-management?invoiceType=monthlyRental&sourceId=${invoice.id}`, '_blank');
+                  }
+                }}
+              >
+                Open Refund Management
+              </Button>
             </div>
           </CardContent>
         </Card>

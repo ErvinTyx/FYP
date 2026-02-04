@@ -150,14 +150,15 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
   };
 
   const totalCredited = invoiceDetails?.totalCredited ?? 0;
-  const maxAmount = totalCredited;
+  const amountToReturn = invoiceDetails?.amountToReturn ?? totalCredited;
+  const maxAmount = amountToReturn;
 
   const validate = (forSubmit: boolean): boolean => {
     const e: Record<string, string> = {};
     if (!sourceId || !invoiceDetails) e.invoice = "Please select an invoice";
     const amount = parseFloat(refundAmount);
     if (!refundAmount || isNaN(amount) || amount <= 0) e.refundAmount = "Enter a valid refund amount";
-    else if (amount > maxAmount) e.refundAmount = `Amount cannot exceed max refundable (RM${maxAmount.toFixed(2)})`;
+    else if (amount > maxAmount) e.refundAmount = `Amount cannot exceed remaining refundable (RM${maxAmount.toFixed(2)})`;
     if (forSubmit) {
       if (!refundMethod) e.refundMethod = "Select a refund method";
       if (!reason.trim()) e.reason = "Reason is required";
@@ -364,9 +365,16 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
                         ))}
                       </TableBody>
                     </Table>
-                    <div className="mt-2 flex justify-between text-sm font-medium">
-                      <span className="text-[#374151]">Total credited (max refundable)</span>
-                      <span className="text-[#059669]">RM{invoiceDetails.totalCredited.toLocaleString()}</span>
+                    <div className="mt-2 flex flex-col gap-1 text-sm">
+                      <div className="flex justify-between font-medium">
+                        <span className="text-[#374151]">Remaining refundable</span>
+                        <span className="text-[#059669]">RM{amountToReturn.toLocaleString()}</span>
+                      </div>
+                      {amountToReturn < totalCredited && (
+                        <p className="text-xs text-[#6B7280]">
+                          Total credited to date: RM{totalCredited.toLocaleString()}
+                        </p>
+                      )}
                     </div>
                   </>
                 )}
@@ -383,9 +391,9 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
               <DollarSign className="h-5 w-5 text-[#F15929]" />
               <CardTitle className="text-[18px]">Refund Details</CardTitle>
             </div>
-            {invoiceDetails.totalCredited <= 0 && (
+            {amountToReturn <= 0 && (
               <p className="text-sm text-[#DC2626] mt-2">
-                No approved credit notes for this invoice. You need approved credit notes before you can request a refund.
+                No refundable balance remains for this invoice. Ensure credit notes are approved before you can request a refund.
               </p>
             )}
           </CardHeader>
@@ -393,7 +401,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
             <div className="space-y-2">
               <Label htmlFor="refund-amount">
                 Refund Amount (RM){" "}
-                {invoiceDetails.totalCredited > 0 && (
+                {amountToReturn > 0 && (
                   <span className="text-[#6B7280] text-xs">(Max: RM{maxAmount.toLocaleString()})</span>
                 )}
               </Label>
@@ -404,13 +412,13 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
                   type="number"
                   step="0.01"
                   min="0"
-                  max={invoiceDetails.totalCredited > 0 ? maxAmount : undefined}
+                  max={amountToReturn > 0 ? maxAmount : undefined}
                   value={refundAmount}
                   onChange={(e) => {
                     setRefundAmount(e.target.value);
                     if (errors.refundAmount) setErrors((prev) => ({ ...prev, refundAmount: "" }));
                   }}
-                  disabled={invoiceDetails.totalCredited <= 0}
+                  disabled={amountToReturn <= 0}
                   className={`h-10 pl-12 ${errors.refundAmount ? "border-[#DC2626]" : ""}`}
                   placeholder="0.00"
                 />
@@ -419,7 +427,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
             </div>
             <div className="space-y-2">
               <Label>Refund Method</Label>
-              <Select value={refundMethod} onValueChange={setRefundMethod} disabled={invoiceDetails.totalCredited <= 0}>
+              <Select value={refundMethod} onValueChange={setRefundMethod} disabled={amountToReturn <= 0}>
                 <SelectTrigger className={`h-10 ${errors.refundMethod ? "border-[#DC2626]" : ""}`}>
                   <SelectValue placeholder="Select method..." />
                 </SelectTrigger>
@@ -444,7 +452,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
                   setReason(e.target.value);
                   if (errors.reason) setErrors((prev) => ({ ...prev, reason: "" }));
                 }}
-                disabled={invoiceDetails.totalCredited <= 0}
+                disabled={amountToReturn <= 0}
                 className={`min-h-[80px] ${errors.reason ? "border-[#DC2626]" : ""}`}
                 placeholder="Provide a detailed reason for this refund (required when submitting for approval)"
               />
@@ -455,7 +463,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
               <Textarea
                 value={reasonDescription}
                 onChange={(e) => setReasonDescription(e.target.value)}
-                disabled={invoiceDetails.totalCredited <= 0}
+                disabled={amountToReturn <= 0}
                 className="min-h-[60px]"
                 placeholder="Optional..."
               />
@@ -478,7 +486,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => document.getElementById("refund-docs")?.click()}
-                    disabled={invoiceDetails.totalCredited <= 0}
+                disabled={amountToReturn <= 0}
                   >
                     <Upload className="h-4 w-4 mr-2" />
                     Select Files
@@ -500,7 +508,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
         </Card>
       )}
 
-      {invoiceDetails && invoiceDetails.totalCredited > 0 && (
+      {invoiceDetails && amountToReturn > 0 && (
         <Card className="border-[#E5E7EB]">
           <CardContent className="pt-6 flex gap-3">
             <Button variant="outline" className="flex-1 h-10" onClick={handleSaveDraft} disabled={saving}>

@@ -170,9 +170,25 @@ export async function POST(request: NextRequest) {
     const validType = ['deposit', 'monthlyRental', 'additionalCharge'].includes(invoiceType) ? invoiceType : 'deposit';
 
     const totalCredited = await getTotalCredited(sourceId);
-    if (numAmount > totalCredited) {
+    const approvedRefunds = await prisma.refund.findMany({
+      where: { sourceId, status: 'Approved' },
+      select: { amount: true },
+    });
+    const totalRefunded = approvedRefunds.reduce(
+      (sum, refund) =>
+        sum +
+        (typeof refund.amount === 'number'
+          ? refund.amount
+          : (refund.amount as { toNumber?: () => number }).toNumber?.() ?? 0),
+      0
+    );
+    const maxRefundable = Math.max(0, totalCredited - totalRefunded);
+    if (numAmount > maxRefundable) {
       return NextResponse.json(
-        { success: false, message: `Refund amount cannot exceed total credited amount (RM${totalCredited.toFixed(2)})` },
+        {
+          success: false,
+          message: `Refund amount cannot exceed remaining refundable balance (RM${maxRefundable.toFixed(2)})`,
+        },
         { status: 400 }
       );
     }

@@ -70,4 +70,5 @@ export interface RefundInvoiceDetailsResponse {
   };
   relatedCreditNotes: RelatedCreditNote[];
   totalCredited: number;
+  amountToReturn: number;
 }
