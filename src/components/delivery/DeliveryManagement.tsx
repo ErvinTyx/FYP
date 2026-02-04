@@ -172,13 +172,13 @@ export function DeliveryManagement() {
                 customerAddress: req.deliveryAddress,
                 siteAddress: req.deliveryAddress,
                 type: req.deliveryType as 'delivery' | 'pickup',
-                items: set.items.map((item: { id: string; name: string; quantity: number }) => ({
+                items: set.items.map((item: { id: string; name: string; quantity: number; scaffoldingItemId?: string; availableStock?: number }) => ({
                   id: item.id,
-                  scaffoldingItemId: item.id,
+                  scaffoldingItemId: item.scaffoldingItemId || item.id,
                   scaffoldingItemName: item.name,
                   quantity: item.quantity,
                   unit: 'pcs',
-                  availableStock: item.quantity,
+                  availableStock: item.availableStock ?? 0,
                 })),
                 status: (set.status || 'Pending') as DeliveryOrder['status'],
                 packingListNumber: set.packingListNumber,
@@ -260,6 +260,16 @@ export function DeliveryManagement() {
   }, [deliveries, searchQuery, statusFilter]);
 
   // Save delivery order to database via API
+  // Custom error class to pass insufficient stock details
+  class InsufficientStockError extends Error {
+    insufficientItems: { name: string; required: number; available: number }[];
+    constructor(message: string, items: { name: string; required: number; available: number }[]) {
+      super(message);
+      this.name = 'InsufficientStockError';
+      this.insufficientItems = items;
+    }
+  }
+
   const saveDeliveryToApi = async (delivery: DeliveryOrder): Promise<boolean> => {
     try {
       // Extract setId from the composite id (requestId-setId)
@@ -310,8 +320,18 @@ export function DeliveryManagement() {
       });
       
       const data = await response.json();
+      
+      // Handle insufficient stock validation error
+      if (!response.ok && data.insufficientItems) {
+        throw new InsufficientStockError(data.message, data.insufficientItems);
+      }
+      
       return data.success;
     } catch (error) {
+      // Re-throw InsufficientStockError to be handled by caller
+      if (error instanceof InsufficientStockError) {
+        throw error;
+      }
       console.error('Error saving delivery to API:', error);
       return false;
     }
@@ -346,7 +366,7 @@ export function DeliveryManagement() {
   const handleSaveDelivery = async (delivery: DeliveryOrder) => {
     const isNew = !deliveries.find(d => d.id === delivery.id);
     
-    // Save to API
+    // Save to API - may throw InsufficientStockError
     const success = await saveDeliveryToApi(delivery);
     
     if (success) {

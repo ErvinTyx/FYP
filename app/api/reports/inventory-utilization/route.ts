@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       const idleData = idleDaysMap.get(item.id);
       const avgIdleDays = idleData && idleData.count > 0
         ? Math.round(idleData.totalDays / idleData.count)
-        : Math.round(Math.random() * 20 + 10); // Default estimate
+        : 0; // No return history - show 0 idle days
 
       return {
         itemId: item.id,
