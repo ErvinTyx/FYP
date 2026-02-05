@@ -588,10 +588,17 @@ export function RentalAgreement() {
 
   // Calculate total rental from monthly rental and term of hire
   const calculateTotalRental = (monthlyRental: number, termOfHire: string): number => {
-    // Extract months from term string (e.g., "6 months (Starting: 01 Dec 2024)")
+    // Extract days from term string (e.g., "180 days (15 Jan 2026 - 14 Jul 2026)")
+    const daysMatch = termOfHire.match(/(\d+)\s*days?/i);
+    if (daysMatch) {
+      const days = parseInt(daysMatch[1], 10);
+      const monthsEquivalent = days / 30;
+      return Math.round(monthlyRental * monthsEquivalent * 100) / 100;
+    }
+    // Fallback: extract months (legacy format)
     const monthsMatch = termOfHire.match(/(\d+)\s*months?/i);
     if (monthsMatch) {
-      const months = parseInt(monthsMatch[1]);
+      const months = parseInt(monthsMatch[1], 10);
       return monthlyRental * months;
     }
     return monthlyRental; // Default to monthly if can't parse
@@ -803,8 +810,20 @@ export function RentalAgreement() {
                           hirerPhone: rfq.customerPhone ?? '',
                           location: rfq.projectLocation ?? '',
                           rfqId: rfq.id,
-                          monthlyRental: rfq.totalAmount != null ? rfq.totalAmount * 30 : prev.monthlyRental,
                         }));
+                        // Fetch and autofill term of hire and monthly rental from RFQ items
+                        fetch(`/api/rfq/${rfq.id}/term-of-hire`)
+                          .then((res) => res.json())
+                          .then((data) => {
+                            if (data?.success) {
+                              setFormData((prev) => ({
+                                ...prev,
+                                ...(data.termOfHire != null && { termOfHire: data.termOfHire }),
+                                ...(data.monthlyRental != null && { monthlyRental: data.monthlyRental }),
+                              }));
+                            }
+                          })
+                          .catch(() => { /* ignore */ });
                       }
                     }}
                     disabled={rfqProjectLoading}
@@ -893,7 +912,7 @@ export function RentalAgreement() {
                   <div className="space-y-2">
                     <Label>Term of Hire</Label>
                     <Input
-                      placeholder="e.g., 6 months (Starting: 01 Jan 2025)"
+                      placeholder="e.g., 180 days (15 Jan 2026 - 14 Jul 2026)"
                       value={formData.termOfHire || ''}
                       onChange={(e) => setFormData({...formData, termOfHire: e.target.value})}
                     />

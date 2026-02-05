@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { computeTermOfHireFromRfqItems } from '@/lib/term-of-hire';
 
 // Roles allowed to manage rental agreements
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
@@ -357,6 +358,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Autofill termOfHire from RFQ items when rfqId is provided and client did not send termOfHire (treat whitespace as empty)
+    const termTrimmed = typeof termOfHire === 'string' ? termOfHire.trim() : '';
+    let resolvedTermOfHire: string | null = termTrimmed !== '' ? termTrimmed : null;
+    if (rfqId && !resolvedTermOfHire) {
+      const computed = await computeTermOfHireFromRfqItems(prisma, rfqId);
+      if (computed) resolvedTermOfHire = computed;
+    }
+
     // Auto-generate unique Rental Agreement Number (RA-YYYY-NNN)
     const year = new Date().getFullYear();
     const prefixRa = `RA-${year}-`;
@@ -399,7 +408,7 @@ export async function POST(request: NextRequest) {
         hirer,
         hirerPhone: hirerPhone || null,
         location: location || null,
-        termOfHire: termOfHire || null,
+        termOfHire: resolvedTermOfHire,
         transportation: transportation || null,
         monthlyRental: monthlyRental || 0,
         securityDeposit: securityDeposit || 0,
@@ -428,7 +437,7 @@ export async function POST(request: NextRequest) {
               hirer,
               hirerPhone: hirerPhone || null,
               location: location || null,
-              termOfHire: termOfHire || null,
+              termOfHire: resolvedTermOfHire,
               transportation: transportation || null,
               monthlyRental: monthlyRental || 0,
               securityDeposit: securityDeposit || 0,
@@ -544,6 +553,15 @@ export async function PUT(request: NextRequest) {
       }
     }
     // Omit rfqId from update when client is stale (client may reject rfqId; run npx prisma generate to get full schema)
+
+    // Autofill termOfHire from RFQ items when current value is empty and agreement has rfqId (treat whitespace as empty)
+    const incomingTerm = dataForUpdate.termOfHire;
+    const termEmpty = incomingTerm == null || (typeof incomingTerm === 'string' && incomingTerm.trim() === '');
+    const existingWithRfq = existingAgreement as { rfqId?: string | null };
+    if (termEmpty && existingWithRfq.rfqId) {
+      const computed = await computeTermOfHireFromRfqItems(prisma, existingWithRfq.rfqId);
+      if (computed) dataForUpdate.termOfHire = computed;
+    }
 
     // Check if we need deposit count (for auto-create deposit logic)
     let existingDepositCount = 0;

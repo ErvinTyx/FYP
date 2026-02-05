@@ -1955,6 +1955,11 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-002',
@@ -1966,6 +1971,11 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-003',
@@ -1977,6 +1987,11 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-004',
@@ -1988,6 +2003,14 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Wedge key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+          { description: 'Fastener bolt missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+        ],
+      },
     },
     {
       itemCode: 'SC-005',
@@ -1999,6 +2022,14 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+          { description: 'Diagonal brace fastener missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     // CLUSTER (3.5M) items
     {
@@ -2011,6 +2042,11 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-007',
@@ -2022,6 +2058,14 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Wedge key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+          { description: 'Fastener bolt missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+        ],
+      },
     },
     {
       itemCode: 'SC-008',
@@ -2033,6 +2077,14 @@ async function main() {
       status: 'Available',
       location: 'Warehouse B',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Wedge key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+          { description: 'Fastener bolt missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+        ],
+      },
     },
     {
       itemCode: 'SC-009',
@@ -2044,6 +2096,14 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+          { description: 'Diagonal brace fastener missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-010',
@@ -2055,6 +2115,14 @@ async function main() {
       status: 'Low Stock',
       location: 'Warehouse B',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+          { description: 'Diagonal brace fastener missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     // BUNGALOW (5.5M) items
     {
@@ -2067,6 +2135,11 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-012',
@@ -2078,6 +2151,14 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Wedge key missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Bar missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable bend on horizontal and diagonal members', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-013',
@@ -2089,6 +2170,14 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Wedge key missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Bar missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable bend on horizontal and diagonal members', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-014',
@@ -2100,6 +2189,11 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Thread pipe bend / dented / missing / lost', repairChargePerUnit: 0, partsLabourCostPerUnit: 21.00 },
+        ],
+      },
     },
     {
       itemCode: 'SC-015',
@@ -2111,6 +2205,11 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Thread pipe bend / dented / missing / lost', repairChargePerUnit: 0, partsLabourCostPerUnit: 21.00 },
+        ],
+      },
     },
     // BUNGALOW (3.95M) items
     {
@@ -2123,6 +2222,11 @@ async function main() {
       status: 'Available',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-017',
@@ -2134,6 +2238,14 @@ async function main() {
       status: 'Low Stock',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+          { description: 'Diagonal brace fastener missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-018',
@@ -2145,6 +2257,14 @@ async function main() {
       status: 'Out of Stock',
       location: 'Warehouse B',
       itemStatus: 'Unavailable',
+      damageRepairs: {
+        create: [
+          { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+          { description: 'Diagonal brace fastener missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
     {
       itemCode: 'SC-019',
@@ -2156,6 +2276,14 @@ async function main() {
       status: 'Low Stock',
       location: 'Warehouse A',
       itemStatus: 'Available',
+      damageRepairs: {
+        create: [
+          { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75 },
+          { description: 'Diagonal brace fastener missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50 },
+          { description: 'Repairable pipe bend', repairChargePerUnit: 5.25, partsLabourCostPerUnit: 0 },
+          { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0 },
+        ],
+      },
     },
   ];
 

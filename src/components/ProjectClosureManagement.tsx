@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   FileX,
   Filter,
@@ -15,6 +15,7 @@ import {
   Building2,
   FileText,
 } from "lucide-react";
+import { format } from "date-fns";
 import { Checkbox } from "./ui/checkbox";
 import {
   Tooltip,
@@ -71,16 +72,22 @@ interface ValidationCheck {
 }
 
 interface ClosureRequest {
-  id: string;
+  id: string; // row key (agreementId)
+  agreementId: string;
+  closureRequestId?: string;
+  closureRequestNumber?: string;
   projectId: string;
   projectName: string;
   customerName: string;
   companyName: string;
   requestDate: string;
+  termOfHire?: string;
   rentalStartDate: string;
-  minimumRentalPeriod: number; // in months
-  actualRentalPeriod: number; // in months
+  minimumRentalPeriodDays: number; // fixed 30
+  actualRentalPeriodDays: number | null; // parsed from termOfHire for validation
   returnStatus: "completed" | "pending" | "in-progress";
+  returnRequestStatus?: string | null; // ReturnRequest.status (Requested, Quoted, Completed, etc.)
+  additionalChargeStatus?: string | null; // AdditionalCharge.status for shortage/payment badge
   shortageItems: number;
   status: ClosureStatus;
   approvedBy?: string;
@@ -88,114 +95,114 @@ interface ClosureRequest {
   validationChecks: ValidationCheck;
 }
 
-// Mock data
-const mockClosureRequests: ClosureRequest[] = [
-  {
-    id: "CR-001",
-    projectId: "PRJ-2024-001",
-    projectName: "Tower Construction Site A",
-    customerName: "John Tan",
-    companyName: "ABC Construction Sdn Bhd",
-    requestDate: "",
-    rentalStartDate: "2024-06-01",
-    minimumRentalPeriod: 6,
-    actualRentalPeriod: 6,
-    returnStatus: "completed",
+/** Parse number of days from termOfHire string (e.g. "180 days (...)" or "6 months (...)"). */
+function parseDaysFromTermOfHire(termOfHire: string | null | undefined): number | null {
+  if (!termOfHire?.trim()) return null;
+  const daysMatch = termOfHire.match(/(\d+)\s*days?/i);
+  if (daysMatch) return parseInt(daysMatch[1], 10);
+  const monthsMatch = termOfHire.match(/(\d+)\s*months?/i);
+  if (monthsMatch) return parseInt(monthsMatch[1], 10) * 30;
+  return null;
+}
+
+// Row from GET /api/project-closure-requests
+interface ProjectClosureRow {
+  agreement: {
+    id: string;
+    agreementNumber: string;
+    projectName: string;
+    hirer: string;
+    hirerSignatoryName?: string | null;
+    termOfHire?: string | null;
+    rentalStartDate?: string | null;
+    additionalChargeStatus?: string | null;
+  };
+  closureRequest: {
+    id: string;
+    closureRequestNumber: string;
+    agreementId: string;
+    requestDate: string;
+    status: string;
+    approvedBy?: string | null;
+    approvedAt?: string | null;
+  } | null;
+  returnRequestStatus: string | null; // from ReturnRequest.status (e.g. Requested, Quoted, Completed)
+  additionalChargeStatus?: string | null; // from AdditionalCharge.status (pending_payment, pending_approval, approved)
+}
+
+const MINIMUM_RENTAL_PERIOD_DAYS = 30;
+
+function rowToClosureRequest(row: ProjectClosureRow): ClosureRequest {
+  const { agreement, closureRequest, returnRequestStatus } = row;
+  const requestDate = closureRequest
+    ? format(new Date(closureRequest.requestDate), "yyyy-MM-dd")
+    : "";
+  const status = (closureRequest?.status ?? "active") as ClosureStatus;
+  const returnProcessComplete = returnRequestStatus === "Completed";
+  const actualRentalPeriodDays = parseDaysFromTermOfHire(agreement.termOfHire);
+  const rentalPeriodMet = actualRentalPeriodDays !== null && actualRentalPeriodDays >= MINIMUM_RENTAL_PERIOD_DAYS;
+  return {
+    id: agreement.id,
+    agreementId: agreement.id,
+    closureRequestId: closureRequest?.id,
+    closureRequestNumber: closureRequest?.closureRequestNumber,
+    projectId: agreement.agreementNumber,
+    projectName: agreement.projectName,
+    customerName: agreement.hirerSignatoryName ?? agreement.hirer,
+    companyName: agreement.hirer,
+    requestDate,
+    termOfHire: agreement.termOfHire ?? undefined,
+    rentalStartDate: agreement.rentalStartDate ?? "",
+    minimumRentalPeriodDays: MINIMUM_RENTAL_PERIOD_DAYS,
+    actualRentalPeriodDays,
+    returnStatus: returnProcessComplete ? "completed" : "pending",
+    returnRequestStatus: returnRequestStatus ?? undefined,
+    additionalChargeStatus: agreement.additionalChargeStatus ?? undefined,
     shortageItems: 0,
-    status: "active",
+    status,
+    approvedBy: closureRequest?.approvedBy ?? undefined,
+    approvedDate: closureRequest?.approvedAt
+      ? format(new Date(closureRequest.approvedAt), "yyyy-MM-dd")
+      : undefined,
     validationChecks: {
-      rentalPeriodMet: true,
-      returnProcessComplete: true,
+      rentalPeriodMet,
+      returnProcessComplete,
       noShortageDetected: true,
     },
-  },
-  {
-    id: "CR-002",
-    projectId: "PRJ-2024-002",
-    projectName: "High-Rise Building Development",
-    customerName: "Sarah Lim",
-    companyName: "XYZ Builders Sdn Bhd",
-    requestDate: "2024-11-28",
-    rentalStartDate: "2024-08-15",
-    minimumRentalPeriod: 6,
-    actualRentalPeriod: 3.5,
-    returnStatus: "pending",
-    shortageItems: 5,
-    status: "pending",
-    validationChecks: {
-      rentalPeriodMet: false,
-      returnProcessComplete: false,
-      noShortageDetected: false,
-    },
-  },
-  {
-    id: "CR-003",
-    projectId: "PRJ-2024-003",
-    projectName: "Residential Complex Phase 2",
-    customerName: "Michael Wong",
-    companyName: "Prime Development Ltd",
-    requestDate: "2024-11-25",
-    rentalStartDate: "2024-01-10",
-    minimumRentalPeriod: 6,
-    actualRentalPeriod: 10.7,
-    returnStatus: "completed",
-    shortageItems: 0,
-    status: "approved",
-    approvedBy: "Admin User",
-    approvedDate: "2024-11-26",
-    validationChecks: {
-      rentalPeriodMet: true,
-      returnProcessComplete: true,
-      noShortageDetected: true,
-    },
-  },
-  {
-    id: "CR-004",
-    projectId: "PRJ-2024-004",
-    projectName: "Commercial Plaza",
-    customerName: "David Lee",
-    companyName: "Mega Build Sdn Bhd",
-    requestDate: "",
-    rentalStartDate: "2024-05-20",
-    minimumRentalPeriod: 6,
-    actualRentalPeriod: 6.3,
-    returnStatus: "completed",
-    shortageItems: 2,
-    status: "active",
-    validationChecks: {
-      rentalPeriodMet: true,
-      returnProcessComplete: true,
-      noShortageDetected: false,
-    },
-  },
-  {
-    id: "CR-005",
-    projectId: "PRJ-2024-005",
-    projectName: "Bridge Maintenance Project",
-    customerName: "Emily Ng",
-    companyName: "Infrastructure Solutions Sdn Bhd",
-    requestDate: "",
-    rentalStartDate: "2024-07-01",
-    minimumRentalPeriod: 6,
-    actualRentalPeriod: 5,
-    returnStatus: "in-progress",
-    shortageItems: 0,
-    status: "active",
-    validationChecks: {
-      rentalPeriodMet: false,
-      returnProcessComplete: false,
-      noShortageDetected: true,
-    },
-  },
-];
+  };
+}
 
 export function ProjectClosureManagement() {
-  const [requests, setRequests] = useState<ClosureRequest[]>(mockClosureRequests);
+  const [requests, setRequests] = useState<ClosureRequest[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedRequest, setSelectedRequest] = useState<ClosureRequest | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+
+  const fetchClosureList = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/project-closure-requests");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        setRequests((data.data as ProjectClosureRow[]).map(rowToClosureRequest));
+      } else {
+        setRequests([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch project closure list:", err);
+      toast.error("Failed to load project closure list");
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchClosureList();
+  }, [fetchClosureList]);
 
   // Filter requests
   const filteredRequests = requests.filter((request) => {
@@ -215,23 +222,26 @@ export function ProjectClosureManagement() {
     setShowDetailsDialog(true);
   };
 
-  const handleRequestDateCheck = (requestId: string, checked: boolean) => {
-    if (checked) {
-      const currentDate = new Date().toISOString().split('T')[0]; // Get only date part
-      setRequests(
-        requests.map((req) =>
-          req.id === requestId && req.status === "active"
-            ? {
-                ...req,
-                requestDate: currentDate,
-                status: "pending" as ClosureStatus,
-              }
-            : req
-        )
-      );
-      toast.success("Request date recorded", {
-        description: "Status changed to Pending Review",
+  const handleRequestDateCheck = async (agreementId: string, checked: boolean) => {
+    if (!checked) return;
+    try {
+      const res = await fetch("/api/project-closure-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agreementId }),
       });
+      const data = await res.json();
+      if (data.success) {
+        await fetchClosureList();
+        toast.success("Request date recorded", {
+          description: `Closure request ${data.data?.closureRequestNumber ?? ""} created. Status: Pending Review`,
+        });
+      } else {
+        toast.error(data.message || "Failed to create closure request");
+      }
+    } catch (err) {
+      console.error("Failed to create closure request:", err);
+      toast.error("Failed to create closure request");
     }
   };
 
@@ -241,30 +251,32 @@ export function ProjectClosureManagement() {
     }
   };
 
-  const handleApproveConfirm = () => {
-    if (selectedRequest) {
-      const approvalDate = new Date().toISOString().split('T')[0];
-      
-      setRequests(
-        requests.map((req) =>
-          req.id === selectedRequest.id
-            ? {
-                ...req,
-                status: "approved" as ClosureStatus,
-                approvedBy: "Admin User",
-                approvedDate: approvalDate,
-              }
-            : req
-        )
-      );
-
-      toast.success("Project Closure Approved", {
-        description: `Project ${selectedRequest.projectId} closure has been approved successfully.`,
+  const handleApproveConfirm = async () => {
+    if (!selectedRequest?.closureRequestId) {
+      toast.error("No closure request to approve");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/project-closure-requests/${selectedRequest.closureRequestId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "approved" }),
       });
-
-      setShowApprovalDialog(false);
-      setShowDetailsDialog(false);
-      setSelectedRequest(null);
+      const data = await res.json();
+      if (data.success) {
+        await fetchClosureList();
+        toast.success("Project Closure Approved", {
+          description: `Request ${selectedRequest.closureRequestNumber ?? selectedRequest.projectId} has been approved successfully.`,
+        });
+        setShowApprovalDialog(false);
+        setShowDetailsDialog(false);
+        setSelectedRequest(null);
+      } else {
+        toast.error(data.message || "Failed to approve closure");
+      }
+    } catch (err) {
+      console.error("Failed to approve closure:", err);
+      toast.error("Failed to approve closure");
     }
   };
 
@@ -294,10 +306,11 @@ export function ProjectClosureManagement() {
 
   const canApprove = (request: ClosureRequest) => {
     return (
+      !!request.closureRequestId &&
       request.status === "pending" &&
       request.validationChecks.rentalPeriodMet &&
       request.validationChecks.returnProcessComplete &&
-      request.validationChecks.noShortageDetected
+      request.additionalChargeStatus === "approved"
     );
   };
 
@@ -359,10 +372,16 @@ export function ProjectClosureManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRequests.length === 0 ? (
+              {loading ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-8 text-[#6B7280]">
-                    No closure requests found
+                    Loading...
+                  </TableCell>
+                </TableRow>
+              ) : filteredRequests.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-[#6B7280]">
+                    No closure requests found. Signed agreements will appear here.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -378,7 +397,7 @@ export function ProjectClosureManagement() {
                       <div className="space-y-1">
                         <div className="text-[#231F20]">{request.projectName}</div>
                         <div className="text-[12px] text-[#6B7280]">
-                          Rental: {request.actualRentalPeriod} / {request.minimumRentalPeriod} months
+                          {request.termOfHire ?? (request.actualRentalPeriodDays != null ? `Rental: ${request.actualRentalPeriodDays} days` : "—")}
                         </div>
                       </div>
                     </TableCell>
@@ -386,8 +405,8 @@ export function ProjectClosureManagement() {
                       <div className="flex items-center gap-2">
                         <Checkbox
                           checked={request.requestDate !== ""}
-                          onCheckedChange={(checked) => handleRequestDateCheck(request.id, checked as boolean)}
-                          disabled={request.status !== "active"}
+                          onCheckedChange={(checked) => handleRequestDateCheck(request.agreementId, checked as boolean)}
+                          disabled={!!request.closureRequestId}
                         />
                         {request.requestDate && (
                           <span className="text-[14px] text-[#6B7280]">
@@ -425,10 +444,14 @@ export function ProjectClosureManagement() {
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger>
-                              {request.validationChecks.noShortageDetected ? (
+                              {request.additionalChargeStatus === "approved" ? (
                                 <CheckCircle2 className="h-5 w-5 text-[#10B981]" />
-                              ) : (
+                              ) : request.additionalChargeStatus === "pending_approval" ? (
                                 <AlertCircle className="h-5 w-5 text-[#F59E0B]" />
+                              ) : request.additionalChargeStatus === "pending_payment" ? (
+                                <XCircle className="h-5 w-5 text-[#EF4444]" />
+                              ) : (
+                                <AlertCircle className="h-5 w-5 text-[#9CA3AF]" />
                               )}
                             </TooltipTrigger>
                             <TooltipContent>
@@ -475,7 +498,7 @@ export function ProjectClosureManagement() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-[12px] text-[#6B7280]">Request ID</p>
-                    <p className="text-[#231F20]">{selectedRequest.id}</p>
+                    <p className="text-[#231F20]">{selectedRequest.closureRequestNumber ?? "—"}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[12px] text-[#6B7280]">Request Date</p>
@@ -563,13 +586,16 @@ export function ProjectClosureManagement() {
                         <p className="text-[#231F20]">Minimum Rental Period</p>
                       </div>
                       <p className="text-[14px] text-[#6B7280]">
-                        Rental Start Date: {new Date(selectedRequest.rentalStartDate).toLocaleDateString("en-MY")}
+                        Rental Start Date:{" "}
+                        {selectedRequest.rentalStartDate
+                          ? new Date(selectedRequest.rentalStartDate).toLocaleDateString("en-MY")
+                          : "—"}
                       </p>
                       <p className="text-[14px] text-[#6B7280]">
-                        Actual Rental Period: {selectedRequest.actualRentalPeriod} months
+                        Actual Rental Period: {selectedRequest.termOfHire ?? "—"}
                       </p>
                       <p className="text-[14px] text-[#6B7280]">
-                        Minimum Required: {selectedRequest.minimumRentalPeriod} months
+                        Minimum Required: {selectedRequest.minimumRentalPeriodDays} days
                       </p>
                       {selectedRequest.validationChecks.rentalPeriodMet ? (
                         <Badge className="bg-[#10B981] text-white mt-2">
@@ -577,7 +603,10 @@ export function ProjectClosureManagement() {
                         </Badge>
                       ) : (
                         <Badge className="bg-[#EF4444] text-white mt-2">
-                          Requirement Not Met - {(selectedRequest.minimumRentalPeriod - selectedRequest.actualRentalPeriod).toFixed(1)} months remaining
+                          Requirement Not Met
+                          {selectedRequest.actualRentalPeriodDays != null
+                            ? ` - ${selectedRequest.minimumRentalPeriodDays - selectedRequest.actualRentalPeriodDays} days remaining`
+                            : ""}
                         </Badge>
                       )}
                     </div>
@@ -590,24 +619,31 @@ export function ProjectClosureManagement() {
                     {selectedRequest.validationChecks.returnProcessComplete ? (
                       <CheckCircle2 className="h-5 w-5 text-[#10B981] mt-0.5" />
                     ) : (
-                      <XCircle className="h-5 w-5 text-[#EF4444] mt-0.5" />
+                      <XCircle className="h-5 w-5 text-[#F59E0B] mt-0.5" />
                     )}
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center gap-2">
                         <RotateCcw className="h-4 w-4 text-[#6B7280]" />
                         <p className="text-[#231F20]">Return Process Status</p>
                       </div>
-                      <p className="text-[14px] text-[#6B7280]">
-                        Current Status: {getReturnStatusBadge(selectedRequest.returnStatus)}
-                      </p>
-                      {selectedRequest.validationChecks.returnProcessComplete ? (
-                        <Badge className="bg-[#10B981] text-white mt-2">
-                          Return Process Completed
-                        </Badge>
+                      {selectedRequest.returnRequestStatus === "Completed" ? (
+                        <>
+                          <p className="text-[14px] text-[#10B981] font-medium">
+                            Current Status: Completed
+                          </p>
+                          <Badge className="bg-[#10B981] text-white mt-2">
+                            Return Process Completed
+                          </Badge>
+                        </>
                       ) : (
-                        <Badge className="bg-[#EF4444] text-white mt-2">
-                          Return Process Not Complete
-                        </Badge>
+                        <>
+                          <p className="text-[14px] text-[#F59E0B] font-medium">
+                            Current Status: Pending
+                          </p>
+                          <Badge className="bg-[#F59E0B] text-white mt-2">
+                            Return Process Pending
+                          </Badge>
+                        </>
                       )}
                     </div>
                   </div>
@@ -616,10 +652,12 @@ export function ProjectClosureManagement() {
                 {/* Shortage Detection Check */}
                 <div className="border rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    {selectedRequest.validationChecks.noShortageDetected ? (
+                    {selectedRequest.additionalChargeStatus === "approved" ? (
                       <CheckCircle2 className="h-5 w-5 text-[#10B981] mt-0.5" />
-                    ) : (
+                    ) : selectedRequest.additionalChargeStatus === "pending_approval" ? (
                       <AlertCircle className="h-5 w-5 text-[#F59E0B] mt-0.5" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-[#EF4444] mt-0.5" />
                     )}
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center gap-2">
@@ -629,25 +667,38 @@ export function ProjectClosureManagement() {
                       <p className="text-[14px] text-[#6B7280]">
                         Items Shortage Count: {selectedRequest.shortageItems}
                       </p>
-                      {selectedRequest.validationChecks.noShortageDetected ? (
-                        <Badge className="bg-[#10B981] text-white mt-2">
-                          No Shortage Detected
+                      {selectedRequest.additionalChargeStatus === "pending_payment" && (
+                        <Badge className="bg-[#EF4444] text-white mt-2">
+                          Pending Payment
                         </Badge>
-                      ) : (
+                      )}
+                      {selectedRequest.additionalChargeStatus === "pending_approval" && (
                         <Badge className="bg-[#F59E0B] text-white mt-2">
-                          {selectedRequest.shortageItems} Items Missing
+                          Pending Approval
                         </Badge>
+                      )}
+                      {selectedRequest.additionalChargeStatus === "approved" && (
+                        <Badge className="bg-[#10B981] text-white mt-2">
+                          Payment Complete
+                        </Badge>
+                      )}
+                      {!selectedRequest.additionalChargeStatus && (
+                        <span className="text-[14px] text-[#6B7280] mt-2 inline-block">—</span>
                       )}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Overall Status */}
+              {/* Overall Validation Status: Approved (green) when status is approved; else Ready for Approval or Cannot Approve */}
               <div className="bg-[#F3F4F6] rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[#231F20]">Overall Validation Status</span>
-                  {canApprove(selectedRequest) ? (
+                  {selectedRequest.status === "approved" ? (
+                    <Badge className="bg-[#10B981] text-white">
+                      Approved
+                    </Badge>
+                  ) : canApprove(selectedRequest) ? (
                     <Badge className="bg-[#10B981] text-white">
                       All Requirements Met - Ready for Approval
                     </Badge>
@@ -662,7 +713,8 @@ export function ProjectClosureManagement() {
           )}
 
           <DialogFooter>
-            {selectedRequest?.status === "pending" && canApprove(selectedRequest) && (
+            {/* Approve Closure only when all three validations are green; otherwise only Close */}
+            {selectedRequest?.status === "pending" && canApprove(selectedRequest) ? (
               <Button
                 className="bg-[#10B981] hover:bg-[#059669] text-white"
                 onClick={handleApproveClick}
@@ -670,7 +722,7 @@ export function ProjectClosureManagement() {
                 <CheckCircle2 className="h-4 w-4 mr-2" />
                 Approve Closure
               </Button>
-            )}
+            ) : null}
             <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
               Close
             </Button>
@@ -689,7 +741,7 @@ export function ProjectClosureManagement() {
               <br />
               <span className="text-[#231F20]">Project: {selectedRequest?.projectName}</span>
               <br />
-              <span className="text-[#231F20]">Request ID: {selectedRequest?.id}</span>
+              <span className="text-[#231F20]">Request ID: {selectedRequest?.closureRequestNumber ?? "—"}</span>
               <br />
               <br />
               The approval date and time will be automatically recorded in the system.

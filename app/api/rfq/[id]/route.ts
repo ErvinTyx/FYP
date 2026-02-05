@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { computeRfqItemDurationAndSubtotal } from '@/lib/term-of-hire';
 
 interface RouteParams {
   params: {
@@ -156,19 +157,27 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         // Create new items
         if (items.length > 0) {
           await tx.rFQItem.createMany({
-            data: items.map((item: any) => ({
-              rfqId,
-              setName: item.setName || 'Set 1',
-              deliverDate: item.deliverDate ? new Date(item.deliverDate) : null,
-              returnDate: item.returnDate ? new Date(item.returnDate) : null,
-              scaffoldingItemId: item.scaffoldingItemId || '',
-              scaffoldingItemName: item.scaffoldingItemName || '',
-              quantity: item.quantity || 0,
-              unit: item.unit || '',
-              unitPrice: item.unitPrice || 0,
-              totalPrice: item.totalPrice || 0,
-              notes: item.notes || '',
-            })),
+            data: items.map((item: any) => {
+              const deliverDate = item.deliverDate ? new Date(item.deliverDate) : null;
+              const returnDate = item.returnDate ? new Date(item.returnDate) : null;
+              const totalPrice = item.totalPrice ?? 0;
+              const { durationDays, subtotalPrice } = computeRfqItemDurationAndSubtotal(deliverDate, returnDate, totalPrice);
+              return {
+                rfqId,
+                setName: item.setName || 'Set 1',
+                deliverDate,
+                returnDate,
+                durationDays: durationDays ?? undefined,
+                subtotalPrice: subtotalPrice ?? undefined,
+                scaffoldingItemId: item.scaffoldingItemId || '',
+                scaffoldingItemName: item.scaffoldingItemName || '',
+                quantity: item.quantity || 0,
+                unit: item.unit || '',
+                unitPrice: item.unitPrice || 0,
+                totalPrice,
+                notes: item.notes || '',
+              };
+            }),
           });
         }
       }

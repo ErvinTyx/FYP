@@ -108,6 +108,8 @@ model rFQItem {
   setName               String     @default("Set 1")
   deliverDate           DateTime?
   returnDate            DateTime?
+  durationDays          Int?       // returnDate - deliverDate (days), set on create/update
+  subtotalPrice         Decimal?   @db.Decimal(15, 2) // durationDays * totalPrice, set on create/update
   scaffoldingItemId     String
   scaffoldingItemName   String
   quantity              Int
@@ -369,9 +371,26 @@ model RentalAgreement {
   rfqId    String?
   rfq      rFQ?    @relation(fields: [rfqId], references: [id])
 
-  versions AgreementVersion[]
-  deposits Deposit[]
-  monthlyInvoices MonthlyRentalInvoice[]
+  versions           AgreementVersion[]
+  deposits           Deposit[]
+  monthlyInvoices    MonthlyRentalInvoice[]
+  closureRequests    ProjectClosureRequest[]
+}
+
+// Project closure request (one per agreement when user requests closure; PCR-YYYY-NNN)
+model ProjectClosureRequest {
+  id                    String   @id @default(cuid())
+  closureRequestNumber  String   @unique // e.g. PCR-2026-001
+  agreementId           String
+  agreement             RentalAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  requestDate           DateTime
+  status                String   @default("pending") // active | pending | approved
+  approvedBy            String?
+  approvedAt            DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([agreementId])
 }
 
 model AgreementVersion {
