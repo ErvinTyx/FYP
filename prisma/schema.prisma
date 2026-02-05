@@ -109,7 +109,6 @@ model rFQItem {
   deliverDate           DateTime?
   returnDate            DateTime?
   durationDays          Int?       // returnDate - deliverDate (days), set on create/update
-  subtotalPrice         Decimal?   @db.Decimal(15, 2) // durationDays * totalPrice, set on create/update
   scaffoldingItemId     String
   scaffoldingItemName   String
   quantity              Int

@@ -161,14 +161,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
               const deliverDate = item.deliverDate ? new Date(item.deliverDate) : null;
               const returnDate = item.returnDate ? new Date(item.returnDate) : null;
               const totalPrice = item.totalPrice ?? 0;
-              const { durationDays, subtotalPrice } = computeRfqItemDurationAndSubtotal(deliverDate, returnDate, totalPrice);
+              const { durationDays } = computeRfqItemDurationAndSubtotal(deliverDate, returnDate, totalPrice);
               return {
                 rfqId,
                 setName: item.setName || 'Set 1',
                 deliverDate,
                 returnDate,
                 durationDays: durationDays ?? undefined,
-                subtotalPrice: subtotalPrice ?? undefined,
                 scaffoldingItemId: item.scaffoldingItemId || '',
                 scaffoldingItemName: item.scaffoldingItemName || '',
                 quantity: item.quantity || 0,

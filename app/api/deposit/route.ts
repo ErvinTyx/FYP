@@ -310,12 +310,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate deposit amount: RFQ.totalAmount × 30 × securityDeposit (months)
+    // Calculate deposit amount: RFQ.totalAmount × securityDeposit (months)
     let depositAmount = manualAmount;
     if (!depositAmount && agreement.rfq) {
       const rfqTotalAmount = Number(agreement.rfq.totalAmount);
       const securityDepositMonths = Number(agreement.securityDeposit);
-      depositAmount = rfqTotalAmount * 30 * securityDepositMonths;
+      depositAmount = rfqTotalAmount * securityDepositMonths;
     }
 
     if (!depositAmount || depositAmount <= 0) {

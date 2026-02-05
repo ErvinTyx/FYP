@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-import { computeTermOfHireFromRfqItems } from '@/lib/term-of-hire';
+import { computeTermOfHireFromRfqItems } from '../../../src/lib/term-of-hire';
 
 // Roles allowed to manage rental agreements
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
@@ -639,7 +639,7 @@ export async function PUT(request: NextRequest) {
       // Calculate deposit amount: RFQ.totalAmount × 30 × securityDeposit (months)
       const rfqTotalAmount = Number(rfqToUse.totalAmount);
       const securityDepositMonths = Number(updatedAgreement.securityDeposit);
-      const depositAmount = rfqTotalAmount * 30 * securityDepositMonths;
+      const depositAmount = rfqTotalAmount * securityDepositMonths;
 
       if (depositAmount > 0) {
         const depositNumber = await generateDepositNumber();

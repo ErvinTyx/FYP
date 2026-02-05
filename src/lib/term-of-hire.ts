@@ -3,20 +3,18 @@ import type { PrismaClient } from '@prisma/client';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * Compute durationDays and subtotalPrice for a single rFQItem from deliverDate, returnDate, totalPrice.
- * Returns { durationDays: number, subtotalPrice: number } or { durationDays: null, subtotalPrice: null } if dates missing/invalid.
+ * Compute durationDays for a single rFQItem from deliverDate and returnDate.
+ * Returns { durationDays: number } or { durationDays: null } if dates missing/invalid.
  */
 export function computeRfqItemDurationAndSubtotal(
   deliverDate: Date | null,
   returnDate: Date | null,
-  totalPrice: number | unknown
-): { durationDays: number | null; subtotalPrice: number | null } {
-  if (deliverDate == null || returnDate == null) return { durationDays: null, subtotalPrice: null };
+  _totalPrice?: number | unknown
+): { durationDays: number | null } {
+  if (deliverDate == null || returnDate == null) return { durationDays: null };
   const days = Math.ceil((returnDate.getTime() - deliverDate.getTime()) / MS_PER_DAY);
-  if (days < 0) return { durationDays: null, subtotalPrice: null };
-  const price = Number(totalPrice) || 0;
-  const subtotal = Math.round(days * price * 100) / 100;
-  return { durationDays: days, subtotalPrice: subtotal };
+  if (days < 0) return { durationDays: null };
+  return { durationDays: days };
 }
 
 /**
@@ -50,35 +48,18 @@ export async function computeTermOfHireFromRfqItems(
 }
 
 /**
- * Compute monthly rental (total rental over hire period) from rFQItem (same rfqId).
- * Sums stored subtotalPrice; if all null (e.g. old data), falls back to computing days × totalPrice per item.
+ * Compute monthly rental from rFQItem (same rfqId): sum of totalPrice for all items.
  */
 export async function computeMonthlyRentalFromRfqItems(
   prisma: PrismaClient,
   rfqId: string
 ): Promise<number> {
-  type Row = { deliverDate: Date | null; returnDate: Date | null; totalPrice: unknown; subtotalPrice: unknown };
+  type Row = { totalPrice: unknown };
   const rows = await prisma.rFQItem.findMany({
     where: { rfqId },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma client may be out of sync
-    select: { deliverDate: true, returnDate: true, totalPrice: true, subtotalPrice: true } as any,
+    select: { totalPrice: true },
   });
   const items = rows as unknown as Row[];
-  const fromStored = items
-    .map((item) => (item.subtotalPrice != null ? Number(item.subtotalPrice) : NaN))
-    .filter((n) => !Number.isNaN(n));
-  if (fromStored.length > 0) {
-    return Math.round(fromStored.reduce((a, b) => a + b, 0) * 100) / 100;
-  }
-  // Fallback: compute from dates and totalPrice (e.g. before backfill or legacy rows)
-  let sum = 0;
-  for (const item of items) {
-    const { subtotalPrice } = computeRfqItemDurationAndSubtotal(
-      item.deliverDate,
-      item.returnDate,
-      item.totalPrice
-    );
-    if (subtotalPrice != null) sum += subtotalPrice;
-  }
+  const sum = items.reduce((acc, item) => acc + (Number(item.totalPrice) || 0), 0);
   return Math.round(sum * 100) / 100;
 }

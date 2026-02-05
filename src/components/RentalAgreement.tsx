@@ -657,7 +657,7 @@ export function RentalAgreement() {
               ) : agreements.map((agreement) => (
                 <TableRow key={agreement.id} className="h-14 hover:bg-[#F3F4F6]">
                   <TableCell className="text-[#374151]">{agreement.projectName}</TableCell>
-                  <TableCell className="text-[#374151]">RM {calculateTotalRental(agreement.monthlyRental, agreement.termOfHire).toLocaleString()}</TableCell>
+                  <TableCell className="text-[#374151]">RM {(Number(agreement.monthlyRental) || 0).toLocaleString()}</TableCell>
                   <TableCell>{getStatusBadge(agreement.status)}</TableCell>
                   <TableCell className="text-[#374151]">v{agreement.currentVersion}</TableCell>
                   <TableCell>
