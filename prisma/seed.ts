@@ -84,6 +84,55 @@ async function main() {
 
   console.log(`  - Super Admin: ${superAdmin.email}`);
 
+  // Create users for specific roles
+  console.log("Creating users for specific roles...");
+  const rolesToCreateUsersFor = ["admin", "finance", "sales", "operations", "production", "vendor"];
+
+  for (const roleName of rolesToCreateUsersFor) {
+    const role = await prisma.role.findUnique({
+      where: { name: roleName },
+    });
+
+    if (!role) {
+      throw new Error(`Role ${roleName} not found`);
+    }
+
+    const hashedPassword = await bcrypt.hash("User@2024!", 12);
+
+    const user = await prisma.user.upsert({
+      where: { email: `${roleName.toLowerCase()}@powermetalsteel.com` },
+      update: {
+        password: hashedPassword,
+        firstName: roleName,
+        lastName: "User",
+        status: "active",
+      },
+      create: {
+        email: `${roleName.toLowerCase()}@powermetalsteel.com`,
+        firstName: roleName,
+        lastName: "User",
+        password: hashedPassword,
+        status: "active",
+      },
+    });
+
+    // Assign role to user
+    await prisma.userRole.upsert({
+      where: {
+        userId_roleId: {
+          userId: user.id,
+          roleId: role.id,
+        },
+      },
+      update: {},
+      create: {
+        userId: user.id,
+        roleId: role.id,
+      },
+    });
+
+    console.log(`  - User ${roleName}: ${user.email}`);
+  }
   // Create customer users
   console.log("Creating customer users...");
   
