@@ -99,6 +99,13 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     otp?: string;
   }>({});
 
+  // Stock check validation state
+  const [insufficientStockItems, setInsufficientStockItems] = useState<{
+    name: string;
+    required: number;
+    available: number;
+  }[]>([]);
+
   // Fetch customers for OTP selection
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -243,14 +250,29 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
       return;
     }
 
-    const allAvailable = formData.items?.every(item => item.availableStock >= item.quantity);
+    // Clear previous insufficient stock errors
+    setInsufficientStockItems([]);
+
+    // Pre-validate stock availability on frontend (for immediate feedback)
+    const insufficientItems = formData.items.filter(item => item.availableStock < item.quantity);
+    
+    if (insufficientItems.length > 0) {
+      const insufficientDetails = insufficientItems.map(item => ({
+        name: item.scaffoldingItemName,
+        required: item.quantity,
+        available: item.availableStock,
+      }));
+      setInsufficientStockItems(insufficientDetails);
+      toast.error('Cannot proceed: Some items have insufficient stock');
+      return; // Block progression
+    }
     
     const updatedData = {
       ...formData,
       stockCheckDate: new Date().toISOString(),
       stockCheckBy: 'Current User',
       stockCheckNotes,
-      allItemsAvailable: allAvailable,
+      allItemsAvailable: true,
       status: 'Stock Checked' as DeliveryOrder['status'],
       updatedAt: new Date().toISOString(),
     };
@@ -259,15 +281,17 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     
     try {
       await saveProgressToApi(updatedData);
-      
-      if (!allAvailable) {
-        toast.warning('Some items have insufficient stock. Please proceed with caution.');
-      }
-      
-      toast.success('Stock check completed successfully');
+      toast.success('Stock check completed - inventory deducted successfully');
       setCurrentStep(3);
-    } catch {
-      // Error already handled in saveProgressToApi
+    } catch (error: unknown) {
+      // Handle insufficient stock error from backend
+      if (error && typeof error === 'object' && 'name' in error && error.name === 'InsufficientStockError') {
+        const stockError = error as { insufficientItems: { name: string; required: number; available: number }[] };
+        setInsufficientStockItems(stockError.insufficientItems);
+        toast.error('Cannot proceed: Some items have insufficient stock');
+      }
+      // Revert formData on error
+      setFormData(formData);
     }
   };
 
@@ -827,6 +851,32 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
               ))}
             </div>
 
+            {/* Insufficient Stock Warning */}
+            {insufficientStockItems.length > 0 && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertCircle className="size-5 text-red-600" />
+                  <p className="font-semibold text-red-800">Insufficient Stock - Cannot Proceed</p>
+                </div>
+                <p className="text-sm text-red-700 mb-3">
+                  The following items do not have enough stock to fulfill this delivery:
+                </p>
+                <div className="space-y-2">
+                  {insufficientStockItems.map((item, index) => (
+                    <div key={index} className="flex justify-between text-sm bg-white p-2 rounded border border-red-100">
+                      <span className="text-red-800">{item.name}</span>
+                      <span className="text-red-600">
+                        Required: <strong>{item.required}</strong> | Available: <strong>{item.available}</strong> | Short: <strong>{item.required - item.available}</strong>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-red-600 mt-3">
+                  Please replenish stock or adjust the delivery order before proceeding.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Stock Check Notes</Label>
               <Textarea
@@ -840,10 +890,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             <Button
               onClick={handleStockCheck}
               className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
-              disabled={isSaving}
+              disabled={isSaving || formData.items?.some(item => item.availableStock < item.quantity)}
             >
               {isSaving ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Check className="size-4 mr-2" />}
-              {isSaving ? 'Saving...' : 'Complete Stock Check'}
+              {isSaving ? 'Saving...' : 'Complete Stock Check & Deduct Inventory'}
             </Button>
           </CardContent>
         </Card>

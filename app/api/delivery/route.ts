@@ -258,6 +258,32 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Collect all scaffoldingItemIds to fetch real stock levels
+    const allScaffoldingItemIds = new Set<string>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deliveryRequests.forEach((req: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      req.sets?.forEach((set: any) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        set.items?.forEach((item: any) => {
+          if (item.scaffoldingItemId) {
+            allScaffoldingItemIds.add(item.scaffoldingItemId);
+          }
+        });
+      });
+    });
+
+    // Fetch real stock levels from ScaffoldingItem
+    const scaffoldingItems = allScaffoldingItemIds.size > 0 
+      ? await prisma.scaffoldingItem.findMany({
+          where: { id: { in: Array.from(allScaffoldingItemIds) } },
+          select: { id: true, available: true, name: true }
+        })
+      : [];
+    
+    // Build lookup map for stock levels
+    const stockMap = new Map(scaffoldingItems.map(s => [s.id, s.available]));
+
     // Transform the data for the frontend
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transformedRequests = deliveryRequests.map((req: any) => ({
@@ -356,6 +382,7 @@ export async function GET(request: NextRequest) {
           name: item.name,
           quantity: item.quantity,
           scaffoldingItemId: item.scaffoldingItemId,
+          availableStock: item.scaffoldingItemId ? (stockMap.get(item.scaffoldingItemId) ?? 0) : 0,
         })),
       })),
     }));
@@ -558,6 +585,7 @@ export async function PUT(request: NextRequest) {
       const existingSet = await prisma.deliverySet.findUnique({
         where: { id: setId },
         include: {
+          items: true,
           deliveryRequest: true,
           packingList: true,
           stockCheck: true,
@@ -631,25 +659,152 @@ export async function PUT(request: NextRequest) {
         });
       }
 
-      // Upsert Stock Check step
+      // Upsert Stock Check step with validation and deduction
       if (updateData.stockCheckDate !== undefined || updateData.stockCheckBy !== undefined || 
           updateData.stockCheckNotes !== undefined || updateData.allItemsAvailable !== undefined) {
-        await prisma.deliveryStockCheck.upsert({
-          where: { deliverySetId: setId },
-          create: {
-            deliverySetId: setId,
-            checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : new Date(),
-            checkedBy: updateData.stockCheckBy,
-            notes: updateData.stockCheckNotes,
-            allItemsAvailable: updateData.allItemsAvailable,
-          },
-          update: {
-            checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : undefined,
-            checkedBy: updateData.stockCheckBy,
-            notes: updateData.stockCheckNotes,
-            allItemsAvailable: updateData.allItemsAvailable,
-          },
-        });
+        
+        // Check if stock check was already completed (prevent double-deduction)
+        const alreadyStockChecked = existingSet.stockCheck?.checkDate !== null && existingSet.stockCheck?.checkDate !== undefined;
+        
+        if (!alreadyStockChecked && existingSet.items && existingSet.items.length > 0) {
+          // Get items with scaffoldingItemId for stock validation
+          const itemsWithScaffoldingId = existingSet.items.filter(item => item.scaffoldingItemId);
+          
+          if (itemsWithScaffoldingId.length > 0) {
+            // Fetch real stock levels from ScaffoldingItem
+            const scaffoldingItemIds = itemsWithScaffoldingId.map(item => item.scaffoldingItemId).filter((id): id is string => id !== null);
+            
+            const scaffoldingItems = await prisma.scaffoldingItem.findMany({
+              where: { id: { in: scaffoldingItemIds } }
+            });
+            
+            // Build lookup map for stock levels
+            const stockMap = new Map(scaffoldingItems.map(s => [s.id, { available: s.available, name: s.name }]));
+            
+            // Validate stock availability
+            const insufficientItems: { name: string; required: number; available: number }[] = [];
+            
+            for (const item of itemsWithScaffoldingId) {
+              if (item.scaffoldingItemId) {
+                const stockInfo = stockMap.get(item.scaffoldingItemId);
+                const available = stockInfo?.available ?? 0;
+                
+                if (available < item.quantity) {
+                  insufficientItems.push({
+                    name: item.name,
+                    required: item.quantity,
+                    available: available,
+                  });
+                }
+              }
+            }
+            
+            // If any items have insufficient stock, return error
+            if (insufficientItems.length > 0) {
+              return NextResponse.json({
+                success: false,
+                message: 'Insufficient stock for some items',
+                insufficientItems,
+              }, { status: 400 });
+            }
+            
+            // All items have sufficient stock - perform deduction in a transaction
+            const LOW_STOCK_THRESHOLD = 30;
+            
+            await prisma.$transaction(async (tx) => {
+              // Deduct stock for each item
+              for (const item of itemsWithScaffoldingId) {
+                if (item.scaffoldingItemId) {
+                  const current = await tx.scaffoldingItem.findUnique({
+                    where: { id: item.scaffoldingItemId }
+                  });
+                  
+                  if (current) {
+                    const newAvailable = current.available - item.quantity;
+                    
+                    // Calculate new status based on available quantity
+                    let status = 'Available';
+                    if (newAvailable === 0) {
+                      status = 'Out of Stock';
+                    } else if (newAvailable < LOW_STOCK_THRESHOLD) {
+                      status = 'Low Stock';
+                    }
+                    
+                    await tx.scaffoldingItem.update({
+                      where: { id: item.scaffoldingItemId },
+                      data: { 
+                        available: newAvailable,
+                        status,
+                      }
+                    });
+                  }
+                }
+              }
+              
+              // Create/update stock check record within the same transaction
+              await tx.deliveryStockCheck.upsert({
+                where: { deliverySetId: setId },
+                create: {
+                  deliverySetId: setId,
+                  checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : new Date(),
+                  checkedBy: updateData.stockCheckBy,
+                  notes: updateData.stockCheckNotes,
+                  allItemsAvailable: true, // Always true since we validated
+                },
+                update: {
+                  checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : undefined,
+                  checkedBy: updateData.stockCheckBy,
+                  notes: updateData.stockCheckNotes,
+                  allItemsAvailable: true,
+                },
+              });
+            });
+          } else {
+            // No items with scaffoldingItemId - just create stock check record (legacy behavior)
+            await prisma.deliveryStockCheck.upsert({
+              where: { deliverySetId: setId },
+              create: {
+                deliverySetId: setId,
+                checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : new Date(),
+                checkedBy: updateData.stockCheckBy,
+                notes: updateData.stockCheckNotes,
+                allItemsAvailable: updateData.allItemsAvailable,
+              },
+              update: {
+                checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : undefined,
+                checkedBy: updateData.stockCheckBy,
+                notes: updateData.stockCheckNotes,
+                allItemsAvailable: updateData.allItemsAvailable,
+              },
+            });
+          }
+        } else if (alreadyStockChecked) {
+          // Stock check was already done - just update notes if provided (no re-deduction)
+          await prisma.deliveryStockCheck.update({
+            where: { deliverySetId: setId },
+            data: {
+              notes: updateData.stockCheckNotes,
+            },
+          });
+        } else {
+          // No items to check - create stock check record
+          await prisma.deliveryStockCheck.upsert({
+            where: { deliverySetId: setId },
+            create: {
+              deliverySetId: setId,
+              checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : new Date(),
+              checkedBy: updateData.stockCheckBy,
+              notes: updateData.stockCheckNotes,
+              allItemsAvailable: updateData.allItemsAvailable,
+            },
+            update: {
+              checkDate: updateData.stockCheckDate ? new Date(updateData.stockCheckDate) : undefined,
+              checkedBy: updateData.stockCheckBy,
+              notes: updateData.stockCheckNotes,
+              allItemsAvailable: updateData.allItemsAvailable,
+            },
+          });
+        }
       }
 
       // Upsert Schedule step

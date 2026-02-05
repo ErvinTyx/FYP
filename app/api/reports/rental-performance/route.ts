@@ -172,14 +172,8 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Filter to only items with activity
-    const activeData = data.filter(item => item.totalRentals > 0 || item.totalRevenue > 0);
-    
-    // If no active data, return scaffolding items with estimated utilization
-    const finalData = activeData.length > 0 ? activeData : data.slice(0, 10).map(item => ({
-      ...item,
-      utilizationRate: Math.round(Math.random() * 30 + 50), // Placeholder
-    }));
+    // Return all items with actual data - no random placeholders
+    const finalData = data;
 
     // Calculate summary
     const summary = {
