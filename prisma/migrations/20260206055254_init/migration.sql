@@ -77,6 +77,24 @@ CREATE TABLE `UserRole` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
+CREATE TABLE `ContentItem` (
+    `id` VARCHAR(191) NOT NULL,
+    `type` VARCHAR(191) NOT NULL,
+    `title` VARCHAR(191) NOT NULL,
+    `content` TEXT NOT NULL,
+    `status` VARCHAR(191) NOT NULL DEFAULT 'draft',
+    `imageUrl` TEXT NULL,
+    `metadata` TEXT NULL,
+    `updatedBy` VARCHAR(191) NOT NULL DEFAULT 'System',
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    INDEX `ContentItem_type_idx`(`type`),
+    INDEX `ContentItem_status_idx`(`status`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `rFQ` (
     `id` VARCHAR(191) NOT NULL,
     `rfqNumber` VARCHAR(191) NOT NULL,
@@ -105,6 +123,7 @@ CREATE TABLE `rFQItem` (
     `setName` VARCHAR(191) NOT NULL DEFAULT 'Set 1',
     `deliverDate` DATETIME(3) NULL,
     `returnDate` DATETIME(3) NULL,
+    `durationDays` INTEGER NULL,
     `scaffoldingItemId` VARCHAR(191) NOT NULL,
     `scaffoldingItemName` VARCHAR(191) NOT NULL,
     `quantity` INTEGER NOT NULL,
@@ -373,6 +392,23 @@ CREATE TABLE `RentalAgreement` (
     `rfqId` VARCHAR(191) NULL,
 
     UNIQUE INDEX `RentalAgreement_agreementNumber_key`(`agreementNumber`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `ProjectClosureRequest` (
+    `id` VARCHAR(191) NOT NULL,
+    `closureRequestNumber` VARCHAR(191) NOT NULL,
+    `agreementId` VARCHAR(191) NOT NULL,
+    `requestDate` DATETIME(3) NOT NULL,
+    `status` VARCHAR(191) NOT NULL DEFAULT 'pending',
+    `approvedBy` VARCHAR(191) NULL,
+    `approvedAt` DATETIME(3) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `ProjectClosureRequest_closureRequestNumber_key`(`closureRequestNumber`),
+    INDEX `ProjectClosureRequest_agreementId_idx`(`agreementId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -1005,6 +1041,9 @@ ALTER TABLE `AdditionalChargeItem` ADD CONSTRAINT `AdditionalChargeItem_addition
 
 -- AddForeignKey
 ALTER TABLE `RentalAgreement` ADD CONSTRAINT `RentalAgreement_rfqId_fkey` FOREIGN KEY (`rfqId`) REFERENCES `rFQ`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `ProjectClosureRequest` ADD CONSTRAINT `ProjectClosureRequest_agreementId_fkey` FOREIGN KEY (`agreementId`) REFERENCES `RentalAgreement`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `AgreementVersion` ADD CONSTRAINT `AgreementVersion_agreementId_fkey` FOREIGN KEY (`agreementId`) REFERENCES `RentalAgreement`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
