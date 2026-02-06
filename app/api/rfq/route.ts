@@ -11,7 +11,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { computeRfqItemDurationAndSubtotal } from '@/lib/term-of-hire';
 
 /**
  * Helper function to generate unique RFQ number
@@ -38,6 +37,7 @@ export async function POST(request: NextRequest) {
       projectLocation,
       requestedDate,
       requiredDate,
+      rentalMonths,
       status,
       totalAmount,
       notes,
@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
           projectLocation: projectLocation || '',
           requestedDate: reqDate,
           requiredDate: reqByDate,
+          rentalMonths: rentalMonths || 1,
           status: status || 'draft',
           totalAmount: totalAmount || 0,
           notes: notes || '',
@@ -111,22 +112,15 @@ export async function POST(request: NextRequest) {
       if (items && Array.isArray(items) && items.length > 0) {
         await tx.rFQItem.createMany({
           data: items.map((item: any) => {
-            const deliverDate = item.deliverDate ? new Date(item.deliverDate) : null;
-            const returnDate = item.returnDate ? new Date(item.returnDate) : null;
-            const totalPrice = item.totalPrice ?? 0;
-            const { durationDays } = computeRfqItemDurationAndSubtotal(deliverDate, returnDate, totalPrice);
             return {
               rfqId: rfq.id,
               setName: item.setName || 'Set 1',
-              deliverDate,
-              returnDate,
-              durationDays: durationDays ?? undefined,
               scaffoldingItemId: item.scaffoldingItemId || '',
               scaffoldingItemName: item.scaffoldingItemName || '',
               quantity: item.quantity || 0,
               unit: item.unit || '',
               unitPrice: item.unitPrice || 0,
-              totalPrice,
+              totalPrice: item.totalPrice || 0,
               notes: item.notes || '',
             };
           }),

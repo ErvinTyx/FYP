@@ -16,6 +16,17 @@ import {
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
 
+interface Customer {
+  id: string;
+  user: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string;
+    phone: string | null;
+  };
+  customerType: string;
+}
+
 interface DatabaseScaffoldingItem {
   id: string;
   itemCode: string;
@@ -38,8 +49,8 @@ interface RFQFormProps {
 interface UISet {
   id: string;
   setName: string;
-  deliverDate: string;
-  returnDate: string;
+  requiredDate: string;
+  rentalMonths: number;
   items: RFQItem[];
 }
 
@@ -51,7 +62,6 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     projectName: '',
     projectLocation: '',
     requestedDate: new Date().toISOString().split('T')[0],
-    requiredDate: '',
     status: 'draft',
     items: [],
     totalAmount: 0,
@@ -63,6 +73,9 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
   const [originalRFQ, setOriginalRFQ] = useState<RFQ | null>(null);
   const [scaffoldingTypes, setScaffoldingTypes] = useState<DatabaseScaffoldingItem[]>([]);
   const [loadingScaffolding, setLoadingScaffolding] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
 
   useEffect(() => {
     const fetchScaffoldingItems = async () => {
@@ -84,6 +97,40 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     fetchScaffoldingItems();
   }, []);
 
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        setLoadingCustomers(true);
+        const response = await fetch('/api/customers');
+        const result = await response.json();
+        if (result.success && result.data) {
+          setCustomers(result.data);
+        } else {
+          toast.error('Failed to load customers');
+        }
+      } catch (error) {
+        toast.error('Failed to load customers');
+      } finally {
+        setLoadingCustomers(false);
+      }
+    };
+    fetchCustomers();
+  }, []);
+
+  const handleCustomerChange = (customerId: string) => {
+    setSelectedCustomerId(customerId);
+    const customer = customers.find(c => c.id === customerId);
+    if (customer) {
+      const fullName = `${customer.user.firstName || ''} ${customer.user.lastName || ''}`.trim() || 'Unknown';
+      setFormData(prev => ({
+        ...prev,
+        customerName: fullName,
+        customerEmail: customer.user.email,
+        customerPhone: customer.user.phone || '',
+      }));
+    }
+  };
+
   // Convert flat items to UI sets for display
   const itemsToUiSets = (items: RFQItem[]): UISet[] => {
     const setMap = new Map<string, UISet>();
@@ -93,8 +140,8 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         setMap.set(key, {
           id: `set-${key}-${Date.now()}`,
           setName: item.setName,
-          deliverDate: item.deliverDate,
-          returnDate: item.returnDate,
+          requiredDate: item.requiredDate || new Date().toISOString().split('T')[0],
+          rentalMonths: item.rentalMonths || 1,
           items: []
         });
       }
@@ -111,8 +158,8 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         items.push({
           ...item,
           setName: set.setName,
-          deliverDate: set.deliverDate,
-          returnDate: set.returnDate,
+          requiredDate: set.requiredDate,
+          rentalMonths: set.rentalMonths,
         });
       });
     });
@@ -129,7 +176,6 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         projectName: rfq.projectName,
         projectLocation: rfq.projectLocation,
         requestedDate: rfq.requestedDate,
-        requiredDate: rfq.requiredDate,
         status: rfq.status,
         items: rfq.items,
         totalAmount: rfq.totalAmount,
@@ -137,24 +183,24 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         createdBy: rfq.createdBy,
       });
       setUiSets(itemsToUiSets(rfq.items || []));
+      
+      // Set selected customer based on RFQ customer data
+      const customer = customers.find(c => 
+        c.user.email === rfq.customerEmail && 
+        c.user.phone === rfq.customerPhone
+      );
+      if (customer) {
+        setSelectedCustomerId(customer.id);
+      }
     }
-  }, [rfq]);
-
-  const calculateDuration = (deliverDate: string, returnDate: string): number => {
-    if (!deliverDate || !returnDate) return 0;
-    const start = new Date(deliverDate);
-    const end = new Date(returnDate);
-    const diffTime = end.getTime() - start.getTime();
-    return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-  };
+  }, [rfq, customers]);
 
   const addSet = () => {
-    const minDeliverDate = formData.requestedDate || new Date().toISOString().split('T')[0];
     const newSet: UISet = {
       id: `set-${Date.now()}`,
       setName: `Set ${uiSets.length + 1}`,
-      deliverDate: minDeliverDate,
-      returnDate: formData.requiredDate || minDeliverDate,
+      requiredDate: new Date().toISOString().split('T')[0],
+      rentalMonths: 1,
       items: []
     };
     setUiSets([...uiSets, newSet]);
@@ -174,8 +220,8 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     const newItem: RFQItem = {
       id: `item-${Date.now()}`,
       setName: set.setName,
-      deliverDate: set.deliverDate,
-      returnDate: set.returnDate,
+      requiredDate: set.requiredDate,
+      rentalMonths: set.rentalMonths,
       scaffoldingItemId: '',
       scaffoldingItemName: '',
       quantity: 1,
@@ -207,8 +253,8 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
                   updated.unitPrice = scaffoldingItem.price;
                 }
               }
-              const duration = calculateDuration(set.deliverDate, set.returnDate);
-              updated.totalPrice = updated.quantity * updated.unitPrice * duration;
+              const durationInDays = set.rentalMonths * 30; // Convert months to days
+              updated.totalPrice = updated.quantity * updated.unitPrice * durationInDays;
               return updated;
             }
             return item;
@@ -219,7 +265,6 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     }));
   };
 
-
   useEffect(() => {
     const items = uiSetsToItems(uiSets);
     setFormData(prev => ({ ...prev, items, totalAmount: calculateTotal() }));
@@ -227,9 +272,9 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
 
   const calculateTotal = () => {
     return uiSets.reduce((sum, set) => {
-      const duration = calculateDuration(set.deliverDate, set.returnDate);
+      const durationInDays = set.rentalMonths * 30; // Convert months to days
       return sum + set.items.reduce((itemSum, item) => {
-        const itemTotal = item.quantity * item.unitPrice * duration;
+        const itemTotal = item.quantity * item.unitPrice * durationInDays;
         return itemSum + itemTotal;
       }, 0);
     }, 0);
@@ -273,18 +318,6 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
       toast.error('Please fill in all required fields');
       return;
     }
-    if (!formData.requiredDate) {
-      toast.error('Please set the required date');
-      return;
-    }
-    if (formData.requestedDate && formData.requiredDate) {
-      const reqDate = new Date(formData.requestedDate);
-      const reqByDate = new Date(formData.requiredDate);
-      if (reqByDate < reqDate) {
-        toast.error('Required date must be on or after the requested date');
-        return;
-      }
-    }
     if (uiSets.length === 0) {
       toast.error('Please add at least one set');
       return;
@@ -294,14 +327,8 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         toast.error(`Set "${set.setName}" has no items. Please add items or remove the set.`);
         return;
       }
-      if (!set.deliverDate || !set.returnDate) {
-        toast.error(`Set "${set.setName}" is missing deliver or return date`);
-        return;
-      }
-      const deliverDate = new Date(set.deliverDate);
-      const returnDate = new Date(set.returnDate);
-      if (returnDate < deliverDate) {
-        toast.error(`Set "${set.setName}": Return date must be on or after deliver date`);
+      if (!set.requiredDate) {
+        toast.error(`Set "${set.setName}": Please set the required date`);
         return;
       }
       if (set.items.some(item => !item.scaffoldingItemId || item.quantity <= 0)) {
@@ -343,9 +370,9 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     });
   };
 
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-4">
+return (
+  <div className="p-6 space-y-6">
+    <div className="flex items-center gap-4">
         <Button variant="outline" onClick={onCancel}>
           <ArrowLeft className="size-4" />
         </Button>
@@ -360,16 +387,37 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="customerName">Customer Name *</Label>
-              <Input id="customerName" value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} placeholder="Enter customer name" />
+              <Label htmlFor="customerSelect">Select Customer *</Label>
+              <Select value={selectedCustomerId} onValueChange={handleCustomerChange} disabled={loadingCustomers}>
+                <SelectTrigger>
+                  {loadingCustomers ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="size-3 animate-spin" />
+                      <span className="text-sm">Loading customers...</span>
+                    </div>
+                  ) : (
+                    <SelectValue placeholder="Select a customer" />
+                  )}
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.map(customer => (
+                    <SelectItem key={customer.id} value={customer.id}>
+                      {customer.user.firstName && customer.user.lastName 
+                        ? `${customer.user.firstName} ${customer.user.lastName}`
+                        : customer.user.email
+                      }
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="customerEmail">Email *</Label>
-              <Input id="customerEmail" type="email" value={formData.customerEmail} onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })} placeholder="customer@example.com" />
+              <Input id="customerEmail" type="email" value={formData.customerEmail} readOnly placeholder="Auto-filled from customer selection" className="bg-gray-50" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="customerPhone">Phone *</Label>
-              <Input id="customerPhone" value={formData.customerPhone} onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })} placeholder="+60 12-345 6789" />
+              <Input id="customerPhone" value={formData.customerPhone} readOnly placeholder="Auto-filled from customer selection" className="bg-gray-50" />
             </div>
           </div>
         </CardContent>
@@ -389,16 +437,13 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="requestedDate">Requested Date</Label>
-              <Input id="requestedDate" type="date" value={formData.requestedDate} onChange={(e) => setFormData({ ...formData, requestedDate: e.target.value })} />
+              <Input id="requestedDate" type="date" value={formData.requestedDate} disabled className="bg-gray-50" />
+              <p className="text-xs text-gray-500">Always set to today's date</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="requiredDate">Required Date *</Label>
-              <Input id="requiredDate" type="date" value={formData.requiredDate} min={formData.requestedDate} onChange={(e) => setFormData({ ...formData, requiredDate: e.target.value })} />
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes or requirements" rows={3} />
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes or requirements" rows={3} />
           </div>
         </CardContent>
       </Card>
@@ -408,7 +453,7 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
           <div className="flex justify-between items-center">
             <div>
               <CardTitle>Scaffolding Sets</CardTitle>
-              <p className="text-sm text-gray-500 mt-1">Create sets with different delivery and return dates, then add items to each set</p>
+              <p className="text-sm text-gray-500 mt-1">Create sets to organize scaffolding items. Pricing is calculated based on rental duration.</p>
             </div>
             <Button onClick={addSet} size="sm" className="bg-[#F15929] hover:bg-[#d94d1f]">
               <Plus className="size-4 mr-2" />Create Set
@@ -420,37 +465,47 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
             <div className="text-center py-8 text-gray-500 border-2 border-dashed rounded-lg">
               <Calendar className="size-12 mx-auto mb-3 text-gray-400" />
               <p className="font-medium">No sets created yet</p>
-              <p className="text-sm">Click "Create Set" to add a set with delivery and return dates</p>
+              <p className="text-sm">Click "Create Set" to organize scaffolding items</p>
             </div>
           ) : (
             <div className="space-y-6">
               {uiSets.map((set: UISet, setIndex: number) => (
                 <div key={set.id} className="border-2 rounded-lg overflow-hidden">
                   <div className="bg-gray-50 p-4 border-b">
-                    <div className="flex justify-between items-start gap-4">
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="space-y-2">
-                          <Label>Set Name *</Label>
-                          <Input value={set.setName} onChange={(e) => updateSet(set.id, 'setName', e.target.value)} placeholder="e.g., Phase 1" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Deliver Date *</Label>
-                          <Input type="date" value={set.deliverDate} min={formData.requestedDate} onChange={(e) => updateSet(set.id, 'deliverDate', e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Return Date *</Label>
-                          <Input type="date" value={set.returnDate} min={set.deliverDate} onChange={(e) => updateSet(set.id, 'returnDate', e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Duration</Label>
-                          <div className="h-10 flex items-center">
-                            <Badge variant="secondary" className="text-sm">{calculateDuration(set.deliverDate, set.returnDate)} days</Badge>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1">
+                          <div className="space-y-2">
+                            <Label>Set Name *</Label>
+                            <Input value={set.setName} onChange={(e) => updateSet(set.id, 'setName', e.target.value)} placeholder="e.g., Phase 1" />
                           </div>
                         </div>
+                        <Button variant="ghost" size="sm" onClick={() => removeSet(set.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                          <Trash2 className="size-4" />
+                        </Button>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => removeSet(set.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Required Date *</Label>
+                          <Input type="date" value={set.requiredDate} min={formData.requestedDate} onChange={(e) => updateSet(set.id, 'requiredDate', e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Rental Duration *</Label>
+                          <Select value={set.rentalMonths.toString()} onValueChange={(value) => updateSet(set.id, 'rentalMonths', parseInt(value))}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select rental duration" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {[1, 2, 3, 6, 12, 18, 24].map(months => (
+                                <SelectItem key={months} value={months.toString()}>
+                                  {months} {months === 1 ? 'month' : 'months'} ({months * 30} days)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-gray-500">Minimum rental duration is 1 month (30 days)</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div className="p-4 space-y-4">

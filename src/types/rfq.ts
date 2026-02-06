@@ -10,8 +10,8 @@ export interface RFQItem {
   id: string;
   rfqId?: string;
   setName: string;
-  deliverDate: string;
-  returnDate: string;
+  requiredDate: string;
+  rentalMonths: number;
   scaffoldingItemId: string;
   scaffoldingItemName: string;
   quantity: number;
@@ -37,7 +37,6 @@ export interface RFQ {
   projectName: string;
   projectLocation: string;
   requestedDate: string;
-  requiredDate: string;
   status: 'draft' | 'quoted-for-item' | 'quoted-for-delivery' | 'submitted' | 'approved' | 'rejected' | 'expired';
   items: RFQItem[];
   totalAmount: number;

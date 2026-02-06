@@ -98,13 +98,12 @@ model ContentItem {
 model rFQ {
   id                String            @id @default(cuid())
   rfqNumber         String            @unique
-  customerName      String
-  customerEmail     String
-  customerPhone     String
+  customerName      String            // For display purposes (denormalized)
+  customerEmail     String            // For display purposes (denormalized)
+  customerPhone     String            // For display purposes (denormalized)
   projectName       String
   projectLocation   String
-  requestedDate     DateTime
-  requiredDate      DateTime
+  requestedDate     DateTime          // Always today's date (not editable)
   status            String            @default("draft")
   totalAmount       Decimal           @default(0) @db.Decimal(15, 2)
   notes             String?           @db.LongText
@@ -122,23 +121,22 @@ model rFQItem {
   rfqId                 String
   rfq                   rFQ        @relation(fields: [rfqId], references: [id], onDelete: Cascade)
   setName               String     @default("Set 1")
-  deliverDate           DateTime?
-  returnDate            DateTime?
-  durationDays          Int?       // returnDate - deliverDate (days), set on create/update
+  requiredDate          DateTime   // When this specific set is needed
+  rentalMonths          Int        @default(1) // Rental duration for this set (min 1)
   scaffoldingItemId     String
   scaffoldingItemName   String
   quantity              Int
   unit                  String
   unitPrice             Decimal    @db.Decimal(15, 2)
-  totalPrice            Decimal    @db.Decimal(15, 2)
+  totalPrice            Decimal    @db.Decimal(15, 2) // quantity * unitPrice * rentalMonths * 30
   notes                 String?    @db.Text
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 
-  @@index([rfqId], map: "rFQItem_rfqId_fkey")
+  @@index([rfqId])
+  @@index([scaffoldingItemId])
 }
 
-// Inspection & Maintenance Module - Condition Report
 model ConditionReport {
   id                    String                @id @default(cuid())
   rcfNumber             String                @unique
