@@ -15,16 +15,17 @@ import {
 } from '../ui/select';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
+import { useSession } from 'next-auth/react';
 
-interface Customer {
+interface CustomerSummary {
   id: string;
-  user: {
-    firstName: string | null;
-    lastName: string | null;
-    email: string;
-    phone: string | null;
-  };
-  customerType: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  status: string;
+  roles: string[];
+  userType: 'Internal Staff' | 'Individual Customer' | 'Business Customer';
 }
 
 interface DatabaseScaffoldingItem {
@@ -55,6 +56,7 @@ interface UISet {
 }
 
 export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
+  const { data: session } = useSession();
   const [formData, setFormData] = useState<Omit<RFQ, 'id' | 'rfqNumber' | 'createdAt' | 'updatedAt'>>({
     customerName: '',
     customerEmail: '',
@@ -66,16 +68,17 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     items: [],
     totalAmount: 0,
     notes: '',
-    createdBy: 'Current User',
+    createdBy: session?.user?.id || session?.user?.email || 'Current User',
   });
 
   const [uiSets, setUiSets] = useState<UISet[]>([]);
   const [originalRFQ, setOriginalRFQ] = useState<RFQ | null>(null);
   const [scaffoldingTypes, setScaffoldingTypes] = useState<DatabaseScaffoldingItem[]>([]);
   const [loadingScaffolding, setLoadingScaffolding] = useState(true);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerSummary[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
 
   useEffect(() => {
     const fetchScaffoldingItems = async () => {
@@ -101,10 +104,15 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     const fetchCustomers = async () => {
       try {
         setLoadingCustomers(true);
-        const response = await fetch('/api/customers');
+        const response = await fetch('/api/user-management');
         const result = await response.json();
-        if (result.success && result.data) {
-          setCustomers(result.data);
+        if (result.success && result.users) {
+          const customerUsers = result.users.filter((user: CustomerSummary) =>
+            user.userType === 'Individual Customer' ||
+            user.userType === 'Business Customer' ||
+            user.roles?.includes('customer')
+          );
+          setCustomers(customerUsers);
         } else {
           toast.error('Failed to load customers');
         }
@@ -115,18 +123,18 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
       }
     };
     fetchCustomers();
-  }, []);
+  }, [rfq, session]);
 
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomerId(customerId);
     const customer = customers.find(c => c.id === customerId);
     if (customer) {
-      const fullName = `${customer.user.firstName || ''} ${customer.user.lastName || ''}`.trim() || 'Unknown';
+      const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Unknown';
       setFormData(prev => ({
         ...prev,
         customerName: fullName,
-        customerEmail: customer.user.email,
-        customerPhone: customer.user.phone || '',
+        customerEmail: customer.email,
+        customerPhone: customer.phone || '',
       }));
     }
   };
@@ -166,8 +174,47 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     return items;
   };
 
+  // Auto-populate customer info when session becomes available (for customer users creating new RFQ)
+  useEffect(() => {
+    if (!rfq && !hasAutoPopulated && session?.user && customers.length > 0) {
+      const userRoles = session.user.roles || [];
+      const isCustomer = userRoles.includes('customer');
+      
+      // Only auto-populate if user is a customer and form hasn't been auto-populated yet
+      if (isCustomer) {
+        const currentUserCustomer = customers.find((c: CustomerSummary) =>
+          c.email === session.user.email
+        );
+        
+        if (currentUserCustomer) {
+          const fullName = `${currentUserCustomer.firstName || ''} ${currentUserCustomer.lastName || ''}`.trim() || 'Unknown';
+          setFormData(prev => ({
+            ...prev,
+            customerName: fullName,
+            customerEmail: currentUserCustomer.email,
+            customerPhone: currentUserCustomer.phone || '',
+            createdBy: session.user.id || session.user.email || 'Current User',
+          }));
+          setSelectedCustomerId(currentUserCustomer.id);
+        } else {
+          // If customer record not found but user has customer role, use session data
+          const fullName = `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim() || session.user.email || 'Unknown';
+          setFormData(prev => ({
+            ...prev,
+            customerName: fullName,
+            customerEmail: session.user.email,
+            customerPhone: (session.user as any).phone || '',
+            createdBy: session.user.id || session.user.email || 'Current User',
+          }));
+        }
+        setHasAutoPopulated(true);
+      }
+    }
+  }, [session, customers, rfq, hasAutoPopulated]);
+
   useEffect(() => {
     if (rfq) {
+      setHasAutoPopulated(true); // Prevent auto-population when editing
       setOriginalRFQ(JSON.parse(JSON.stringify(rfq)));
       setFormData({
         customerName: rfq.customerName,
@@ -180,20 +227,23 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         items: rfq.items,
         totalAmount: rfq.totalAmount,
         notes: rfq.notes,
-        createdBy: rfq.createdBy,
+        createdBy: rfq.createdBy || session?.user?.id || session?.user?.email || 'Current User',
       });
       setUiSets(itemsToUiSets(rfq.items || []));
       
       // Set selected customer based on RFQ customer data
-      const customer = customers.find(c => 
-        c.user.email === rfq.customerEmail && 
-        c.user.phone === rfq.customerPhone
+      const customer = customers.find(c =>
+        c.email === rfq.customerEmail &&
+        c.phone === rfq.customerPhone
       );
       if (customer) {
         setSelectedCustomerId(customer.id);
       }
+    } else {
+      // Reset auto-population flag when creating new RFQ
+      setHasAutoPopulated(false);
     }
-  }, [rfq, customers]);
+  }, [rfq, customers, session]);
 
   const addSet = () => {
     const newSet: UISet = {
@@ -237,6 +287,10 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     setUiSets(uiSets.map(set => set.id === setId ? { ...set, items: set.items.filter(item => item.id !== itemId) } : set));
   };
 
+  const getScaffoldingItem = (itemId: string) => {
+    return scaffoldingTypes.find(item => item.id === itemId);
+  };
+
   const updateItemInSet = (setId: string, itemId: string, field: keyof RFQItem, value: any) => {
     setUiSets(uiSets.map(set => {
       if (set.id === setId) {
@@ -246,11 +300,25 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
             if (item.id === itemId) {
               const updated = { ...item, [field]: value };
               if (field === 'scaffoldingItemId') {
-                const scaffoldingItem = scaffoldingTypes.find(s => s.id === value);
+                const scaffoldingItem = getScaffoldingItem(value);
                 if (scaffoldingItem) {
                   updated.scaffoldingItemName = scaffoldingItem.name;
                   updated.unit = 'piece';
                   updated.unitPrice = scaffoldingItem.price;
+                  if (updated.quantity > scaffoldingItem.available) {
+                    updated.quantity = scaffoldingItem.available;
+                    toast.error(`Quantity exceeds available stock (${scaffoldingItem.available}).`);
+                  }
+                }
+              }
+              if (field === 'quantity') {
+                const nextQuantity = Number(value) || 0;
+                const scaffoldingItem = getScaffoldingItem(updated.scaffoldingItemId);
+                if (scaffoldingItem && nextQuantity > scaffoldingItem.available) {
+                  updated.quantity = scaffoldingItem.available;
+                  toast.error(`Quantity exceeds available stock (${scaffoldingItem.available}).`);
+                } else {
+                  updated.quantity = nextQuantity;
                 }
               }
               const durationInDays = set.rentalMonths * 30; // Convert months to days
@@ -305,7 +373,7 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
       type: notificationType,
       message,
       changes,
-      createdBy: 'Current User',
+      createdBy: session?.user?.id || session?.user?.email || 'Current User',
       createdAt: new Date().toISOString(),
       read: false
     };
@@ -331,9 +399,20 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         toast.error(`Set "${set.setName}": Please set the required date`);
         return;
       }
+      if (!set.rentalMonths || set.rentalMonths <= 0) {
+        toast.error(`Set "${set.setName}": Please set a valid rental duration`);
+        return;
+      }
       if (set.items.some(item => !item.scaffoldingItemId || item.quantity <= 0)) {
         toast.error(`Set "${set.setName}": Please complete all item details`);
         return;
+      }
+      for (const item of set.items) {
+        const scaffoldingItem = getScaffoldingItem(item.scaffoldingItemId);
+        if (scaffoldingItem && item.quantity > scaffoldingItem.available) {
+          toast.error(`Set "${set.setName}": "${scaffoldingItem.name}" has only ${scaffoldingItem.available} available.`);
+          return;
+        }
       }
     }
     const isNew = !rfq;
@@ -402,9 +481,9 @@ return (
                 <SelectContent>
                   {customers.map(customer => (
                     <SelectItem key={customer.id} value={customer.id}>
-                      {customer.user.firstName && customer.user.lastName 
-                        ? `${customer.user.firstName} ${customer.user.lastName}`
-                        : customer.user.email
+                      {customer.firstName && customer.lastName
+                        ? `${customer.firstName} ${customer.lastName}`
+                        : customer.email
                       }
                     </SelectItem>
                   ))}

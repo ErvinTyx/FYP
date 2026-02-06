@@ -12,7 +12,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { computeRfqItemDurationAndSubtotal } from '@/lib/term-of-hire';
 
 interface RouteParams {
   params: {
@@ -92,7 +91,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       projectName,
       projectLocation,
       requestedDate,
-      requiredDate,
       status,
       totalAmount,
       notes,
@@ -136,7 +134,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (projectName) updateData.projectName = projectName;
       if (projectLocation !== undefined) updateData.projectLocation = projectLocation;
       if (requestedDate) updateData.requestedDate = new Date(requestedDate);
-      if (requiredDate) updateData.requiredDate = new Date(requiredDate);
       if (status) updateData.status = status;
       if (totalAmount !== undefined) updateData.totalAmount = totalAmount;
       if (notes !== undefined) updateData.notes = notes;
@@ -158,22 +155,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         if (items.length > 0) {
           await tx.rFQItem.createMany({
             data: items.map((item: any) => {
-              const deliverDate = item.deliverDate ? new Date(item.deliverDate) : null;
-              const returnDate = item.returnDate ? new Date(item.returnDate) : null;
-              const totalPrice = item.totalPrice ?? 0;
-              const { durationDays } = computeRfqItemDurationAndSubtotal(deliverDate, returnDate, totalPrice);
               return {
                 rfqId,
                 setName: item.setName || 'Set 1',
-                deliverDate,
-                returnDate,
-                durationDays: durationDays ?? undefined,
+                requiredDate: new Date(item.requiredDate),
+                rentalMonths: item.rentalMonths || 1,
                 scaffoldingItemId: item.scaffoldingItemId || '',
                 scaffoldingItemName: item.scaffoldingItemName || '',
                 quantity: item.quantity || 0,
                 unit: item.unit || '',
                 unitPrice: item.unitPrice || 0,
-                totalPrice,
+                totalPrice: item.totalPrice ?? 0,
                 notes: item.notes || '',
               };
             }),

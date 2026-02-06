@@ -36,8 +36,6 @@ export async function POST(request: NextRequest) {
       projectName,
       projectLocation,
       requestedDate,
-      requiredDate,
-      rentalMonths,
       status,
       totalAmount,
       notes,
@@ -72,17 +70,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate requiredDate >= requestedDate
+    // Validate requestedDate (header only)
     const reqDate = requestedDate ? new Date(requestedDate) : new Date();
-    const reqByDate = requiredDate ? new Date(requiredDate) : new Date();
-    if (reqByDate < reqDate) {
+    if (Number.isNaN(reqDate.getTime())) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Required date must be on or after the requested date',
+          message: 'Invalid requested date',
         },
         { status: 400 }
       );
+    }
+
+    // Validate item requiredDate >= requestedDate
+    if (items && Array.isArray(items) && items.length > 0) {
+      for (const item of items) {
+        if (!item.requiredDate) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: 'Each item must include requiredDate',
+            },
+            { status: 400 }
+          );
+        }
+        const itemRequiredDate = new Date(item.requiredDate);
+        if (Number.isNaN(itemRequiredDate.getTime())) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: 'Invalid item requiredDate',
+            },
+            { status: 400 }
+          );
+        }
+        if (itemRequiredDate < reqDate) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: 'Item requiredDate must be on or after requested date',
+            },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     // Create RFQ with transaction
@@ -99,8 +130,6 @@ export async function POST(request: NextRequest) {
           projectName,
           projectLocation: projectLocation || '',
           requestedDate: reqDate,
-          requiredDate: reqByDate,
-          rentalMonths: rentalMonths || 1,
           status: status || 'draft',
           totalAmount: totalAmount || 0,
           notes: notes || '',
@@ -115,6 +144,8 @@ export async function POST(request: NextRequest) {
             return {
               rfqId: rfq.id,
               setName: item.setName || 'Set 1',
+              requiredDate: new Date(item.requiredDate),
+              rentalMonths: item.rentalMonths || 1,
               scaffoldingItemId: item.scaffoldingItemId || '',
               scaffoldingItemName: item.scaffoldingItemName || '',
               quantity: item.quantity || 0,

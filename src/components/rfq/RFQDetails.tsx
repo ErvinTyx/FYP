@@ -20,6 +20,94 @@ interface RFQDetailsProps {
 }
 
 export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
+  const getEarliestRequiredDate = () => {
+    if (!rfq.items || rfq.items.length === 0) return null;
+    return rfq.items.reduce((earliest, item) => {
+      const itemDate = new Date(item.requiredDate);
+      if (Number.isNaN(itemDate.getTime())) return earliest;
+      const earliestDate = new Date(earliest);
+      return itemDate < earliestDate ? item.requiredDate : earliest;
+    }, rfq.items[0].requiredDate);
+  };
+
+  const earliestRequiredDate = getEarliestRequiredDate();
+  const getSets = () => {
+    const setMap = new Map<string, RFQ['items']>();
+    rfq.items.forEach(item => {
+      const key = item.setName || 'Set 1';
+      if (!setMap.has(key)) {
+        setMap.set(key, []);
+      }
+      setMap.get(key)!.push(item);
+    });
+    return Array.from(setMap.entries());
+  };
+  const buildSetSectionsHtml = () => {
+    if (!rfq.items || rfq.items.length === 0) return '';
+    const setMap = new Map<string, RFQ['items']>();
+    rfq.items.forEach(item => {
+      const key = item.setName || 'Set 1';
+      if (!setMap.has(key)) {
+        setMap.set(key, []);
+      }
+      setMap.get(key)!.push(item);
+    });
+
+    const formatDate = (value?: string) => {
+      if (!value) return '-';
+      const dt = new Date(value);
+      return Number.isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString();
+    };
+
+    return Array.from(setMap.entries()).map(([setName, items]) => {
+      const setRequiredDate = items[0]?.requiredDate;
+      const setRentalMonths = items[0]?.rentalMonths;
+      const setSubtotal = items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+
+      return `
+  <div class="section">
+    <div class="section-title">Set: ${setName}</div>
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">Required Date</div>
+        <div class="info-value">${formatDate(setRequiredDate)}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Rental Duration</div>
+        <div class="info-value">${setRentalMonths || 1} ${setRentalMonths === 1 ? 'month' : 'months'} (${(setRentalMonths || 1) * 30} days)</div>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 50px;">#</th>
+          <th>Item Description</th>
+          <th class="text-right" style="width: 100px;">Quantity</th>
+          <th class="text-right" style="width: 100px;">Unit</th>
+          <th class="text-right" style="width: 120px;">Unit Price (RM)</th>
+          <th class="text-right" style="width: 120px;">Total (RM)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${item.scaffoldingItemName}${item.notes ? `<br><span style="font-size: 12px; color: #6B7280;">${item.notes}</span>` : ''}</td>
+          <td class="text-right">${item.quantity}</td>
+          <td class="text-right">${item.unit}</td>
+          <td class="text-right">${Number(item.unitPrice).toFixed(2)}</td>
+          <td class="text-right">${Number(item.totalPrice).toFixed(2)}</td>
+        </tr>
+        `).join('')}
+        <tr class="total-row">
+          <td colspan="5" class="text-right">Set Subtotal:</td>
+          <td class="text-right">${Number(setSubtotal).toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>`;
+    }).join('');
+  };
   const getStatusColor = (status: RFQ['status']) => {
     const colors = {
       draft: 'bg-gray-100 text-gray-800',
@@ -35,7 +123,13 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
   };
 
   const handleDownloadRFQ = () => {
-    // Same HTML generation logic as in RFQManagement
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Please allow popups to download RFQ');
+      return;
+    }
+
+    const setSectionsHtml = buildSetSectionsHtml();
     const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -203,7 +297,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
       </div>
       <div class="info-item">
         <div class="info-label">Required Date</div>
-        <div class="info-value">${new Date(rfq.requiredDate).toLocaleDateString()}</div>
+        <div class="info-value">${earliestRequiredDate ? new Date(earliestRequiredDate).toLocaleDateString() : '-'}</div>
       </div>
     </div>
     ${rfq.notes ? `
@@ -214,30 +308,10 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
     ` : ''}
   </div>
 
+  ${setSectionsHtml}
   <div class="section">
-    <div class="section-title">Scaffolding Items</div>
     <table>
-      <thead>
-        <tr>
-          <th style="width: 50px;">#</th>
-          <th>Item Description</th>
-          <th class="text-right" style="width: 100px;">Quantity</th>
-          <th class="text-right" style="width: 100px;">Unit</th>
-          <th class="text-right" style="width: 120px;">Unit Price (RM)</th>
-          <th class="text-right" style="width: 120px;">Total (RM)</th>
-        </tr>
-      </thead>
       <tbody>
-        ${rfq.items.map((item, index) => `
-        <tr>
-          <td>${index + 1}</td>
-          <td>${item.scaffoldingItemName}${item.notes ? `<br><span style="font-size: 12px; color: #6B7280;">${item.notes}</span>` : ''}</td>
-          <td class="text-right">${item.quantity}</td>
-          <td class="text-right">${item.unit}</td>
-          <td class="text-right">${Number(item.unitPrice).toFixed(2)}</td>
-          <td class="text-right">${Number(item.totalPrice).toFixed(2)}</td>
-        </tr>
-        `).join('')}
         <tr class="total-row">
           <td colspan="5" class="text-right">Total Amount:</td>
           <td class="text-right total-amount">RM ${Number(rfq.totalAmount).toFixed(2)}</td>
@@ -275,18 +349,15 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
 </html>
     `;
 
-    // Create blob and download
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${rfq.rfqNumber}_${rfq.customerName.replace(/\s+/g, '_')}.html`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    toast.success('RFQ document downloaded successfully');
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+
+    // Wait for content to load, then trigger print dialog
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+
+    toast.success('Print dialog opened - You can save as PDF from the print dialog');
   };
 
   return (
@@ -394,7 +465,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
               <div>
                 <p className="text-sm text-gray-500">Required Date</p>
                 <p className="text-[#231F20]">
-                  {new Date(rfq.requiredDate).toLocaleDateString()}
+                  {earliestRequiredDate ? new Date(earliestRequiredDate).toLocaleDateString() : '-'}
                 </p>
               </div>
             </div>
@@ -408,61 +479,92 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
         </CardContent>
       </Card>
 
-      {/* Items */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Scaffolding Items</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">#</TableHead>
-                  <TableHead>Item Description</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Unit</TableHead>
-                  <TableHead className="text-right">Unit Price (RM)</TableHead>
-                  <TableHead className="text-right">Total Price (RM)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rfq.items.map((item, index) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="text-[#231F20]">{item.scaffoldingItemName}</p>
-                        {item.notes && (
-                          <p className="text-sm text-gray-500 mt-1">{item.notes}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">{item.quantity}</TableCell>
-                    <TableCell className="text-right">{item.unit}</TableCell>
-                    <TableCell className="text-right">
-                      {Number(item.unitPrice).toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {Number(item.totalPrice).toFixed(2)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                <TableRow>
-                  <TableCell colSpan={5} className="text-right">
-                    <span className="text-[#231F20]">Total Amount:</span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className="text-[#231F20]">
-                      RM {Number(rfq.totalAmount).toFixed(2)}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Sets and Items */}
+      <div className="space-y-6">
+        {getSets().map(([setName, items]) => {
+          const setRequiredDate = items[0]?.requiredDate;
+          const setRentalMonths = items[0]?.rentalMonths || 1;
+          const setSubtotal = items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+          return (
+            <Card key={setName}>
+              <CardHeader>
+                <CardTitle>Set: {setName}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Required Date</p>
+                    <p className="text-[#231F20]">
+                      {setRequiredDate ? new Date(setRequiredDate).toLocaleDateString() : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Rental Duration</p>
+                    <p className="text-[#231F20]">
+                      {setRentalMonths} {setRentalMonths === 1 ? 'month' : 'months'} ({setRentalMonths * 30} days)
+                    </p>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead>Item Description</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">Unit</TableHead>
+                        <TableHead className="text-right">Unit Price (RM)</TableHead>
+                        <TableHead className="text-right">Total Price (RM)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((item, index) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{index + 1}</TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="text-[#231F20]">{item.scaffoldingItemName}</p>
+                              {item.notes && (
+                                <p className="text-sm text-gray-500 mt-1">{item.notes}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">{item.quantity}</TableCell>
+                          <TableCell className="text-right">{item.unit}</TableCell>
+                          <TableCell className="text-right">
+                            {Number(item.unitPrice).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {Number(item.totalPrice).toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-right">
+                          <span className="text-[#231F20]">Set Subtotal:</span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className="text-[#231F20]">
+                            RM {Number(setSubtotal).toFixed(2)}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        <Card>
+          <CardHeader>
+            <CardTitle>Total Amount</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-[#231F20]">RM {Number(rfq.totalAmount).toFixed(2)}</p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Metadata */}
       <Card>

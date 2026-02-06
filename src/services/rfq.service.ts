@@ -20,7 +20,6 @@ export interface CreateRFQPayload {
   projectName: string;
   projectLocation: string;
   requestedDate: string;
-  requiredDate: string;
   status: string;
   totalAmount: number;
   notes?: string;
@@ -29,6 +28,9 @@ export interface CreateRFQPayload {
 }
 
 export interface CreateRFQItemPayload {
+  setName: string;
+  requiredDate: string;
+  rentalMonths: number;
   scaffoldingItemId: string;
   scaffoldingItemName: string;
   quantity: number;
@@ -66,7 +68,6 @@ export async function createRFQ(payload: CreateRFQPayload): Promise<any> {
         projectName: payload.projectName,
         projectLocation: payload.projectLocation,
         requestedDate: new Date(payload.requestedDate),
-        requiredDate: new Date(payload.requiredDate),
         status: payload.status || 'draft',
         totalAmount: payload.totalAmount,
         notes: payload.notes || '',
@@ -78,6 +79,9 @@ export async function createRFQ(payload: CreateRFQPayload): Promise<any> {
     if (payload.items && payload.items.length > 0) {
       const itemsData = payload.items.map((item) => ({
         rfqId: rfq.id,
+        setName: item.setName || 'Set 1',
+        requiredDate: new Date(item.requiredDate),
+        rentalMonths: item.rentalMonths || 1,
         scaffoldingItemId: item.scaffoldingItemId,
         scaffoldingItemName: item.scaffoldingItemName,
         quantity: item.quantity,
@@ -183,6 +187,9 @@ export async function updateRFQ(payload: UpdateRFQPayload): Promise<any> {
       // Create new items
       const itemsData = payload.items.map((item) => ({
         rfqId: payload.rfqId,
+        setName: item.setName || 'Set 1',
+        requiredDate: new Date(item.requiredDate),
+        rentalMonths: item.rentalMonths || 1,
         scaffoldingItemId: item.scaffoldingItemId,
         scaffoldingItemName: item.scaffoldingItemName,
         quantity: item.quantity,

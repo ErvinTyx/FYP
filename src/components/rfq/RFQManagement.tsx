@@ -43,6 +43,83 @@ export function RFQManagement() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rfqToReject, setRfqToReject] = useState<string | null>(null);
 
+  const getEarliestRequiredDate = (rfq: RFQ) => {
+    if (!rfq.items || rfq.items.length === 0) return null;
+    return rfq.items.reduce((earliest, item) => {
+      const itemDate = new Date(item.requiredDate);
+      if (Number.isNaN(itemDate.getTime())) return earliest;
+      const earliestDate = new Date(earliest);
+      return itemDate < earliestDate ? item.requiredDate : earliest;
+    }, rfq.items[0].requiredDate);
+  };
+
+  const buildSetSectionsHtml = (rfq: RFQ) => {
+    if (!rfq.items || rfq.items.length === 0) return '';
+    const setMap = new Map<string, RFQ['items']>();
+    rfq.items.forEach(item => {
+      const key = item.setName || 'Set 1';
+      if (!setMap.has(key)) {
+        setMap.set(key, []);
+      }
+      setMap.get(key)!.push(item);
+    });
+
+    const formatDate = (value?: string) => {
+      if (!value) return '-';
+      const dt = new Date(value);
+      return Number.isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString();
+    };
+
+    return Array.from(setMap.entries()).map(([setName, items]) => {
+      const setRequiredDate = items[0]?.requiredDate;
+      const setRentalMonths = items[0]?.rentalMonths;
+      const setSubtotal = items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0);
+
+      return `
+  <div class="section">
+    <div class="section-title">Set: ${setName}</div>
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">Required Date</div>
+        <div class="info-value">${formatDate(setRequiredDate)}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Rental Duration</div>
+        <div class="info-value">${setRentalMonths || 1} ${setRentalMonths === 1 ? 'month' : 'months'} (${(setRentalMonths || 1) * 30} days)</div>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 50px;">#</th>
+          <th>Item Description</th>
+          <th class="text-right" style="width: 100px;">Quantity</th>
+          <th class="text-right" style="width: 100px;">Unit</th>
+          <th class="text-right" style="width: 120px;">Unit Price (RM)</th>
+          <th class="text-right" style="width: 120px;">Total (RM)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${item.scaffoldingItemName}${item.notes ? `<br><span style="font-size: 12px; color: #6B7280;">${item.notes}</span>` : ''}</td>
+          <td class="text-right">${item.quantity}</td>
+          <td class="text-right">${item.unit}</td>
+          <td class="text-right">${Number(item.unitPrice).toFixed(2)}</td>
+          <td class="text-right">${Number(item.totalPrice).toFixed(2)}</td>
+        </tr>
+        `).join('')}
+        <tr class="total-row">
+          <td colspan="5" class="text-right">Set Subtotal:</td>
+          <td class="text-right">${Number(setSubtotal).toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>`;
+    }).join('');
+  };
+
   // Load RFQs from API (and fallback to localStorage)
   useEffect(() => {
     const loadRFQs = async () => {
@@ -169,6 +246,8 @@ export function RFQManagement() {
     }
 
     // Generate HTML content for the RFQ
+    const earliestRequiredDate = getEarliestRequiredDate(rfq);
+    const setSectionsHtml = buildSetSectionsHtml(rfq);
     const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -336,7 +415,7 @@ export function RFQManagement() {
       </div>
       <div class="info-item">
         <div class="info-label">Required Date</div>
-        <div class="info-value">${new Date(rfq.requiredDate).toLocaleDateString()}</div>
+        <div class="info-value">${earliestRequiredDate ? new Date(earliestRequiredDate).toLocaleDateString() : '-'}</div>
       </div>
     </div>
     ${rfq.notes ? `
@@ -347,30 +426,10 @@ export function RFQManagement() {
     ` : ''}
   </div>
 
+  ${setSectionsHtml}
   <div class="section">
-    <div class="section-title">Scaffolding Items</div>
     <table>
-      <thead>
-        <tr>
-          <th style="width: 50px;">#</th>
-          <th>Item Description</th>
-          <th class="text-right" style="width: 100px;">Quantity</th>
-          <th class="text-right" style="width: 100px;">Unit</th>
-          <th class="text-right" style="width: 120px;">Unit Price (RM)</th>
-          <th class="text-right" style="width: 120px;">Total (RM)</th>
-        </tr>
-      </thead>
       <tbody>
-        ${rfq.items.map((item, index) => `
-        <tr>
-          <td>${index + 1}</td>
-          <td>${item.scaffoldingItemName}${item.notes ? `<br><span style="font-size: 12px; color: #6B7280;">${item.notes}</span>` : ''}</td>
-          <td class="text-right">${item.quantity}</td>
-          <td class="text-right">${item.unit}</td>
-          <td class="text-right">${Number(item.unitPrice).toFixed(2)}</td>
-          <td class="text-right">${Number(item.totalPrice).toFixed(2)}</td>
-        </tr>
-        `).join('')}
         <tr class="total-row">
           <td colspan="5" class="text-right">Total Amount:</td>
           <td class="text-right total-amount">RM ${Number(rfq.totalAmount).toFixed(2)}</td>
@@ -679,7 +738,11 @@ export function RFQManagement() {
                         <Calendar className="size-4 text-gray-400" />
                         <div>
                           <p className="text-gray-500">Required Date</p>
-                          <p className="text-[#231F20]">{new Date(rfq.requiredDate).toLocaleDateString()}</p>
+                          <p className="text-[#231F20]">
+                            {getEarliestRequiredDate(rfq)
+                              ? new Date(getEarliestRequiredDate(rfq) as string).toLocaleDateString()
+                              : '-'}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
