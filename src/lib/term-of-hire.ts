@@ -18,33 +18,32 @@ export function computeRfqItemDurationAndSubtotal(
 }
 
 /**
- * Compute termOfHire from rFQItem (same rfqId): earliest deliverDate to latest returnDate.
- * Returns e.g. "180 days (15 Jan 2026 - 14 Jul 2026)" or null if no items with both dates.
+ * Compute termOfHire from rFQItem (same rfqId): sum of rentalMonths once per set (group by setName).
+ * Each set contributes its rental duration once; multiple items in the same set are not double-counted.
+ * Returns e.g. "9 months (270 days)" or null if no items.
  */
 export async function computeTermOfHireFromRfqItems(
   prisma: PrismaClient,
   rfqId: string
 ): Promise<string | null> {
-  type Row = { deliverDate: Date | null; returnDate: Date | null };
+  type Row = { setName: string; rentalMonths: number };
   const rows = await prisma.rFQItem.findMany({
     where: { rfqId },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma client may be out of sync; schema has deliverDate/returnDate on rFQItem
-    select: { deliverDate: true, returnDate: true } as any,
+    select: { setName: true, rentalMonths: true } as { setName: true; rentalMonths: true },
   });
   const items = rows as unknown as Row[];
-  const itemsWithDates = items.filter((d) => d.deliverDate != null && d.returnDate != null);
-  if (itemsWithDates.length === 0) return null;
-  const deliverDates = itemsWithDates.map((d) => d.deliverDate!).filter((d): d is Date => d != null);
-  const returnDates = itemsWithDates.map((d) => d.returnDate!).filter((d): d is Date => d != null);
-  if (deliverDates.length === 0 || returnDates.length === 0) return null;
-  const minDeliver = new Date(Math.min(...deliverDates.map((d) => d.getTime())));
-  const maxReturn = new Date(Math.max(...returnDates.map((d) => d.getTime())));
-  const totalDays = Math.ceil((maxReturn.getTime() - minDeliver.getTime()) / (24 * 60 * 60 * 1000));
-  if (totalDays < 0) return null;
-  const days = Math.max(1, totalDays);
-  const fmt = (d: Date) =>
-    d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ');
-  return `${days} day${days !== 1 ? 's' : ''} (${fmt(minDeliver)} - ${fmt(maxReturn)})`;
+  if (items.length === 0) return null;
+  const monthsBySet = new Map<string, number>();
+  for (const row of items) {
+    const name = row.setName ?? 'Set 1';
+    if (!monthsBySet.has(name)) {
+      monthsBySet.set(name, row.rentalMonths ?? 0);
+    }
+  }
+  const totalMonths = [...monthsBySet.values()].reduce((a, b) => a + b, 0);
+  if (totalMonths < 1) return null;
+  const days = totalMonths * 30;
+  return `${totalMonths} ${totalMonths === 1 ? 'month' : 'months'} (${days} days)`;
 }
 
 /**

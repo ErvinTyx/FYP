@@ -46,7 +46,6 @@ function buildAgreementSnapshot(agreement: {
   hirerPhone: string | null;
   location: string | null;
   termOfHire: string | null;
-  transportation: string | null;
   monthlyRental: unknown;
   securityDeposit: unknown;
   minimumCharges: unknown;
@@ -70,7 +69,6 @@ function buildAgreementSnapshot(agreement: {
     hirerPhone: agreement.hirerPhone,
     location: agreement.location,
     termOfHire: agreement.termOfHire,
-    transportation: agreement.transportation,
     monthlyRental: Number(agreement.monthlyRental),
     securityDeposit: Number(agreement.securityDeposit),
     minimumCharges: Number(agreement.minimumCharges),
@@ -259,10 +257,9 @@ export async function GET(request: NextRequest) {
         ownerPhone: agreement.ownerPhone,
         hirer: agreement.hirer,
         hirerPhone: agreement.hirerPhone,
-        location: agreement.location,
-        termOfHire: agreement.termOfHire,
-        transportation: agreement.transportation,
-        monthlyRental: Number(agreement.monthlyRental),
+      location: agreement.location,
+      termOfHire: agreement.termOfHire,
+      monthlyRental: Number(agreement.monthlyRental),
         securityDeposit: Number(agreement.securityDeposit),
         minimumCharges: Number(agreement.minimumCharges),
         defaultInterest: Number(agreement.defaultInterest),
@@ -336,7 +333,6 @@ export async function POST(request: NextRequest) {
       hirerPhone,
       location,
       termOfHire,
-      transportation,
       monthlyRental,
       securityDeposit,
       minimumCharges,
@@ -409,7 +405,6 @@ export async function POST(request: NextRequest) {
         hirerPhone: hirerPhone || null,
         location: location || null,
         termOfHire: resolvedTermOfHire,
-        transportation: transportation || null,
         monthlyRental: monthlyRental || 0,
         securityDeposit: securityDeposit || 0,
         minimumCharges: minimumCharges || 0,
@@ -438,7 +433,6 @@ export async function POST(request: NextRequest) {
               hirerPhone: hirerPhone || null,
               location: location || null,
               termOfHire: resolvedTermOfHire,
-              transportation: transportation || null,
               monthlyRental: monthlyRental || 0,
               securityDeposit: securityDeposit || 0,
               minimumCharges: minimumCharges || 0,
@@ -541,7 +535,7 @@ export async function PUT(request: NextRequest) {
     // Only scalar fields allowed for update (exclude relations and read-only fields from body)
     const scalarFields = [
       'agreementNumber', 'poNumber', 'projectName', 'owner', 'ownerPhone', 'hirer', 'hirerPhone',
-      'location', 'termOfHire', 'transportation', 'monthlyRental', 'securityDeposit', 'minimumCharges',
+      'location', 'termOfHire', 'monthlyRental', 'securityDeposit', 'minimumCharges',
       'defaultInterest', 'ownerSignatoryName', 'ownerNRIC', 'hirerSignatoryName', 'hirerNRIC',
       'ownerSignature', 'hirerSignature', 'ownerSignatureDate', 'hirerSignatureDate',
       'signedDocumentUrl', 'signedDocumentUploadedAt', 'signedDocumentUploadedBy', 'signedStatus', 'status', 'createdBy',
@@ -574,14 +568,17 @@ export async function PUT(request: NextRequest) {
       // ignore
     }
 
-    // Check if this update includes a signed document upload (new document being added)
-    const isNewDocumentUpload =
+    // Whenever the request includes a non-empty signed document URL, set signedStatus so the agreement appears on Project Closure
+    const hasSignedDocumentUrl =
       dataForUpdate.signedDocumentUrl != null &&
-      !existingAgreement.signedDocumentUrl;
-
-    if (isNewDocumentUpload) {
+      String(dataForUpdate.signedDocumentUrl).trim() !== '';
+    if (hasSignedDocumentUrl) {
       dataForUpdate.signedStatus = 'completed';
     }
+
+    const isNewDocumentUpload =
+      hasSignedDocumentUrl &&
+      !existingAgreement.signedDocumentUrl;
 
     // Save snapshot of current state into the current version (so v1 stays v1 after edit)
     const snapshot = buildAgreementSnapshot(existingAgreement);

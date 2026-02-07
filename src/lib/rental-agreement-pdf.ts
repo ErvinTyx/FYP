@@ -23,7 +23,6 @@ export interface RentalAgreementForPDF {
   hirerPhone?: string | null;
   location?: string | null;
   termOfHire?: string | null;
-  transportation?: string | null;
   monthlyRental: number;
   securityDeposit: number;
   minimumCharges: number;
@@ -110,7 +109,7 @@ export function generateRentalAgreementPdf(agreement: RentalAgreementForPDF): js
   doc.text(`Tel : ${agreement.hirerPhone || '-'}`, MARGIN + colW + 3, y + 30, { maxWidth: colW - 6 });
   y += ownerHirerH + 8;
 
-  // ----- Agreement specifics (no border; Location, Project, Transportation values in bold, origin order) -----
+  // ----- Agreement specifics (no border; Location, Project values in bold, origin order) -----
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text(`Rental Agreement No.: ${agreement.agreementNumber}`, MARGIN, y);
@@ -132,46 +131,45 @@ export function generateRentalAgreementPdf(agreement: RentalAgreementForPDF): js
   doc.setFont('helvetica', 'bold');
   doc.text(agreement.projectName || '-', projX, y, { maxWidth: CONTENT_W - (projX - MARGIN) });
   doc.setFont('helvetica', 'normal');
-  y += 6;
-  doc.text('Transportation: ', MARGIN, y);
-  const transX = MARGIN + doc.getTextDimensions('Transportation: ').w;
-  doc.setFont('helvetica', 'bold');
-  doc.text(agreement.transportation || '-', transX, y, { maxWidth: CONTENT_W - (transX - MARGIN) });
-  doc.setFont('helvetica', 'normal');
   y += 8;
 
   // ----- Financial + Signatory combined (one two-column bordered block, like origin) -----
-  const combinedH = 36;
+  const row1Y = y + 6;
+  const row2Y = y + 16;
+  const row3Y = y + 26;
+  const row4Y = y + 36;
+  const combinedH = 44;
   doc.rect(MARGIN, y, CONTENT_W, combinedH);
   doc.line(MARGIN + colW, y, MARGIN + colW, y + combinedH);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
+  const monthlyRentalFormatted = `RM ${Number(agreement.monthlyRental).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   doc.text(
-    'Monthly Rental: Ringgit Malaysia / As per Tax Invoice billing in the early of every month',
+    `Monthly Rental: ${monthlyRentalFormatted} As per Tax Invoice billing in the early of every month`,
     MARGIN + 3,
-    y + 6,
+    row1Y,
     { maxWidth: colW - 6 }
   );
-  doc.text(`Security Deposit: ${agreement.securityDeposit} MONTH`, MARGIN + colW + 3, y + 6, {
+  doc.text(`Security Deposit: ${agreement.securityDeposit} MONTH`, MARGIN + colW + 3, row1Y, {
     maxWidth: colW - 6,
   });
   doc.text(
     `Minimum Charges: (${agreement.minimumCharges}) ${numberToWord(Number(agreement.minimumCharges))} months`,
     MARGIN + 3,
-    y + 14,
+    row2Y,
     { maxWidth: colW - 6 }
   );
-  doc.text(`Default Interest: ${agreement.defaultInterest}% per month`, MARGIN + colW + 3, y + 14, {
+  doc.text(`Default Interest: ${agreement.defaultInterest}% per month`, MARGIN + colW + 3, row2Y, {
     maxWidth: colW - 6,
   });
-  doc.text(`Name of Owner Signatory: ${agreement.ownerSignatoryName || ''}`, MARGIN + 3, y + 22, {
+  doc.text(`Name of Owner Signatory: ${agreement.ownerSignatoryName || ''}`, MARGIN + 3, row3Y, {
     maxWidth: colW - 6,
   });
-  doc.text(`Name of Hirer Signatory: ${agreement.hirerSignatoryName || ''}`, MARGIN + colW + 3, y + 22, {
+  doc.text(`Name of Hirer Signatory: ${agreement.hirerSignatoryName || ''}`, MARGIN + colW + 3, row3Y, {
     maxWidth: colW - 6,
   });
-  doc.text(`NRIC No: ${agreement.ownerNRIC || ''}`, MARGIN + 3, y + 30, { maxWidth: colW - 6 });
-  doc.text(`NRIC No: ${agreement.hirerNRIC || ''}`, MARGIN + colW + 3, y + 30, { maxWidth: colW - 6 });
+  doc.text(`NRIC No: ${agreement.ownerNRIC || ''}`, MARGIN + 3, row4Y, { maxWidth: colW - 6 });
+  doc.text(`NRIC No: ${agreement.hirerNRIC || ''}`, MARGIN + colW + 3, row4Y, { maxWidth: colW - 6 });
   y += combinedH + 8;
 
   // ----- Acknowledgement (bold: Integral, binding Owner, Owner) -----

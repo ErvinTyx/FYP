@@ -79,6 +79,8 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
+  /** While user is typing rental duration, hold the raw string; on blur we commit a number (min 1). */
+  const [rentalDurationEditing, setRentalDurationEditing] = useState<{ setId: string; value: string } | null>(null);
 
   useEffect(() => {
     const fetchScaffoldingItems = async () => {
@@ -569,20 +571,28 @@ return (
                           <Input type="date" value={set.requiredDate} min={formData.requestedDate} onChange={(e) => updateSet(set.id, 'requiredDate', e.target.value)} />
                         </div>
                         <div className="space-y-2">
-                          <Label>Rental Duration *</Label>
-                          <Select value={set.rentalMonths.toString()} onValueChange={(value) => updateSet(set.id, 'rentalMonths', parseInt(value))}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select rental duration" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {[1, 2, 3, 6, 12, 18, 24].map(months => (
-                                <SelectItem key={months} value={months.toString()}>
-                                  {months} {months === 1 ? 'month' : 'months'} ({months * 30} days)
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-gray-500">Minimum rental duration is 1 month (30 days)</p>
+                          <Label>Rental Duration (month) *</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={rentalDurationEditing?.setId === set.id ? rentalDurationEditing.value : String(set.rentalMonths)}
+                            onFocus={() => setRentalDurationEditing({ setId: set.id, value: String(set.rentalMonths) })}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (rentalDurationEditing?.setId === set.id) {
+                                setRentalDurationEditing({ setId: set.id, value: raw });
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const raw = e.target.value.trim();
+                              const num = parseInt(raw, 10);
+                              const committed = raw === '' || Number.isNaN(num) ? 1 : Math.max(1, num);
+                              updateSet(set.id, 'rentalMonths', committed);
+                              setRentalDurationEditing(null);
+                            }}
+                            placeholder="e.g. 1"
+                          />
+                          <p className="text-xs text-gray-500">Minimum rental duration is 1 month (30 days).</p>
                         </div>
                       </div>
                     </div>

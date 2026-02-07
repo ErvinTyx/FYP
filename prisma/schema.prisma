@@ -357,7 +357,6 @@ model RentalAgreement {
   hirerPhone               String?
   location                 String?
   termOfHire               String?
-  transportation           String?
   monthlyRental            Decimal   @default(0)
   securityDeposit          Decimal   @default(0)
   minimumCharges           Decimal   @default(0)
@@ -783,6 +782,7 @@ model ScaffoldingDamageRepair {
   description           String         @db.Text
   repairChargePerUnit   Decimal        @default(0) @db.Decimal(10, 2)
   partsLabourCostPerUnit Decimal       @default(0) @db.Decimal(10, 2)
+  costPerUnit           Decimal        @default(0) @db.Decimal(10, 2) // Whichever of repairChargePerUnit or partsLabourCostPerUnit is non-zero, for easier retrieval
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 

@@ -47,8 +47,9 @@ export async function GET() {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
 
+    // Only agreements with signedStatus 'completed' appear (match common casings for DB compatibility)
     const agreements = await prisma.rentalAgreement.findMany({
-      where: { signedStatus: 'completed' },
+      where: { signedStatus: { in: ['completed', 'Completed', 'COMPLETED'] } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -130,22 +131,21 @@ export async function GET() {
       if (status) additionalChargeStatusByAgreementNo.set(agreementNo, status);
     }
 
-    // Earliest deliverDate per rfqId (from rFQItem) for Rental Start Date
+    // Earliest requiredDate per rfqId (from rFQItem) for Rental Start Date
     const agreementsWithRfq = agreements as Array<(typeof agreements)[0] & { rfqId?: string | null }>;
     const rfqIds = [...new Set(agreementsWithRfq.map((a) => a.rfqId).filter(Boolean))] as string[];
     const minDeliverByRfqId = new Map<string, Date>();
     if (rfqIds.length > 0) {
       const items = await prisma.rFQItem.findMany({
         where: { rfqId: { in: rfqIds } },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma client may be out of sync; schema has deliverDate on rFQItem
-        select: { rfqId: true, deliverDate: true } as any,
+        select: { rfqId: true, requiredDate: true } as { rfqId: true; requiredDate: true },
       });
-      const itemsTyped = items as unknown as { rfqId: string; deliverDate: Date | null }[];
-      for (const item of itemsTyped) {
-        if (item.deliverDate == null) continue;
+      for (const item of items) {
+        const d = (item as { rfqId: string; requiredDate: Date }).requiredDate;
+        if (d == null) continue;
         const existing = minDeliverByRfqId.get(item.rfqId);
-        if (existing == null || item.deliverDate.getTime() < existing.getTime()) {
-          minDeliverByRfqId.set(item.rfqId, item.deliverDate);
+        if (existing == null || d.getTime() < existing.getTime()) {
+          minDeliverByRfqId.set(item.rfqId, d);
         }
       }
     }
@@ -225,9 +225,10 @@ export async function POST(request: NextRequest) {
     if (!agreement) {
       return NextResponse.json({ success: false, message: 'Agreement not found' }, { status: 404 });
     }
-    if (agreement.signedStatus !== 'completed') {
+    const signedOk = agreement.signedStatus && ['completed', 'Completed', 'COMPLETED'].includes(agreement.signedStatus);
+    if (!signedOk) {
       return NextResponse.json(
-        { success: false, message: 'Only signed agreements can have a closure request' },
+        { success: false, message: 'Only signed agreements (signedStatus completed) can have a closure request' },
         { status: 400 }
       );
     }

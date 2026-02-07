@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import {
   FileX,
   Filter,
@@ -173,6 +174,7 @@ function rowToClosureRequest(row: ProjectClosureRow): ClosureRequest {
 }
 
 export function ProjectClosureManagement() {
+  const { status: sessionStatus } = useSession();
   const [requests, setRequests] = useState<ClosureRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -185,7 +187,13 @@ export function ProjectClosureManagement() {
     try {
       setLoading(true);
       const res = await fetch("/api/project-closure-requests");
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.message || (res.status === 403 ? "You don't have permission to view project closure." : res.status === 401 ? "Please sign in again." : "Failed to load project closure list.");
+        toast.error(msg);
+        setRequests([]);
+        return;
+      }
       if (data.success && Array.isArray(data.data)) {
         setRequests((data.data as ProjectClosureRow[]).map(rowToClosureRequest));
       } else {
@@ -200,9 +208,19 @@ export function ProjectClosureManagement() {
     }
   }, []);
 
+  // Only fetch once session is ready to avoid "Failed to fetch" race with NextAuth
   useEffect(() => {
+    if (sessionStatus === "loading") {
+      setLoading(true);
+      return;
+    }
+    if (sessionStatus !== "authenticated") {
+      setLoading(false);
+      setRequests([]);
+      return;
+    }
     fetchClosureList();
-  }, [fetchClosureList]);
+  }, [sessionStatus, fetchClosureList]);
 
   // Filter requests
   const filteredRequests = requests.filter((request) => {

@@ -145,9 +145,14 @@ export function ScaffoldingManagement() {
   const updateDamageRepairEntry = (index: number, field: keyof DamageRepairEntry, value: string | number) => {
     setFormData(prev => ({
       ...prev,
-      damageRepairs: prev.damageRepairs.map((entry, i) =>
-        i === index ? { ...entry, [field]: value } : entry
-      ),
+      damageRepairs: prev.damageRepairs.map((entry, i) => {
+        if (i !== index) return entry;
+        const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+        const next = { ...entry, [field]: value };
+        if (field === 'repairChargePerUnit' && numValue > 0) next.partsLabourCostPerUnit = 0;
+        if (field === 'partsLabourCostPerUnit' && numValue > 0) next.repairChargePerUnit = 0;
+        return next;
+      }),
     }));
   };
 
@@ -161,6 +166,13 @@ export function ScaffoldingManagement() {
   const handleAddItem = async () => {
     if (!formData.name || !formData.category || !formData.location) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+    const hasBothFilled = (formData.damageRepairs ?? []).some(
+      e => (Number(e.repairChargePerUnit) || 0) > 0 && (Number(e.partsLabourCostPerUnit) || 0) > 0
+    );
+    if (hasBothFilled) {
+      toast.error("Each damage entry may have either Repair Charge Per Unit or Parts & Labour Cost Per Unit, not both.");
       return;
     }
 
@@ -180,6 +192,7 @@ export function ScaffoldingManagement() {
           location: formData.location,
           itemStatus: formData.itemStatus,
           imageUrl: formData.imageUrl,
+          damageRepairs: formData.damageRepairs,
         }),
       });
 
@@ -226,6 +239,13 @@ export function ScaffoldingManagement() {
   const handleUpdateItem = async () => {
     if (!selectedItem || !formData.name || !formData.category || !formData.location) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+    const hasBothFilled = (formData.damageRepairs ?? []).some(
+      e => (Number(e.repairChargePerUnit) || 0) > 0 && (Number(e.partsLabourCostPerUnit) || 0) > 0
+    );
+    if (hasBothFilled) {
+      toast.error("Each damage entry may have either Repair Charge Per Unit or Parts & Labour Cost Per Unit, not both.");
       return;
     }
 

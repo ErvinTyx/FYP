@@ -5,6 +5,11 @@ import prisma from '@/lib/prisma';
 // Roles allowed to manage scaffolding items
 const ALLOWED_ROLES = ['super_user', 'admin', 'operations', 'production'];
 
+/** Single non-zero cost per unit: repairChargePerUnit or partsLabourCostPerUnit (or 0 if both 0). */
+function damageRepairCostPerUnit(repair: number, partsLabour: number): number {
+  return repair !== 0 ? repair : partsLabour;
+}
+
 /**
  * GET /api/scaffolding
  * List all scaffolding items with optional filters
@@ -78,6 +83,7 @@ export async function GET(request: NextRequest) {
             description: dr.description,
             repairChargePerUnit: Number(dr.repairChargePerUnit),
             partsLabourCostPerUnit: Number(dr.partsLabourCostPerUnit),
+            costPerUnit: Number(dr.costPerUnit),
           }))
         : undefined,
       createdAt: item.createdAt.toISOString(),
@@ -170,11 +176,16 @@ export async function POST(request: NextRequest) {
         imageUrl,
         damageRepairs: Array.isArray(damageRepairs) && damageRepairs.length > 0
           ? {
-              create: damageRepairs.map((dr: { description?: string; repairChargePerUnit?: number; partsLabourCostPerUnit?: number }) => ({
-                description: dr.description ?? '',
-                repairChargePerUnit: dr.repairChargePerUnit ?? 0,
-                partsLabourCostPerUnit: dr.partsLabourCostPerUnit ?? 0,
-              })),
+              create: damageRepairs.map((dr: { description?: string; repairChargePerUnit?: number; partsLabourCostPerUnit?: number }) => {
+                const repair = dr.repairChargePerUnit ?? 0;
+                const partsLabour = dr.partsLabourCostPerUnit ?? 0;
+                return {
+                  description: dr.description ?? '',
+                  repairChargePerUnit: repair,
+                  partsLabourCostPerUnit: partsLabour,
+                  costPerUnit: damageRepairCostPerUnit(repair, partsLabour),
+                };
+              }),
             }
           : undefined,
       },
@@ -203,6 +214,7 @@ export async function POST(request: NextRequest) {
               description: dr.description,
               repairChargePerUnit: Number(dr.repairChargePerUnit),
               partsLabourCostPerUnit: Number(dr.partsLabourCostPerUnit),
+              costPerUnit: Number(dr.costPerUnit),
             }))
           : undefined,
       },
@@ -294,11 +306,16 @@ export async function PUT(request: NextRequest) {
           imageUrl: imageUrl !== undefined ? imageUrl : existingItem.imageUrl,
           ...(damageRepairsArray.length > 0 && {
             damageRepairs: {
-              create: damageRepairsArray.map((dr: { description?: string; repairChargePerUnit?: number; partsLabourCostPerUnit?: number }) => ({
-                description: dr.description ?? '',
-                repairChargePerUnit: dr.repairChargePerUnit ?? 0,
-                partsLabourCostPerUnit: dr.partsLabourCostPerUnit ?? 0,
-              })),
+              create: damageRepairsArray.map((dr: { description?: string; repairChargePerUnit?: number; partsLabourCostPerUnit?: number }) => {
+                const repair = dr.repairChargePerUnit ?? 0;
+                const partsLabour = dr.partsLabourCostPerUnit ?? 0;
+                return {
+                  description: dr.description ?? '',
+                  repairChargePerUnit: repair,
+                  partsLabourCostPerUnit: partsLabour,
+                  costPerUnit: damageRepairCostPerUnit(repair, partsLabour),
+                };
+              }),
             },
           }),
         },
@@ -329,6 +346,7 @@ export async function PUT(request: NextRequest) {
               description: dr.description,
               repairChargePerUnit: Number(dr.repairChargePerUnit),
               partsLabourCostPerUnit: Number(dr.partsLabourCostPerUnit),
+              costPerUnit: Number(dr.costPerUnit),
             }))
           : undefined,
       },

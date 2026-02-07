@@ -16,7 +16,6 @@ ALTER TABLE `rfq` DROP COLUMN `requiredDate`;
 ALTER TABLE `rfqitem` DROP COLUMN `deliverDate`,
     DROP COLUMN `durationDays`,
     DROP COLUMN `returnDate`,
-    DROP COLUMN `subtotalPrice`,
     ADD COLUMN `rentalMonths` INTEGER NOT NULL DEFAULT 1,
     ADD COLUMN `requiredDate` DATETIME(3) NOT NULL;
 

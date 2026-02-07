@@ -81,7 +81,6 @@ interface RentalAgreement {
   hirerPhone: string;
   location: string;
   termOfHire: string;
-  transportation: string;
   monthlyRental: number;
   securityDeposit: number;
   minimumCharges: number;
@@ -109,6 +108,20 @@ interface RentalAgreement {
 }
 
 const userRoles = ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff'];
+
+/** Parse number of months from termOfHire string (e.g. "9 months (270 days)" → 9). Returns 0 if not found. */
+function parseMonthsFromTermOfHire(termOfHire: string): number {
+  if (!termOfHire?.trim()) return 0;
+  const match = termOfHire.match(/(\d+)\s*months?/i);
+  return match ? Math.max(0, parseInt(match[1], 10)) : 0;
+}
+
+/** Compute monthly rental as totalAmount / months(termOfHire). Returns null if cannot compute. */
+function computeMonthlyRentalFromTotalAndTerm(totalAmount: number, termOfHire: string): number | null {
+  const months = parseMonthsFromTermOfHire(termOfHire);
+  if (months <= 0 || totalAmount == null || Number.isNaN(totalAmount)) return null;
+  return Math.round((totalAmount / months) * 100) / 100;
+}
 
 export function RentalAgreement() {
   const [agreements, setAgreements] = useState<RentalAgreement[]>([]);
@@ -157,12 +170,12 @@ export function RentalAgreement() {
     fetchAgreements();
   }, [fetchAgreements]);
 
-  // Fetch RFQ projects when create dialog opens (for project name selector).
-  // Exclude RFQs that already have a rental agreement linked so they don't appear in the dropdown.
+  // Fetch approved RFQ projects when create dialog opens (for project name selector).
+  // Only RFQs with status "approved" are fetched; those already linked to a rental agreement are excluded.
   const fetchRfqProjects = useCallback(async (existingAgreements: RentalAgreement[]) => {
     try {
       setRfqProjectLoading(true);
-      const response = await fetch('/api/rfq');
+      const response = await fetch('/api/rfq?status=approved');
       const data = await response.json();
       if (data.success && Array.isArray(data.data)) {
         const linkedRfqIds = new Set(
@@ -229,7 +242,6 @@ export function RentalAgreement() {
     if (!formData.hirerPhone?.trim()) return 'Hirer Telephone';
     if (!formData.location?.trim()) return 'Location & Address of Goods';
     if (!formData.termOfHire?.trim()) return 'Term of Hire';
-    if (!formData.transportation?.trim()) return 'Transportation';
     const num = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v === '') || Number(v) < 0;
     if (num(formData.monthlyRental)) return 'Monthly Rental (RM)';
     if (num(formData.securityDeposit)) return 'Security Deposit (Month)';
@@ -264,7 +276,6 @@ export function RentalAgreement() {
           hirerPhone: formData.hirerPhone || '',
           location: formData.location || '',
           termOfHire: formData.termOfHire || '',
-          transportation: formData.transportation || '',
           monthlyRental: formData.monthlyRental || 0,
           securityDeposit: formData.securityDeposit || 0,
           minimumCharges: formData.minimumCharges || 0,
@@ -303,7 +314,6 @@ export function RentalAgreement() {
     if (!formData.hirerPhone?.trim()) return 'Hirer Telephone';
     if (!formData.location?.trim()) return 'Location & Address of Goods';
     if (!formData.termOfHire?.trim()) return 'Term of Hire';
-    if (!formData.transportation?.trim()) return 'Transportation';
     const num = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v === '') || Number(v) < 0;
     if (num(formData.monthlyRental)) return 'Monthly Rental (RM)';
     if (num(formData.securityDeposit)) return 'Security Deposit (Month)';
@@ -367,7 +377,6 @@ export function RentalAgreement() {
     hirerPhone: '',
     location: '',
     termOfHire: '',
-    transportation: undefined,
     monthlyRental: undefined,
     securityDeposit: undefined,
     minimumCharges: undefined,
@@ -401,7 +410,16 @@ export function RentalAgreement() {
 
   const handleEditClick = (agreement: RentalAgreement) => {
     setSelectedAgreement(agreement);
-    setFormData(agreement);
+    const totalAmount = agreement.rfq?.totalAmount != null ? Number(agreement.rfq.totalAmount) : undefined;
+    const termOfHire = agreement.termOfHire ?? '';
+    const computedMonthlyRental = totalAmount != null && termOfHire
+      ? computeMonthlyRentalFromTotalAndTerm(totalAmount, termOfHire)
+      : null;
+    const initialFormData = {
+      ...agreement,
+      monthlyRental: computedMonthlyRental != null ? computedMonthlyRental : Number(agreement.monthlyRental),
+    };
+    setFormData(initialFormData);
     setVersionAccess(agreement.versions[agreement.versions.length - 1].allowedRoles);
     setIsEditDialogOpen(true);
   };
@@ -472,7 +490,6 @@ export function RentalAgreement() {
         hirerPhone: agreement.hirerPhone ?? undefined,
         location: agreement.location ?? undefined,
         termOfHire: agreement.termOfHire ?? undefined,
-        transportation: agreement.transportation ?? undefined,
         monthlyRental: Number(agreement.monthlyRental),
         securityDeposit: Number(agreement.securityDeposit),
         minimumCharges: Number(agreement.minimumCharges),
@@ -787,19 +804,6 @@ export function RentalAgreement() {
                   <Select
                     value={selectedRfqProjectId || ''}
                     onValueChange={(value) => {
-                      if (value === 'manual') {
-                        setSelectedRfqProjectId('manual');
-                        setFormData((prev) => ({
-                          ...prev,
-                          rfqId: undefined,
-                          projectName: '',
-                          hirer: '',
-                          hirerPhone: '',
-                          location: '',
-                          monthlyRental: undefined,
-                        }));
-                        return;
-                      }
                       setSelectedRfqProjectId(value);
                       const rfq = rfqProjectList.find((r) => r.id === value);
                       if (rfq) {
@@ -811,15 +815,18 @@ export function RentalAgreement() {
                           location: rfq.projectLocation ?? '',
                           rfqId: rfq.id,
                         }));
-                        // Fetch and autofill term of hire and monthly rental from RFQ items
+                        // Fetch term of hire from RFQ items; monthly rental = RFQ totalAmount / months(termOfHire)
                         fetch(`/api/rfq/${rfq.id}/term-of-hire`)
                           .then((res) => res.json())
                           .then((data) => {
-                            if (data?.success) {
+                            if (data?.success && data.termOfHire != null) {
+                              const termOfHire = data.termOfHire;
+                              const totalAmount = Number(rfq.totalAmount) || 0;
+                              const monthlyRental = computeMonthlyRentalFromTotalAndTerm(totalAmount, termOfHire);
                               setFormData((prev) => ({
                                 ...prev,
-                                ...(data.termOfHire != null && { termOfHire: data.termOfHire }),
-                                ...(data.monthlyRental != null && { monthlyRental: data.monthlyRental }),
+                                termOfHire,
+                                ...(monthlyRental != null && { monthlyRental }),
                               }));
                             }
                           })
@@ -829,10 +836,9 @@ export function RentalAgreement() {
                     disabled={rfqProjectLoading}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={rfqProjectLoading ? 'Loading projects...' : 'Select project (from RFQ)'} />
+                      <SelectValue placeholder={rfqProjectLoading ? 'Loading projects...' : 'Select project (from approved RFQ)'} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="manual">Enter project name manually</SelectItem>
                       {rfqProjectList.map((rfq) => (
                         <SelectItem key={rfq.id} value={rfq.id}>
                           {rfq.projectName}
@@ -841,13 +847,10 @@ export function RentalAgreement() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {selectedRfqProjectId === 'manual' ? (
-                    <Input
-                      placeholder="Enter project name"
-                      value={formData.projectName || ''}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, projectName: e.target.value }))}
-                      className="mt-1"
-                    />
+                  {rfqProjectList.length === 0 && !rfqProjectLoading ? (
+                    <p className="text-sm text-amber-600">
+                      No approved RFQs available. Please approve an RFQ first, or ensure it is not already linked to a rental agreement.
+                    </p>
                   ) : selectedRfqProjectId ? (
                     <p className="text-xs text-[#6B7280]">
                       Hirer, Hirer telephone, and Location are auto-filled from the selected RFQ. You can edit them below.
@@ -916,23 +919,6 @@ export function RentalAgreement() {
                       value={formData.termOfHire || ''}
                       onChange={(e) => setFormData({...formData, termOfHire: e.target.value})}
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Transportation *</Label>
-                    <Select
-                      value={formData.transportation}
-                      onValueChange={(value) => setFormData({...formData, transportation: value})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select transportation" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Included - Delivery & Collection">Included - Delivery & Collection</SelectItem>
-                        <SelectItem value="Excluded - Self Collection">Excluded - Self Collection</SelectItem>
-                        <SelectItem value="Delivery Only">Delivery Only</SelectItem>
-                        <SelectItem value="Collection Only">Collection Only</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
                 </div>
               </div>
@@ -1161,23 +1147,6 @@ export function RentalAgreement() {
                       onChange={(e) => setFormData({...formData, termOfHire: e.target.value})}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Transportation *</Label>
-                    <Select
-                      value={formData.transportation}
-                      onValueChange={(value) => setFormData({...formData, transportation: value})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Included - Delivery & Collection">Included - Delivery & Collection</SelectItem>
-                        <SelectItem value="Excluded - Self Collection">Excluded - Self Collection</SelectItem>
-                        <SelectItem value="Delivery Only">Delivery Only</SelectItem>
-                        <SelectItem value="Collection Only">Collection Only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
               </div>
             </div>
@@ -1358,10 +1327,6 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Term of Hire</Label>
                   <p className="text-[#111827]">{selectedAgreement.termOfHire}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-[#6B7280]">Transportation</Label>
-                  <p className="text-[#111827]">{selectedAgreement.transportation}</p>
                 </div>
               </div>
 
@@ -1674,10 +1639,6 @@ export function RentalAgreement() {
                   <p className="text-[#111827]">{v('termOfHire')}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[#6B7280]">Transportation</Label>
-                  <p className="text-[#111827]">{v('transportation')}</p>
-                </div>
-                <div className="space-y-2">
                   <Label className="text-[#6B7280]">Monthly Rental</Label>
                   <p className="text-[#111827]">RM {(vn('monthlyRental')).toLocaleString()}</p>
                 </div>
@@ -1718,10 +1679,40 @@ export function RentalAgreement() {
                 <Button
                   className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]"
                   onClick={() => {
-                    toast.success(`Downloading Version ${selectedVersion.versionNumber} as PDF...`);
-                    setTimeout(() => {
+                    const display = selectedVersion.snapshot && typeof selectedVersion.snapshot === 'object' && !Array.isArray(selectedVersion.snapshot)
+                      ? (selectedVersion.snapshot as Record<string, unknown>)
+                      : (selectedAgreement as unknown as Record<string, unknown>);
+                    const getStr = (k: string) => (display[k] != null ? String(display[k]) : undefined);
+                    const getNum = (k: string) => Number(display[k] ?? 0);
+                    try {
+                      toast.success(`Downloading Version ${selectedVersion.versionNumber} as PDF...`);
+                      const doc = generateRentalAgreementPdf({
+                        agreementNumber: getStr('agreementNumber') ?? selectedAgreement.agreementNumber,
+                        poNumber: getStr('poNumber') ?? undefined,
+                        projectName: getStr('projectName') ?? '',
+                        owner: getStr('owner') ?? '',
+                        ownerPhone: getStr('ownerPhone') ?? undefined,
+                        hirer: getStr('hirer') ?? '',
+                        hirerPhone: getStr('hirerPhone') ?? undefined,
+                        location: getStr('location') ?? undefined,
+                        termOfHire: getStr('termOfHire') ?? undefined,
+                        monthlyRental: getNum('monthlyRental'),
+                        securityDeposit: getNum('securityDeposit'),
+                        minimumCharges: getNum('minimumCharges'),
+                        defaultInterest: getNum('defaultInterest'),
+                        ownerSignatoryName: getStr('ownerSignatoryName') ?? undefined,
+                        ownerNRIC: getStr('ownerNRIC') ?? undefined,
+                        hirerSignatoryName: getStr('hirerSignatoryName') ?? undefined,
+                        hirerNRIC: getStr('hirerNRIC') ?? undefined,
+                        ownerSignatureDate: getStr('ownerSignatureDate') ?? undefined,
+                        hirerSignatureDate: getStr('hirerSignatureDate') ?? undefined,
+                      });
+                      doc.save(`Rental-Agreement-${selectedAgreement.agreementNumber}-v${selectedVersion.versionNumber}.pdf`);
                       toast.success("PDF downloaded successfully!");
-                    }, 1500);
+                    } catch (err) {
+                      console.error("Version PDF generation failed:", err);
+                      toast.error("Failed to generate PDF. Please try again.");
+                    }
                   }}
                 >
                   <Download className="mr-2 h-4 w-4" />
