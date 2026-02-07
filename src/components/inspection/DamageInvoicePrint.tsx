@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { DamageInvoice } from '../../types/inspection';
 import { toast } from 'sonner';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 interface DamageInvoicePrintProps {
   invoice: DamageInvoice;
@@ -66,7 +67,7 @@ export function DamageInvoicePrint({ invoice, onClose }: DamageInvoicePrintProps
                 <div className="text-sm space-y-1">
                   <p><strong>Invoice No:</strong> {invoice.invoiceNumber}</p>
                   <p><strong>ORP No:</strong> {invoice.orpNumber}</p>
-                  <p><strong>Date:</strong> {new Date(invoice.invoiceDate).toLocaleDateString()}</p>
+                  <p><strong>Date:</strong> {formatRfqDate(invoice.invoiceDate)}</p>
                 </div>
               </div>
             </div>
@@ -143,7 +144,7 @@ export function DamageInvoicePrint({ invoice, onClose }: DamageInvoicePrintProps
                 <div className="text-right">
                   <p className="text-sm text-gray-600">Paid On:</p>
                   <p className="text-sm text-green-600 mt-1">
-                    {new Date(invoice.paidDate).toLocaleDateString()}
+                    {formatRfqDate(invoice.paidDate)}
                   </p>
                 </div>
               )}

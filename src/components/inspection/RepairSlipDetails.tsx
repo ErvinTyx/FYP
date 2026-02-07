@@ -1,8 +1,9 @@
-import { ArrowLeft, AlertCircle, Calendar, User, DollarSign, CheckCircle, Printer } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Calendar, User, DollarSign, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { OpenRepairSlip } from '../../types/inspection';
+import { formatRfqDate } from '../../lib/rfqDate';
 import {
   Table,
   TableBody,
@@ -16,10 +17,9 @@ interface RepairSlipDetailsProps {
   repairSlip: OpenRepairSlip;
   onBack: () => void;
   onUpdateStatus: (slipId: string, status: OpenRepairSlip['status']) => void;
-  onPrint?: (slip: OpenRepairSlip) => void;
 }
 
-export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint }: RepairSlipDetailsProps) {
+export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus }: RepairSlipDetailsProps) {
   const getStatusColor = (status: OpenRepairSlip['status']) => {
     const colors = {
       'open': 'bg-blue-100 text-blue-800',
@@ -81,13 +81,6 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
               Mark Complete
             </Button>
           )}
-          <Button
-            onClick={() => onPrint && onPrint(repairSlip)}
-            className="bg-gray-600 hover:bg-gray-700"
-          >
-            <Printer className="size-4 mr-2" />
-            Print
-          </Button>
         </div>
       </div>
 
@@ -117,7 +110,7 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
               <div>
                 <p className="text-sm text-gray-500">Created Date</p>
                 <p className="text-[#231F20]">
-                  {new Date(repairSlip.createdAt).toLocaleDateString()}
+                  {formatRfqDate(repairSlip.createdAt)}
                 </p>
               </div>
             </div>
@@ -138,7 +131,7 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
                   <div>
                     <p className="text-sm text-gray-500">Start Date</p>
                     <p className="text-[#231F20]">
-                      {new Date(repairSlip.startDate).toLocaleDateString()}
+                      {formatRfqDate(repairSlip.startDate)}
                     </p>
                   </div>
                 </div>
@@ -148,7 +141,7 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
                     <div>
                       <p className="text-sm text-gray-500">Completion Date</p>
                       <p className="text-[#231F20]">
-                        {new Date(repairSlip.completionDate).toLocaleDateString()}
+                        {formatRfqDate(repairSlip.completionDate)}
                       </p>
                     </div>
                   </div>
@@ -299,13 +292,13 @@ export function RepairSlipDetails({ repairSlip, onBack, onUpdateStatus, onPrint 
             <div>
               <p className="text-sm text-gray-500">Created At</p>
               <p className="text-[#231F20]">
-                {new Date(repairSlip.createdAt).toLocaleString()}
+                {formatRfqDate(repairSlip.createdAt)}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Last Updated</p>
               <p className="text-[#231F20]">
-                {new Date(repairSlip.updatedAt).toLocaleString()}
+                {formatRfqDate(repairSlip.updatedAt)}
               </p>
             </div>
           </div>

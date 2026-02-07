@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { OpenRepairSlip } from '../../types/inspection';
 import { toast } from 'sonner';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 interface RepairSlipPrintProps {
   repairSlip: OpenRepairSlip;
@@ -179,14 +180,14 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
                 <div className="flex">
                   <span className="text-gray-600 w-32">Created Date:</span>
                   <span className="text-[#231F20]">
-                    {new Date(repairSlip.createdAt).toLocaleDateString()}
+                    {formatRfqDate(repairSlip.createdAt)}
                   </span>
                 </div>
                 {repairSlip.startDate && (
                   <div className="flex">
                     <span className="text-gray-600 w-32">Start Date:</span>
                     <span className="text-[#231F20]">
-                      {new Date(repairSlip.startDate).toLocaleDateString()}
+                      {formatRfqDate(repairSlip.startDate)}
                     </span>
                   </div>
                 )}
@@ -194,7 +195,7 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
                   <div className="flex">
                     <span className="text-gray-600 w-32">Completion Date:</span>
                     <span className="text-[#231F20]">
-                      {new Date(repairSlip.completionDate).toLocaleDateString()}
+                      {formatRfqDate(repairSlip.completionDate)}
                     </span>
                   </div>
                 )}
@@ -306,7 +307,7 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
                 <div className="text-sm text-gray-600">Prepared By</div>
                 <div className="text-sm text-[#231F20] mt-1">{repairSlip.createdBy}</div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Date: {new Date(repairSlip.createdAt).toLocaleDateString()}
+                  Date: {formatRfqDate(repairSlip.createdAt)}
                 </div>
               </div>
             </div>
@@ -327,7 +328,7 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
           <div className="mt-12 pt-6 border-t border-gray-300 text-center text-xs text-gray-500">
             <p>This is a computer-generated document. No signature is required for validity.</p>
             <p className="mt-1">
-              Power Metal & Steel | Generated on {new Date().toLocaleString()}
+              Power Metal & Steel | Generated on {formatRfqDate(new Date())}
             </p>
           </div>
         </CardContent>

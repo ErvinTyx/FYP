@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { RFQ } from '../../types/rfq';
+import { formatRfqDate } from '../../lib/rfqDate';
 import {
   Table,
   TableBody,
@@ -53,11 +54,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
       setMap.get(key)!.push(item);
     });
 
-    const formatDate = (value?: string) => {
-      if (!value) return '-';
-      const dt = new Date(value);
-      return Number.isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString();
-    };
+    const formatDate = (value?: string) => formatRfqDate(value);
 
     return Array.from(setMap.entries()).map(([setName, items]) => {
       const setRequiredDate = items[0]?.requiredDate;
@@ -293,11 +290,11 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
       ` : ''}
       <div class="info-item">
         <div class="info-label">Requested Date</div>
-        <div class="info-value">${new Date(rfq.requestedDate).toLocaleDateString()}</div>
+        <div class="info-value">${formatRfqDate(rfq.requestedDate)}</div>
       </div>
       <div class="info-item">
         <div class="info-label">Required Date</div>
-        <div class="info-value">${earliestRequiredDate ? new Date(earliestRequiredDate).toLocaleDateString() : '-'}</div>
+        <div class="info-value">${formatRfqDate(earliestRequiredDate)}</div>
       </div>
     </div>
     ${rfq.notes ? `
@@ -326,7 +323,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
       <div class="signature-box">
         <div>${rfq.createdBy}</div>
         <div style="font-size: 11px; color: #6B7280; margin-top: 5px;">
-          Date: ${new Date(rfq.createdAt).toLocaleDateString()}
+          Date: ${formatRfqDate(rfq.createdAt)}
         </div>
       </div>
     </div>
@@ -343,7 +340,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
 
   <div class="footer">
     <p>This is a computer-generated document. No signature is required for validity.</p>
-    <p>Power Metal & Steel | Generated on ${new Date().toLocaleString()}</p>
+    <p>Power Metal & Steel | Generated on ${formatRfqDate(new Date())}</p>
   </div>
 </body>
 </html>
@@ -456,7 +453,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
               <div>
                 <p className="text-sm text-gray-500">Requested Date</p>
                 <p className="text-[#231F20]">
-                  {new Date(rfq.requestedDate).toLocaleDateString()}
+                  {formatRfqDate(rfq.requestedDate)}
                 </p>
               </div>
             </div>
@@ -465,7 +462,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
               <div>
                 <p className="text-sm text-gray-500">Required Date</p>
                 <p className="text-[#231F20]">
-                  {earliestRequiredDate ? new Date(earliestRequiredDate).toLocaleDateString() : '-'}
+                  {formatRfqDate(earliestRequiredDate)}
                 </p>
               </div>
             </div>
@@ -495,7 +492,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
                   <div>
                     <p className="text-sm text-gray-500">Required Date</p>
                     <p className="text-[#231F20]">
-                      {setRequiredDate ? new Date(setRequiredDate).toLocaleDateString() : '-'}
+                      {formatRfqDate(setRequiredDate)}
                     </p>
                   </div>
                   <div>
@@ -580,13 +577,13 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
             <div>
               <p className="text-sm text-gray-500">Created At</p>
               <p className="text-[#231F20]">
-                {new Date(rfq.createdAt).toLocaleString()}
+                {formatRfqDate(rfq.createdAt)}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Last Updated</p>
               <p className="text-[#231F20]">
-                {new Date(rfq.updatedAt).toLocaleString()}
+                {formatRfqDate(rfq.updatedAt)}
               </p>
             </div>
           </div>

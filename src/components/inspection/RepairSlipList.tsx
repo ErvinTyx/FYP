@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { OpenRepairSlip } from '../../types/inspection';
+import { formatRfqDate } from '../../lib/rfqDate';
 import {
   Select,
   SelectContent,
@@ -93,7 +94,7 @@ export function RepairSlipList({ repairSlips, searchQuery, onView, onUpdateStatu
                     <Calendar className="size-4 text-gray-400" />
                     <div>
                       <p className="text-gray-500">Created</p>
-                      <p className="text-[#231F20]">{new Date(slip.createdAt).toLocaleDateString()}</p>
+                      <p className="text-[#231F20]">{formatRfqDate(slip.createdAt)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -114,7 +115,7 @@ export function RepairSlipList({ repairSlips, searchQuery, onView, onUpdateStatu
 
                 {slip.completionDate && (
                   <div className="text-sm text-green-600">
-                    Completed on {new Date(slip.completionDate).toLocaleDateString()}
+                    Completed on {formatRfqDate(slip.completionDate)}
                   </div>
                 )}
               </div>

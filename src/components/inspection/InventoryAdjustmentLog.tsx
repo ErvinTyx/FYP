@@ -3,6 +3,7 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { InventoryAdjustment } from '../../types/inspection';
+import { formatRfqDate } from '../../lib/rfqDate';
 import {
   Table,
   TableBody,
@@ -28,7 +29,8 @@ export function InventoryAdjustmentLog({ adjustments, searchQuery, onViewReferen
     const colors = {
       'damage-detected': 'bg-red-100 text-red-800',
       'repair-completed': 'bg-green-100 text-green-800',
-      'scrapped': 'bg-gray-100 text-gray-800'
+      'scrapped': 'bg-gray-100 text-gray-800',
+      'write-off-pending': 'bg-amber-100 text-amber-800'
     };
     return colors[type];
   };
@@ -37,7 +39,8 @@ export function InventoryAdjustmentLog({ adjustments, searchQuery, onViewReferen
     const labels = {
       'damage-detected': 'Damage Detected',
       'repair-completed': 'Repair Completed',
-      'scrapped': 'Scrapped'
+      'scrapped': 'Scrapped',
+      'write-off-pending': 'Write-off Pending'
     };
     return labels[type];
   };
@@ -85,7 +88,7 @@ export function InventoryAdjustmentLog({ adjustments, searchQuery, onViewReferen
                       <Calendar className="size-4 text-gray-400" />
                       <div>
                         <p className="text-sm text-[#231F20]">
-                          {new Date(adjustment.adjustedAt).toLocaleDateString()}
+                          {formatRfqDate(adjustment.adjustedAt)}
                         </p>
                         <p className="text-xs text-gray-500">
                           {new Date(adjustment.adjustedAt).toLocaleTimeString()}

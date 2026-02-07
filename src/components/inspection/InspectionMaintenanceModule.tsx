@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ClipboardCheck, Wrench, FileText, Plus, Filter, Search, RotateCcw } from 'lucide-react';
+import { ClipboardCheck, Wrench, FileText, Filter, Search, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -747,10 +747,6 @@ export function InspectionMaintenanceModule() {
         repairSlip={selectedRepairSlip}
         onBack={() => setViewMode('list')}
         onUpdateStatus={handleUpdateRepairStatus}
-        onPrint={(slip) => {
-          setSelectedRepairSlip(slip);
-          setViewMode('print-repair');
-        }}
       />
     );
   }
@@ -871,10 +867,6 @@ export function InspectionMaintenanceModule() {
           >
             <Wrench className="size-4 mr-2" />
             Maintenance Dashboard
-          </Button>
-          <Button onClick={handleCreateReport} className="bg-[#F15929] hover:bg-[#d94d1f]">
-            <Plus className="size-4 mr-2" />
-            New Condition Report
           </Button>
         </div>
       </div>

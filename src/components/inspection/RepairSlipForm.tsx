@@ -22,6 +22,7 @@ interface ScaffoldingDamageRepair {
   description: string;
   repairChargePerUnit: number;
   partsLabourCostPerUnit: number;
+  costPerUnit?: number;
 }
 
 interface ScaffoldingItemWithRepairs {
@@ -101,7 +102,7 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     if (scaffoldingItem?.damageRepairs && scaffoldingItem.damageRepairs.length > 0) {
       return scaffoldingItem.damageRepairs.map(dr => ({
         action: dr.description,
-        costPerUnit: dr.repairChargePerUnit,
+        costPerUnit: dr.costPerUnit ?? dr.repairChargePerUnit ?? dr.partsLabourCostPerUnit ?? 0,
         costType: 'per-item' as const, // Database entries are per-item
       }));
     }
@@ -455,27 +456,22 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Damage Description</Label>
-                  <Textarea value={item.damageDescription} onChange={(e) => handleUpdateItem(item.id, 'damageDescription', e.target.value)} placeholder="Describe the damage..." rows={2} />
-                </div>
-
                 <div className="p-4 bg-gray-50 rounded-lg space-y-4">
                   <div className="flex items-center gap-2"><Info className="size-4 text-blue-500" /><span className="text-sm font-medium">Quantity Breakdown</span></div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>For Repair</Label>
-                      <Input type="number" value={item.quantityRepair} onChange={(e) => handleUpdateQuantity(item.id, 'quantityRepair', parseInt(e.target.value) || 0)} min="0" />
+                      <Input type="number" value={item.quantityRepair} disabled className="bg-gray-100" min="0" />
                       <p className="text-xs text-gray-500">Items that can be repaired</p>
                     </div>
                     <div className="space-y-2">
                       <Label>For Write-off</Label>
-                      <Input type="number" value={item.quantityWriteOff} onChange={(e) => handleUpdateQuantity(item.id, 'quantityWriteOff', parseInt(e.target.value) || 0)} min="0" />
+                      <Input type="number" value={item.quantityWriteOff} disabled className="bg-gray-100" min="0" />
                       <p className="text-xs text-gray-500">Items beyond repair</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Write-off Cost/Unit (RM)</Label>
-                      <Input type="number" value={Number(item.writeOffCostPerUnit || 0).toFixed(2)} onChange={(e) => handleUpdateWriteOffCost(item.id, parseFloat(e.target.value) || 0)} />
+                      <Input type="number" value={Number(item.writeOffCostPerUnit || 0).toFixed(2)} disabled className="bg-gray-100" />
                       <p className="text-xs text-gray-500">From inventory origin price. Write-off: RM {Number(item.writeOffTotalCost || 0).toFixed(2)}</p>
                     </div>
                   </div>

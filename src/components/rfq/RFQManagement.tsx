@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { RFQForm } from './RFQForm';
 import { RFQDetails } from './RFQDetails';
 import { RFQ } from '../../types/rfq';
+import { formatRfqDate } from '../../lib/rfqDate';
 import {
   Select,
   SelectContent,
@@ -64,11 +65,7 @@ export function RFQManagement() {
       setMap.get(key)!.push(item);
     });
 
-    const formatDate = (value?: string) => {
-      if (!value) return '-';
-      const dt = new Date(value);
-      return Number.isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString();
-    };
+    const formatDate = (value?: string) => formatRfqDate(value);
 
     return Array.from(setMap.entries()).map(([setName, items]) => {
       const setRequiredDate = items[0]?.requiredDate;
@@ -411,11 +408,11 @@ export function RFQManagement() {
       ` : ''}
       <div class="info-item">
         <div class="info-label">Requested Date</div>
-        <div class="info-value">${new Date(rfq.requestedDate).toLocaleDateString()}</div>
+        <div class="info-value">${formatRfqDate(rfq.requestedDate)}</div>
       </div>
       <div class="info-item">
         <div class="info-label">Required Date</div>
-        <div class="info-value">${earliestRequiredDate ? new Date(earliestRequiredDate).toLocaleDateString() : '-'}</div>
+        <div class="info-value">${formatRfqDate(earliestRequiredDate)}</div>
       </div>
     </div>
     ${rfq.notes ? `
@@ -444,7 +441,7 @@ export function RFQManagement() {
       <div class="signature-box">
         <div>${rfq.createdBy}</div>
         <div style="font-size: 11px; color: #6B7280; margin-top: 5px;">
-          Date: ${new Date(rfq.createdAt).toLocaleDateString()}
+          Date: ${formatRfqDate(rfq.createdAt)}
         </div>
       </div>
     </div>
@@ -461,7 +458,7 @@ export function RFQManagement() {
 
   <div class="footer">
     <p>This is a computer-generated document. No signature is required for validity.</p>
-    <p>Power Metal & Steel | Generated on ${new Date().toLocaleString()}</p>
+    <p>Power Metal & Steel | Generated on ${formatRfqDate(new Date())}</p>
   </div>
 </body>
 </html>
@@ -740,7 +737,7 @@ export function RFQManagement() {
                           <p className="text-gray-500">Required Date</p>
                           <p className="text-[#231F20]">
                             {getEarliestRequiredDate(rfq)
-                              ? new Date(getEarliestRequiredDate(rfq) as string).toLocaleDateString()
+                              ? formatRfqDate(getEarliestRequiredDate(rfq) as string)
                               : '-'}
                           </p>
                         </div>

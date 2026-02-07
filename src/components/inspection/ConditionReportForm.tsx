@@ -181,6 +181,30 @@ export function ConditionReportForm({
     }
   }, [report]);
 
+  // Ensure write-off price uses latest origin price (read-only field)
+  useEffect(() => {
+    if (scaffoldingItems.length === 0 || items.length === 0) return;
+    let hasChanges = false;
+    const nextItems = items.map(item => {
+      if (item.originalItemPrice && item.originalItemPrice > 0) {
+        return item;
+      }
+      const scaffoldingItem = scaffoldingItems.find(
+        (s: ScaffoldingItem) => s.id === item.scaffoldingItemId || s.name === item.scaffoldingItemName
+      );
+      if (!scaffoldingItem) return item;
+      const originPrice = scaffoldingItem.originPrice && scaffoldingItem.originPrice > 0
+        ? scaffoldingItem.originPrice
+        : (scaffoldingItem.price || 0);
+      if (originPrice === (item.originalItemPrice || 0)) return item;
+      hasChanges = true;
+      return { ...item, originalItemPrice: originPrice };
+    });
+    if (hasChanges) {
+      setItems(nextItems);
+    }
+  }, [scaffoldingItems, items]);
+
   // Items are auto-populated from return request only - no manual add/remove
 
   const updateItem = (id: string, field: keyof InspectionItem, value: any) => {
@@ -224,13 +248,9 @@ export function ConditionReportForm({
           // Keep the original quantity unchanged - only validate the breakdown
           // DO NOT update: updated.quantity = newTotal;
           
-          // Auto-set repair required and calculate costs
+        // Auto-set repair required
           updated.repairRequired = (updated.quantityRepair || 0) > 0 || (updated.quantityWriteOff || 0) > 0;
-          
-          // Calculate estimated repair cost
-          const repairCost = (updated.quantityRepair || 0) * (updated.originalItemPrice || 0) * 0.6;
-          const writeOffCost = (updated.quantityWriteOff || 0) * (updated.originalItemPrice || 0) * 1.2;
-          updated.estimatedRepairCost = repairCost + writeOffCost;
+        updated.estimatedRepairCost = 0;
           
           // Set condition based on quantities
           if ((updated.quantityWriteOff || 0) > 0) {
@@ -242,11 +262,9 @@ export function ConditionReportForm({
           }
         }
 
-        // Update original price and recalculate costs
+        // Update original price (no cost calculations in condition report)
         if (field === 'originalItemPrice') {
-          const repairCost = (updated.quantityRepair || 0) * (value || 0) * 0.6;
-          const writeOffCost = (updated.quantityWriteOff || 0) * (value || 0) * 1.2;
-          updated.estimatedRepairCost = repairCost + writeOffCost;
+          updated.estimatedRepairCost = 0;
         }
         
         return updated;
@@ -340,7 +358,7 @@ export function ConditionReportForm({
     const totalRepair = items.reduce((sum, item) => sum + (item.quantityRepair || 0), 0);
     const totalWriteOff = items.reduce((sum, item) => sum + (item.quantityWriteOff || 0), 0);
     const totalDamaged = totalRepair + totalWriteOff;
-    const totalRepairCost = items.reduce((sum, item) => sum + item.estimatedRepairCost, 0);
+    const totalRepairCost = 0;
     return { totalItemsInspected, totalGood, totalRepair, totalWriteOff, totalDamaged, totalRepairCost };
   };
 
@@ -369,10 +387,16 @@ export function ConditionReportForm({
     const totals = calculateTotals();
     const now = new Date().toISOString();
 
+    const cleanedItems = items.map(item => ({
+      ...item,
+      damageDescription: '',
+      estimatedRepairCost: 0,
+    }));
+
     const newReport: ConditionReport = {
       id: report?.id || `cr-${Date.now()}`,
       ...formData,
-      items,
+      items: cleanedItems,
       ...totals,
       createdAt: report?.createdAt || now,
       updatedAt: now
@@ -528,19 +552,6 @@ export function ConditionReportForm({
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Write-off Price (RM)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={item.originalItemPrice || 0}
-                      onChange={(e) => updateItem(item.id, 'originalItemPrice', parseFloat(e.target.value) || 0)}
-                      placeholder="0.00"
-                    />
-                    <p className="text-xs text-gray-500">Auto-populated from inventory origin price</p>
-                  </div>
-
-                  <div className="space-y-2">
                     <Label>
                       Total Quantity
                       {returnRequestItems && (
@@ -582,7 +593,8 @@ export function ConditionReportForm({
                         min="0"
                         max={returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || undefined}
                         value={item.quantityGood || 0}
-                        onChange={(e) => updateItem(item.id, 'quantityGood', parseInt(e.target.value) || 0)}
+                        disabled
+                        className="bg-gray-100"
                         placeholder="0"
                       />
                     </div>
@@ -594,7 +606,8 @@ export function ConditionReportForm({
                         min="0"
                         max={returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || undefined}
                         value={item.quantityRepair || 0}
-                        onChange={(e) => updateItem(item.id, 'quantityRepair', parseInt(e.target.value) || 0)}
+                        disabled
+                        className="bg-gray-100"
                         placeholder="0"
                       />
                     </div>
@@ -606,7 +619,8 @@ export function ConditionReportForm({
                         min="0"
                         max={returnQuantities[item.scaffoldingItemId] || returnQuantities[item.scaffoldingItemName] || undefined}
                         value={item.quantityWriteOff || 0}
-                        onChange={(e) => updateItem(item.id, 'quantityWriteOff', parseInt(e.target.value) || 0)}
+                        disabled
+                        className="bg-gray-100"
                         placeholder="0"
                       />
                     </div>
@@ -688,32 +702,6 @@ export function ConditionReportForm({
 
                 {item.repairRequired && (
                   <>
-                    <div className="space-y-2">
-                      <Label>Damage Description</Label>
-                      <Textarea
-                        value={item.damageDescription}
-                        onChange={(e) => updateItem(item.id, 'damageDescription', e.target.value)}
-                        placeholder="Describe the damage in detail..."
-                        rows={2}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Estimated Cost (RM) - Auto Calculated</Label>
-                      <Input
-                        type="number"
-                        value={Number(item.estimatedRepairCost || 0).toFixed(2)}
-                        disabled
-                        className="bg-gray-200"
-                      />
-                      <p className="text-xs text-gray-500">
-                        Repair: 60% × Origin Price × Qty | Write-off: 120% × Origin Price × Qty
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        (Actual costs will be calculated in Repair Slip using inventory repair charges)
-                      </p>
-                    </div>
-
                     {/* Image Upload */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
@@ -815,10 +803,6 @@ export function ConditionReportForm({
               <div className="flex justify-between text-sm">
                 <span className="text-[#231F20]">Write-off:</span>
                 <span className="text-[#231F20]">{totals.totalWriteOff}</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t border-gray-300">
-                <span className="text-[#231F20]">Estimated Total Repair Cost:</span>
-                <span className="text-[#231F20]">RM {Number(totals.totalRepairCost || 0).toFixed(2)}</span>
               </div>
             </div>
           )}

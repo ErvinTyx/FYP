@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { ConditionReport } from '../../types/inspection';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 interface ConditionReportListProps {
   reports: ConditionReport[];
@@ -110,7 +111,7 @@ export function ConditionReportList({ reports, searchQuery, sourceFilter = 'all'
                     <Calendar className="size-4 text-gray-400" />
                     <div>
                       <p className="text-gray-500">Inspection Date</p>
-                      <p className="text-[#231F20]">{new Date(report.inspectionDate).toLocaleDateString()}</p>
+                      <p className="text-[#231F20]">{formatRfqDate(report.inspectionDate)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
