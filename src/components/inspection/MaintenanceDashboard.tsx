@@ -18,6 +18,7 @@ import { Textarea } from '../ui/textarea';
 import { OpenRepairSlip, RepairItem, InventoryAdjustment } from '../../types/inspection';
 import { toast } from 'sonner';
 import { uploadInspectionPhotos } from '@/lib/upload';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 interface MaintenanceDashboardProps {
   repairSlips: OpenRepairSlip[];
@@ -110,7 +111,34 @@ export function MaintenanceDashboard({ repairSlips, onUpdateRepairSlip, onCreate
     setUploadedImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSaveUpdate = () => {
+  const updateScaffoldingAvailability = async (scaffoldingItemId: string, delta: number) => {
+    if (!scaffoldingItemId || delta <= 0) return;
+    const listResponse = await fetch('/api/scaffolding', { credentials: 'include' });
+    if (!listResponse.ok) {
+      const error = await listResponse.json().catch(() => ({}));
+      throw new Error(error.message || 'Failed to load scaffolding items');
+    }
+    const listResult = await listResponse.json();
+    const items = Array.isArray(listResult.data) ? listResult.data : [];
+    const item = items.find((it: { id: string }) => it.id === scaffoldingItemId);
+    if (!item) {
+      throw new Error('Scaffolding item not found');
+    }
+    const currentAvailable = Number(item.available || 0);
+    const newAvailable = currentAvailable + delta;
+    const updateResponse = await fetch('/api/scaffolding', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id: scaffoldingItemId, available: newAvailable }),
+    });
+    if (!updateResponse.ok) {
+      const error = await updateResponse.json().catch(() => ({}));
+      throw new Error(error.message || 'Failed to update scaffolding availability');
+    }
+  };
+
+  const handleSaveUpdate = async () => {
     if (!selectedSlip || !selectedItem) return;
 
     // Initialize fields if they don't exist
@@ -181,6 +209,12 @@ export function MaintenanceDashboard({ repairSlips, onUpdateRepairSlip, onCreate
 
     // Create inventory adjustment log if completed
     if (updateForm.repairStatus === 'completed') {
+      try {
+        await updateScaffoldingAvailability(selectedItem.scaffoldingItemId, updateForm.quantityToRepair);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to update scaffolding availability');
+      }
+
       const inventoryLog: InventoryAdjustment = {
         id: `adj-${Date.now()}-${Math.random()}`,
         adjustmentType: 'repair-completed',
@@ -380,7 +414,7 @@ export function MaintenanceDashboard({ repairSlips, onUpdateRepairSlip, onCreate
                     {slip.startDate && (
                       <div>
                         <span className="text-gray-600">Start Date:</span>{' '}
-                        {new Date(slip.startDate).toLocaleDateString()}
+                        {formatRfqDate(slip.startDate)}
                       </div>
                     )}
                     <div>

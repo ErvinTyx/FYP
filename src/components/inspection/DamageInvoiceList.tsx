@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { useState } from 'react';
 import { DamageInvoice } from '../../types/inspection';
 import { DamageInvoicePrint } from './DamageInvoicePrint';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 interface DamageInvoiceListProps {
   invoices: DamageInvoice[];
@@ -98,7 +99,7 @@ export function DamageInvoiceList({ invoices, searchQuery }: DamageInvoiceListPr
                     <Calendar className="size-4 text-gray-400" />
                     <div>
                       <p className="text-gray-500">Invoice Date</p>
-                      <p className="text-[#231F20]">{new Date(invoice.invoiceDate).toLocaleDateString()}</p>
+                      <p className="text-[#231F20]">{formatRfqDate(invoice.invoiceDate)}</p>
                     </div>
                   </div>
                   {invoice.vendor && (
@@ -128,7 +129,7 @@ export function DamageInvoiceList({ invoices, searchQuery }: DamageInvoiceListPr
 
                 {invoice.paidDate && (
                   <div className="text-sm text-green-600">
-                    Paid on {new Date(invoice.paidDate).toLocaleDateString()}
+                    Paid on {formatRfqDate(invoice.paidDate)}
                   </div>
                 )}
 
