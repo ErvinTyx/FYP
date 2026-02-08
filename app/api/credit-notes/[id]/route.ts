@@ -1,6 +1,7 @@
 /**
  * GET /api/credit-notes/[id] - Get one credit note
  * PUT /api/credit-notes/[id] - Update (draft only)
+ * DELETE /api/credit-notes/[id] - Delete (draft only)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -204,7 +205,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         }))
       : [];
 
+    // Delete existing items before updating
     await prisma.creditNoteItem.deleteMany({ where: { creditNoteId: id } });
+    
+    // Only delete and recreate attachments if new ones are provided
+    // This preserves existing attachments when saving draft without uploading new files
+    if (attachmentRows.length > 0) {
+      await prisma.creditNoteAttachment.deleteMany({ where: { creditNoteId: id } });
+    }
 
     const updated = await prisma.creditNote.update({
       where: { id },
@@ -234,6 +242,57 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     console.error('[Credit notes] PUT [id] error:', error);
     return NextResponse.json(
       { success: false, message: 'Failed to update credit note' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    }
+    const hasPermission = session.user.roles?.some((role: string) => ALLOWED_ROLES.includes(role));
+    if (!hasPermission) {
+      return NextResponse.json(
+        { success: false, message: 'Forbidden: You do not have permission to delete credit notes' },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ success: false, message: 'Credit note ID is required' }, { status: 400 });
+    }
+
+    const existing = await prisma.creditNote.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      return NextResponse.json({ success: false, message: 'Credit note not found' }, { status: 404 });
+    }
+    if (existing.status !== 'Draft') {
+      return NextResponse.json(
+        { success: false, message: 'Only draft credit notes can be deleted' },
+        { status: 400 }
+      );
+    }
+
+    // Delete related items and attachments first (cascade should handle this, but being explicit)
+    await prisma.creditNoteItem.deleteMany({ where: { creditNoteId: id } });
+    await prisma.creditNoteAttachment.deleteMany({ where: { creditNoteId: id } });
+    
+    // Delete the credit note
+    await prisma.creditNote.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true, message: 'Credit note deleted successfully' });
+  } catch (error) {
+    console.error('[Credit notes] DELETE [id] error:', error);
+    return NextResponse.json(
+      { success: false, message: 'Failed to delete credit note' },
       { status: 500 }
     );
   }
