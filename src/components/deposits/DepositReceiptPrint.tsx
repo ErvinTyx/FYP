@@ -38,7 +38,7 @@ export function DepositReceiptPrint({ deposit, onBack }: DepositReceiptPrintProp
       </div>
 
       {/* Printable Receipt */}
-      <Card className="max-w-4xl mx-auto">
+      <Card id="print-area" className="max-w-4xl mx-auto">
         <CardContent className="p-12" ref={printRef}>
           {/* Header */}
           <div className="border-b-4 border-[#F15929] pb-6 mb-6">
@@ -196,8 +196,15 @@ export function DepositReceiptPrint({ deposit, onBack }: DepositReceiptPrintProp
           body * {
             visibility: hidden;
           }
-          ${printRef.current ? '#print-area, #print-area *' : ''} {
+          #print-area,
+          #print-area * {
             visibility: visible;
+          }
+          #print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
           }
           .print\\:hidden {
             display: none !important;

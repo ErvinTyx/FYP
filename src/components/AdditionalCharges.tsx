@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { AdditionalChargesList } from "./additional-charges/AdditionalChargesList";
 import { AdditionalChargesDetail } from "./additional-charges/AdditionalChargesDetail";
+import { AdditionalChargeReceiptPrint } from "./additional-charges/AdditionalChargeReceiptPrint";
 import { AdditionalCharge } from "../types/additionalCharge";
 
 type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
@@ -53,7 +54,7 @@ function mapApiToCharge(api: {
 }
 
 export function AdditionalCharges({ initialOpenFromSOA, onConsumedSOANavigation }: AdditionalChargesProps = {}) {
-  const [view, setView] = useState<"list" | "detail">("list");
+  const [view, setView] = useState<"list" | "detail" | "receipt">("list");
   const [selectedCharge, setSelectedCharge] = useState<AdditionalCharge | null>(null);
   const [listKey, setListKey] = useState(0);
 
@@ -87,14 +88,22 @@ export function AdditionalCharges({ initialOpenFromSOA, onConsumedSOANavigation 
   };
 
   const handleBack = useCallback(() => {
-    setSelectedCharge(null);
-    setView("list");
-    setListKey((k) => k + 1);
-  }, []);
+    if (view === "receipt") {
+      setView("detail");
+    } else {
+      setSelectedCharge(null);
+      setView("list");
+      setListKey((k) => k + 1);
+    }
+  }, [view]);
 
   const handleUpdate = (updatedCharge: AdditionalCharge) => {
     setSelectedCharge(updatedCharge);
   };
+
+  const handlePrintReceipt = useCallback(() => {
+    setView("receipt");
+  }, []);
 
   if (view === "detail" && selectedCharge) {
     return (
@@ -102,6 +111,16 @@ export function AdditionalCharges({ initialOpenFromSOA, onConsumedSOANavigation 
         charge={selectedCharge}
         onBack={handleBack}
         onUpdate={handleUpdate}
+        onPrintReceipt={handlePrintReceipt}
+      />
+    );
+  }
+
+  if (view === "receipt" && selectedCharge) {
+    return (
+      <AdditionalChargeReceiptPrint
+        charge={selectedCharge}
+        onBack={handleBack}
       />
     );
   }
