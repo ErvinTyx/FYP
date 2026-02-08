@@ -282,6 +282,7 @@ export async function GET(request: NextRequest) {
     const sourceIds = [...depositIds, ...invoiceIds, ...additionalChargeIds];
 
     // --- Credit notes (sourceId in our entities) ---
+    // Only include approved credit notes in balance calculation (rejected ones don't count)
     if (sourceIds.length > 0) {
       const creditNotes = await prisma.creditNote.findMany({
         where: { sourceId: { in: sourceIds } },
@@ -289,14 +290,19 @@ export async function GET(request: NextRequest) {
       });
       for (const cn of creditNotes) {
         const amt = toNum(cn.amount);
+        const status = mapStatus(cn.status);
+        // Only count credit amount if approved (not rejected or draft)
+        // Check the actual database status, not the mapped status
+        const dbStatus = (cn.status || '').toLowerCase();
+        const creditAmount = dbStatus === 'approved' ? amt : 0;
         rawTxs.push({
           date: cn.date,
           type: 'Credit Note',
           reference: cn.creditNoteNumber,
           description: cn.reason || 'Credit note',
           debit: 0,
-          credit: amt,
-          status: mapStatus(cn.status),
+          credit: creditAmount,
+          status: status,
           entityType: 'creditNote',
           entityId: cn.id,
         });
