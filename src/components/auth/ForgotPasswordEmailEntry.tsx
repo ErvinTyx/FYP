@@ -74,7 +74,7 @@ export function ForgotPasswordEmailEntry({
             </p>
             <p className="text-[#1E40AF] font-medium mb-6">{email}</p>
             <p className="text-[#6B7280] text-sm mb-6">
-              Click the link in the email to reset your password. The link will expire in 1 hour.
+              Click the link in the email to reset your password. The link will expire in 15 minutes.
             </p>
             <div className="space-y-3">
               <Button
@@ -195,7 +195,7 @@ export function ForgotPasswordEmailEntry({
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-6 text-white/80 text-sm">
+        <div className="text-center mt-6 text-white text-sm">
           © {new Date().getFullYear()} Power Metal & Steel. All rights reserved.
         </div>
       </div>
