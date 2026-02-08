@@ -318,19 +318,19 @@ export function AdditionalChargesDetail({
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-[#DBEAFE] hover:bg-[#DBEAFE]">
-                          <TableHead className="text-[#1E3A8A]">Credit Note</TableHead>
+                          <TableHead className="text-[#1E3A8A]">Description</TableHead>
                           <TableHead className="text-[#1E3A8A] text-right">Amount (RM)</TableHead>
-                          <TableHead className="text-[#1E3A8A]">Issued Date</TableHead>
+                          <TableHead className="text-[#1E3A8A]">Credit Note</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {appliedCreditNotes.map((note) => (
                           <TableRow key={note.id} className="hover:bg-[#F8FAFC]">
-                            <TableCell className="text-[#1F2937]">{note.creditNoteNumber}</TableCell>
+                            <TableCell className="text-[#1F2937]">Reduction of additional charge</TableCell>
                             <TableCell className="text-[#DC2626] text-right">
                               -RM{note.amount.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell className="text-[#4B5563]">{note.date}</TableCell>
+                            <TableCell className="text-[#4B5563]">{note.creditNoteNumber}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -368,40 +368,6 @@ export function AdditionalChargesDetail({
         </Card>
       )}
 
-      {showRefundSummary && (
-        <Card className="border-[#FCD34D] bg-[#FFFBEB]">
-          <CardHeader>
-            <CardTitle className="text-[18px]">Amount to Return</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-[#92400E]">
-              Credit notes were issued after this charge was paid. The customer is entitled to the refund amount below.
-            </p>
-            <div className="flex items-center justify-between rounded-lg border border-[#F59E0B] bg-white px-4 py-3">
-              <span className="text-sm font-medium text-[#1F2937]">Refund due</span>
-              <span className="text-lg font-semibold text-[#B45309]">
-                RM{amountToReturn.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-[#92400E]">
-                Issue a refund through the Refund Management module and attach the relevant credit notes.
-              </p>
-              <Button
-                variant="outline"
-                className="h-9 px-4 border-[#F59E0B] text-[#B45309]"
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    window.open(`/refund-management?invoiceType=additionalCharge&sourceId=${charge.id}`, "_blank");
-                  }
-                }}
-              >
-                Open Refund Management
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {charge.status === "Rejected" && charge.rejectionReason && (
         <Card className="border-[#DC2626] bg-[#FEF2F2]">
