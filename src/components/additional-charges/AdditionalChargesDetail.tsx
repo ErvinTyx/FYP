@@ -38,7 +38,7 @@ import {
 const API_STATUS_TO_DISPLAY: Record<string, AdditionalCharge["status"]> = {
   pending_payment: "Pending Payment",
   pending_approval: "Pending Approval",
-  approved: "Approved",
+  paid: "Paid",
   rejected: "Rejected",
 };
 
@@ -128,7 +128,7 @@ export function AdditionalChargesDetail({
     ["Pending Payment", "Pending Approval", "Rejected", "Overdue"].includes(charge.status) &&
     (creditNotesLoading || hasCreditNoteData);
   const payableAmount = Math.max(0, charge.totalCharges - totalCredited);
-  const showRefundSummary = charge.status === "Approved" && amountToReturn > 0;
+  const showRefundSummary = charge.status === "Paid" && amountToReturn > 0;
 
   const handlePopUploaded = async (file: File) => {
     try {
@@ -174,7 +174,7 @@ export function AdditionalChargesDetail({
         const updated = mapApiChargeToDisplay(result.data);
         setCharge(updated);
         onUpdate(updated);
-        toast.success("Payment approved successfully");
+        toast.success("Payment marked as paid successfully");
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Approve failed");
@@ -250,16 +250,6 @@ export function AdditionalChargesDetail({
           </Button>
           <div>
             <h1>Additional Charge Details</h1>
-            <div className="flex gap-2 mt-2">
-              <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}>
-                <FileText className="h-4 w-4 mr-2" />
-                View Document
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}>
-                <Download className="h-4 w-4 mr-2" />
-                Download Receipt
-              </Button>
-            </div>
             <p className="text-[#374151]">View and manage additional charge information</p>
           </div>
         </div>
@@ -425,7 +415,7 @@ export function AdditionalChargesDetail({
                 <p className="text-sm text-[#DC2626] mt-1">{charge.rejectionReason}</p>
                 {canResubmit() && (
                   <p className="text-xs text-[#991B1B] mt-2">
-                    You can resubmit proof of payment until the charge is approved.
+                    You can resubmit proof of payment until the charge is paid.
                   </p>
                 )}
               </div>
@@ -434,25 +424,38 @@ export function AdditionalChargesDetail({
         </Card>
       )}
 
-      {charge.status === "Approved" && charge.referenceId && (
-        <Card className="border-[#10B981] bg-[#ECFDF5]">
+      {charge.status === "Paid" && charge.referenceId && (
+        <Card className="border-[#059669] bg-[#F0FDF4]">
           <CardContent className="pt-6">
-            <div className="flex gap-3">
-              <CheckCircle className="h-5 w-5 text-[#10B981] mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm text-[#065F46]">
-                  <strong>Payment Approved</strong>
-                </p>
-                <div className="mt-2 space-y-1">
-                  <p className="text-sm text-[#065F46]">
-                    Reference ID: <strong>{charge.referenceId}</strong>
-                  </p>
-                  {charge.approvalDate && (
-                    <p className="text-sm text-[#065F46]">
-                      Approved on: {formatRfqDate(charge.approvalDate)}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-[#059669]" />
+                  <div>
+                    <p className="text-[#047857]">
+                      Payment Paid
                     </p>
-                  )}
+                    {charge.approvalDate && (
+                      <p className="text-[14px] text-[#6B7280] mt-1">
+                        Paid on {formatRfqDate(charge.approvalDate)}
+                      </p>
+                    )}
+                  </div>
                 </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    View Document
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Receipt
+                  </Button>
+                </div>
+              </div>
+              <div className="bg-white rounded-lg border border-[#BBF7D0] p-4">
+                <p className="text-[14px] text-[#6B7280]">Reference ID</p>
+                <p className="text-[#111827] mt-1 font-mono">{charge.referenceId}</p>
               </div>
             </div>
           </CardContent>
@@ -511,56 +514,102 @@ export function AdditionalChargesDetail({
         </CardContent>
       </Card>
 
-      <Card className="border-[#E5E7EB]">
-        <CardHeader>
-          <CardTitle className="text-[18px]">Proof of Payment</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {proofDisplay ? (
-            <div className="flex items-center justify-between p-4 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB]">
-              <div className="flex items-center gap-3">
-                <FileText className="h-8 w-8 text-[#F15929]" />
-                <div>
-                  <p className="text-sm text-[#231F20]">
-                    {typeof proofDisplay === "string" && proofDisplay.startsWith("/")
-                      ? proofDisplay.split("/").pop()
-                      : proofDisplay}
-                  </p>
-                  <p className="text-xs text-[#6B7280]">Uploaded proof of payment</p>
+      {/* Upload Proof of Payment Section */}
+      {(charge.status === "Pending Payment" ||
+        charge.status === "Rejected" ||
+        isOverdue) &&
+        !proofDisplay && (
+        <Card className="border-[#E5E5E5] bg-white shadow-sm rounded-lg">
+          <CardHeader>
+            <CardTitle className="text-[18px]">Upload Proof of Payment</CardTitle>
+            <p className="text-[14px] text-[#6B7280] mt-2">
+              Upload payment proof such as receipt, bank slip, transfer confirmation, or any supporting evidence
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div
+              onClick={() => setUploadModalOpen(true)}
+              className="border-2 border-dashed border-[#E5E7EB] rounded-lg p-8 text-center cursor-pointer hover:border-[#F15929] hover:bg-[#FFF7F5] transition-colors"
+            >
+              <Upload className="h-10 w-10 text-[#6B7280] mx-auto mb-3" />
+              <p className="text-sm text-[#374151] font-medium">Click to upload payment proof</p>
+              <p className="text-xs text-[#6B7280] mt-1">PDF, JPG, PNG up to 10MB</p>
+            </div>
+            <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-lg p-3">
+              <p className="text-[14px] text-[#92400E]">
+                <strong>Note:</strong> Once uploaded, the status will change to "Pending Approval" for review.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Payment Proof (Submitted - View Only) */}
+      {proofDisplay && (
+        <Card className="border-[#E5E7EB]">
+          <CardHeader>
+            <CardTitle className="text-[18px]">Payment Proof</CardTitle>
+            <p className="text-[14px] text-[#6B7280] mt-2">
+              Submitted proof of payment for this additional charge
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Card className="border-[#E5E7EB] bg-[#F9FAFB]">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-10 w-10 text-[#3B82F6]" />
+                    <div>
+                      <p className="text-[14px] text-[#111827]">
+                        {typeof proofDisplay === "string" && proofDisplay.startsWith("/")
+                          ? proofDisplay.split("/").pop()
+                          : "Payment Proof Document"}
+                      </p>
+                      <p className="text-[12px] text-[#6B7280]">
+                        Uploaded proof of payment
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        typeof proofDisplay === "string" &&
+                        proofDisplay.startsWith("/") &&
+                        window.open(proofDisplay, "_blank")
+                      }
+                      className="h-9 px-4 rounded-lg"
+                    >
+                      View
+                    </Button>
+                    {charge.status === "Paid" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 px-4 rounded-lg"
+                        onClick={() => {
+                          if (typeof proofDisplay === "string" && proofDisplay.startsWith("/")) {
+                            const link = document.createElement('a');
+                            link.href = proofDisplay;
+                            link.download = proofDisplay.split("/").pop() || "payment-proof";
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }
+                        }}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 px-4 rounded-lg"
-                onClick={() =>
-                  typeof proofDisplay === "string" &&
-                  proofDisplay.startsWith("/") &&
-                  window.open(proofDisplay, "_blank")
-                }
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 py-4">
-              <p className="text-sm text-[#6B7280]">No proof of payment uploaded yet.</p>
-              {(charge.status === "Pending Payment" ||
-                charge.status === "Rejected" ||
-                (charge.status === "Pending Approval" && isOverdue)) && (
-                <Button
-                  onClick={() => setUploadModalOpen(true)}
-                  className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg shrink-0"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Proof of Payment
-                </Button>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {(charge.status === "Pending Approval" && (
         <Card className="border-[#E5E7EB]">
@@ -589,19 +638,19 @@ export function AdditionalChargesDetail({
         isOpen={uploadModalOpen}
         onClose={() => setUploadModalOpen(false)}
         onUpload={handlePopUploaded}
-        chargeId={charge.id}
+        invoiceNo={charge.invoiceNo}
       />
       <ApproveModal
         isOpen={approveModalOpen}
         onClose={() => setApproveModalOpen(false)}
         onApprove={handleApproveConfirmed}
-        chargeId={charge.id}
+        invoiceNo={charge.invoiceNo}
       />
       <RejectModal
         isOpen={rejectModalOpen}
         onClose={() => setRejectModalOpen(false)}
         onReject={handleRejectConfirmed}
-        chargeId={charge.id}
+        invoiceNo={charge.invoiceNo}
       />
 
       <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>

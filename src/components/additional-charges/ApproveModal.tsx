@@ -8,10 +8,10 @@ interface ApproveModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApprove: (referenceId: string) => void;
-  chargeId: string;
+  invoiceNo: string;
 }
 
-export function ApproveModal({ isOpen, onClose, onApprove, chargeId }: ApproveModalProps) {
+export function ApproveModal({ isOpen, onClose, onApprove, invoiceNo }: ApproveModalProps) {
   const [referenceId, setReferenceId] = useState("");
 
   if (!isOpen) return null;
@@ -54,7 +54,7 @@ export function ApproveModal({ isOpen, onClose, onApprove, chargeId }: ApproveMo
         {/* Content */}
         <div className="p-6 space-y-4">
           <p className="text-sm text-[#6B7280]">
-            You are about to approve Additional Charge <strong>{chargeId}</strong>. Please enter
+            You are about to mark Additional Charge <strong>{invoiceNo}</strong> as paid. Please enter
             the reference/transaction ID for record purposes.
           </p>
 
@@ -73,7 +73,7 @@ export function ApproveModal({ isOpen, onClose, onApprove, chargeId }: ApproveMo
 
           <div className="bg-[#D1FAE5] border border-[#10B981] rounded-lg p-3">
             <p className="text-xs text-[#065F46]">
-              <strong>Confirmation:</strong> Once approved, this action cannot be undone. The
+              <strong>Confirmation:</strong> Once marked as paid, this action cannot be undone. The
               payment will be marked as completed.
             </p>
           </div>

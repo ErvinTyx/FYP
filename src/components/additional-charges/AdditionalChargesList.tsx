@@ -45,7 +45,7 @@ type OrderBy = "latest" | "earliest";
 const API_STATUS_TO_DISPLAY: Record<string, AdditionalCharge["status"]> = {
   pending_payment: "Pending Payment",
   pending_approval: "Pending Approval",
-  approved: "Approved",
+  paid: "Paid",
   rejected: "Rejected",
 };
 
@@ -219,7 +219,7 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
             c.id === selectedCharge.id ? mapApiChargeToDisplay(result.data) : c
           )
         );
-        toast.success("Payment approved successfully");
+        toast.success("Payment marked as paid successfully");
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Approve failed");
@@ -296,7 +296,7 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="Pending Payment">Pending Payment</SelectItem>
                 <SelectItem value="Pending Approval">Pending Approval</SelectItem>
-                <SelectItem value="Approved">Approved</SelectItem>
+                <SelectItem value="Paid">Paid</SelectItem>
                 <SelectItem value="Rejected">Rejected</SelectItem>
                 <SelectItem value="Overdue">Overdue</SelectItem>
               </SelectContent>

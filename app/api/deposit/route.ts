@@ -612,6 +612,34 @@ export async function PUT(request: NextRequest) {
         break;
       }
 
+      case 'remove-proof': {
+        // Cannot remove proof after payment is approved
+        if (deposit.status === 'Paid') {
+          return NextResponse.json(
+            { success: false, message: 'Cannot remove proof after payment is approved' },
+            { status: 400 }
+          );
+        }
+
+        // Must have proof to remove
+        if (!deposit.paymentProofUrl) {
+          return NextResponse.json(
+            { success: false, message: 'No proof of payment to remove' },
+            { status: 400 }
+          );
+        }
+
+        updateData = {
+          paymentProofUrl: null,
+          paymentProofFileName: null,
+          paymentProofUploadedAt: null,
+          paymentSubmittedAt: null,
+          status: 'Pending Payment',
+        };
+        responseMessage = 'Payment proof removed successfully';
+        break;
+      }
+
       default:
         return NextResponse.json(
           { success: false, message: `Unknown action: ${action}` },

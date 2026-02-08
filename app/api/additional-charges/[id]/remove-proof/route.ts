@@ -1,6 +1,6 @@
 /**
- * PUT /api/additional-charges/[id]/approve
- * Body: { referenceId }; require non-empty referenceId
+ * PUT /api/additional-charges/[id]/remove-proof
+ * Remove proof of payment and reset status to pending_payment
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,15 +18,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const body = await request.json();
-    const referenceId = typeof body.referenceId === 'string' ? body.referenceId.trim() : '';
-    if (!referenceId) {
-      return NextResponse.json(
-        { success: false, message: 'referenceId is required and must be non-empty' },
-        { status: 400 }
-      );
-    }
-
     const charge = await prisma.additionalCharge.findUnique({
       where: { id },
       include: { items: true },
@@ -38,12 +29,28 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Only allow removal when payment is not yet paid
+    if (charge.status === 'paid') {
+      return NextResponse.json(
+        { success: false, message: 'Cannot remove proof after payment is paid' },
+        { status: 400 }
+      );
+    }
+
+    // Must have proof to remove
+    if (!charge.proofOfPaymentUrl) {
+      return NextResponse.json(
+        { success: false, message: 'No proof of payment to remove' },
+        { status: 400 }
+      );
+    }
+
     const updated = await prisma.additionalCharge.update({
       where: { id },
       data: {
-        referenceId,
-        status: 'paid',
-        approvalDate: new Date(),
+        proofOfPaymentUrl: null,
+        status: 'pending_payment',
+        uploadedByEmail: null,
       },
       include: { items: true },
     });
@@ -63,9 +70,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json({ success: true, data: serialized });
   } catch (error) {
-    console.error('[Additional Charges API] approve error:', error);
+    console.error('[Additional Charges API] remove-proof error:', error);
     return NextResponse.json(
-      { success: false, message: 'Failed to approve charge' },
+      { success: false, message: 'Failed to remove proof of payment' },
       { status: 500 }
     );
   }

@@ -681,22 +681,24 @@ export function DepositDetails({
                     >
                       View
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9 px-4 rounded-lg"
-                      onClick={() => {
-                        const link = document.createElement('a');
-                        link.href = deposit.paymentProof!.fileUrl;
-                        link.download = deposit.paymentProof!.fileName;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }}
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download
-                    </Button>
+                    {deposit.status === "Paid" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 px-4 rounded-lg"
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = deposit.paymentProof!.fileUrl;
+                          link.download = deposit.paymentProof!.fileName;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>

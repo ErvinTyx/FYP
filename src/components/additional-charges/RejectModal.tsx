@@ -8,10 +8,10 @@ interface RejectModalProps {
   isOpen: boolean;
   onClose: () => void;
   onReject: (reason: string) => void;
-  chargeId: string;
+  invoiceNo: string;
 }
 
-export function RejectModal({ isOpen, onClose, onReject, chargeId }: RejectModalProps) {
+export function RejectModal({ isOpen, onClose, onReject, invoiceNo }: RejectModalProps) {
   const [reason, setReason] = useState("");
 
   if (!isOpen) return null;
@@ -54,7 +54,7 @@ export function RejectModal({ isOpen, onClose, onReject, chargeId }: RejectModal
         {/* Content */}
         <div className="p-6 space-y-4">
           <p className="text-sm text-[#6B7280]">
-            You are about to reject Additional Charge <strong>{chargeId}</strong>. Please provide
+            You are about to reject Additional Charge <strong>{invoiceNo}</strong>. Please provide
             a clear reason for rejection.
           </p>
 
