@@ -90,6 +90,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     driverName?: string;
     vehicleNumber?: string;
     driverContact?: string;
+    packingPhotos?: string;
   }>({});
 
   // Validation error states for Step 4: Customer Sign & OTP
@@ -97,6 +98,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     customerId?: string;
     signature?: string;
     otp?: string;
+    deliveryPhotos?: string;
   }>({});
 
   // Stock check validation state
@@ -127,6 +129,21 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     
     fetchCustomers();
   }, []);
+
+  // Auto-select customer from DO data when customers are loaded
+  useEffect(() => {
+    if (customers.length > 0 && formData.customerName && !selectedCustomerId) {
+      const match = customers.find(c => {
+        const fullName = [c.firstName, c.lastName].filter(Boolean).join(' ');
+        return fullName.toLowerCase() === formData.customerName.toLowerCase();
+      });
+      if (match) {
+        setSelectedCustomerId(match.id);
+        const fullName = [match.firstName, match.lastName].filter(Boolean).join(' ') || match.email;
+        setCustomerName(fullName);
+      }
+    }
+  }, [customers, formData.customerName]);
 
   useEffect(() => {
     if (delivery) {
@@ -322,14 +339,22 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
         isValid = false;
       }
 
-      // Optional phone format validation for driver contact
-      if (formData.driverContact?.trim()) {
+      if (!formData.driverContact?.trim()) {
+        errors.driverContact = 'Driver contact is required';
+        isValid = false;
+      } else {
         const phoneRegex = /^[\d\s+\-()]+$/;
         if (!phoneRegex.test(formData.driverContact)) {
           errors.driverContact = 'Invalid phone number format';
           isValid = false;
         }
       }
+    }
+
+    // Packing photos required for complete loading
+    if (!isStartPacking && packingPhotos.length === 0) {
+      errors.packingPhotos = 'At least one packing photo is required';
+      isValid = false;
     }
 
     setStep3Errors(errors);
@@ -352,8 +377,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
     const updatedData = {
       ...formData,
-      scheduledDate: scheduledDate!.toISOString(),
+      scheduledDate: scheduledDate!.toISOString().split('T')[0], // Convert to YYYY-MM-DD format
       scheduledTimeSlot: scheduleTimeSlot,
+      scheduleConfirmedAt: new Date().toISOString(),
+      scheduleConfirmedBy: 'Current User',
       packingStartedAt: new Date().toISOString(),
       packingStartedBy: 'Current User',
       status: 'Packing & Loading' as DeliveryOrder['status'],
@@ -380,8 +407,11 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     const updatedData = {
       ...formData,
       // Ensure schedule data is included
-      scheduledDate: scheduledDate?.toISOString(),
+      scheduledDate: scheduledDate ? scheduledDate.toISOString().split('T')[0] : undefined, // Convert to YYYY-MM-DD format
       scheduledTimeSlot: scheduleTimeSlot,
+      // Always update scheduleConfirmedAt when a date is selected (user is confirming the schedule)
+      scheduleConfirmedAt: scheduledDate ? new Date().toISOString() : undefined,
+      scheduleConfirmedBy: scheduledDate ? 'Current User' : undefined,
       loadingCompletedAt: new Date().toISOString(),
       loadingCompletedBy: 'Current User',
       packingPhotos,
@@ -427,6 +457,11 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
     if (!selectedCustomerId) {
       errors.customerId = 'Please select a customer';
+      isValid = false;
+    }
+
+    if (deliveryPhotos.length === 0) {
+      errors.deliveryPhotos = 'At least one delivery photo is required';
       isValid = false;
     }
 
@@ -912,18 +947,32 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
               Pack items and load them {formData.type === 'delivery' ? 'onto the delivery vehicle' : 'for customer pickup'}.
             </p>
 
-            {/* Schedule Date - Auto-filled from DO */}
-            <div className={`p-4 rounded-lg ${step3Errors.scheduledDate ? 'bg-red-50 border border-red-200' : 'bg-amber-50 border border-amber-200'}`}>
-              <p className={`text-sm mb-3 ${step3Errors.scheduledDate ? 'text-red-800' : 'text-amber-800'}`}>
-                <CalendarIcon className="size-4 inline mr-1" />
-                Scheduled {formData.type === 'delivery' ? 'Delivery' : 'Pickup'} Date (Auto-filled)
-              </p>
-              <div className="space-y-1">
-                <span className="text-xs text-gray-600">Date:</span>
-                <p className="text-[#231F20] font-medium">{scheduledDate ? format(scheduledDate, 'PPP') : 'Not set'}</p>
-              </div>
+            {/* Schedule Date - Editable */}
+            <div className={`p-4 rounded-lg ${step3Errors.scheduledDate ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-200'}`}>
+              <Label className={step3Errors.scheduledDate ? 'text-red-600' : ''}>
+                Scheduled {formData.type === 'delivery' ? 'Delivery' : 'Pickup'} Date *
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal mt-1">
+                    <CalendarIcon className="mr-2 size-4" />
+                    {scheduledDate ? format(scheduledDate, 'PPP') : 'Select date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={scheduledDate}
+                    onSelect={(date) => {
+                      setScheduledDate(date);
+                      if (date) clearStep3Error('scheduledDate');
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
               {step3Errors.scheduledDate && (
-                <p className="text-xs text-red-600 mt-2 flex items-center">
+                <p className="text-xs text-red-600 mt-1 flex items-center">
                   <AlertCircle className="size-3 mr-1" />
                   {step3Errors.scheduledDate}
                 </p>
@@ -971,7 +1020,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className={step3Errors.driverContact ? 'text-red-600' : ''}>Driver Contact</Label>
+                    <Label className={step3Errors.driverContact ? 'text-red-600' : ''}>Driver Contact *</Label>
                     <Input
                       value={formData.driverContact || ''}
                       onChange={(e) => {
@@ -1013,11 +1062,17 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
             {/* Photo Upload */}
             <div className="space-y-2">
-              <Label>Packing Photos (Optional)</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+              <Label className={step3Errors.packingPhotos ? 'text-red-600' : ''}>Packing Photos *</Label>
+              <Button variant="outline" onClick={handlePhotoUpload} className={`w-full ${step3Errors.packingPhotos ? 'border-red-500' : ''}`} disabled={isUploading}>
                 {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
                 {isUploading ? 'Uploading...' : 'Upload Photos'}
               </Button>
+              {step3Errors.packingPhotos && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step3Errors.packingPhotos}
+                </p>
+              )}
               {packingPhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {packingPhotos.map((photo, index) => (
@@ -1131,11 +1186,17 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
             {/* Delivery Photos */}
             <div className="space-y-2">
-              <Label>{formData.type === 'delivery' ? 'Delivery Photos (Optional)' : 'Pickup Photos (Optional)'}</Label>
-              <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
+              <Label className={step4Errors.deliveryPhotos ? 'text-red-600' : ''}>{formData.type === 'delivery' ? 'Delivery Photos *' : 'Pickup Photos *'}</Label>
+              <Button variant="outline" onClick={handlePhotoUpload} className={`w-full ${step4Errors.deliveryPhotos ? 'border-red-500' : ''}`} disabled={isUploading}>
                 {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
                 {isUploading ? 'Uploading...' : 'Upload Photos'}
               </Button>
+              {step4Errors.deliveryPhotos && (
+                <p className="text-xs text-red-600 flex items-center">
+                  <AlertCircle className="size-3 mr-1" />
+                  {step4Errors.deliveryPhotos}
+                </p>
+              )}
               {deliveryPhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mt-2">
                   {deliveryPhotos.map((photo, index) => (
@@ -1155,46 +1216,16 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
               )}
             </div>
 
-            {/* Customer Selection */}
+            {/* Customer (read-only from DO) */}
             <div className="space-y-2">
-              <Label className={step4Errors.customerId ? 'text-red-600' : ''}>Select Customer *</Label>
-              <Select 
-                value={selectedCustomerId} 
-                onValueChange={(value) => {
-                  setSelectedCustomerId(value);
-                  clearStep4Error('customerId');
-                  const customer = customers.find(c => c.id === value);
-                  if (customer) {
-                    const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.email;
-                    setCustomerName(fullName);
-                  }
-                }}
-              >
-                <SelectTrigger className={step4Errors.customerId ? 'border-red-500 bg-red-50' : ''}>
-                  <SelectValue placeholder="Select a customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.length === 0 ? (
-                    <SelectItem value="loading" disabled>Loading customers...</SelectItem>
-                  ) : (
-                    customers.map((customer) => {
-                      const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ');
-                      return (
-                        <SelectItem key={customer.id} value={customer.id}>
-                          {fullName || 'No Name'} - {customer.email}
-                        </SelectItem>
-                      );
-                    })
-                  )}
-                </SelectContent>
-              </Select>
-              {step4Errors.customerId && (
-                <p className="text-xs text-red-600 flex items-center">
-                  <AlertCircle className="size-3 mr-1" />
-                  {step4Errors.customerId}
-                </p>
-              )}
-              {selectedCustomerId && !step4Errors.customerId && (
+              <Label>Customer</Label>
+              <Input
+                value={formData.customerName || ''}
+                readOnly
+                disabled
+                className="disabled:bg-gray-100"
+              />
+              {selectedCustomerId && (
                 <p className="text-sm text-gray-500">
                   OTP will be sent to: {customers.find(c => c.id === selectedCustomerId)?.email}
                 </p>
@@ -1513,38 +1544,9 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
               <p>4. Late returns may be subject to additional charges as per agreement terms.</p>
             </div>
 
-            {/* Footer */}
-            <div className="grid grid-cols-2 gap-8 pt-6 border-t">
-              <div>
-                <p className="text-sm text-gray-600 mb-2">Prepared By</p>
-                <div className="border-t border-gray-300 pt-2 mt-8">
-                  <p className="text-sm text-[#231F20]">{formData.createdBy}</p>
-                  <p className="text-xs text-gray-500">Power Metal & Steel</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-2">Received By (Customer)</p>
-                <div className="border-t border-gray-300 pt-2 mt-8">
-                  <p className="text-sm text-[#231F20]">_______________________</p>
-                  <p className="text-xs text-gray-500">Name & Signature</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-4">
+            <div className="flex justify-end pt-4">
               <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  window.print();
-                  toast.success('Print dialog opened');
-                }}
-              >
-                <Download className="size-4 mr-2" />
-                Print DO
-              </Button>
-              <Button
-                className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]"
+                className="bg-[#F15929] hover:bg-[#d94d1f]"
                 onClick={() => setIsDOViewerOpen(false)}
               >
                 Close

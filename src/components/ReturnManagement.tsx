@@ -75,6 +75,7 @@ export function ReturnManagement() {
             customerNotificationSent?: boolean;
             hasExternalGoods?: boolean;
             externalGoodsNotes?: string;
+            externalGoodsPhotos?: unknown;
             productionNotes?: string;
             inventoryUpdated?: boolean;
             soaUpdated?: boolean;
@@ -109,6 +110,7 @@ export function ReturnManagement() {
             customerNotificationSent: req.customerNotificationSent,
             hasExternalGoods: req.hasExternalGoods,
             externalGoodsNotes: req.externalGoodsNotes,
+            externalGoodsPhotos: req.externalGoodsPhotos as Return['externalGoodsPhotos'],
             productionNotes: req.productionNotes,
             inventoryUpdated: req.inventoryUpdated,
             soaUpdated: req.soaUpdated,
@@ -199,6 +201,7 @@ export function ReturnManagement() {
           customerNotificationSent: returnOrder.customerNotificationSent,
           hasExternalGoods: returnOrder.hasExternalGoods,
           externalGoodsNotes: returnOrder.externalGoodsNotes,
+          externalGoodsPhotos: returnOrder.externalGoodsPhotos,
           productionNotes: returnOrder.productionNotes,
           inventoryUpdated: returnOrder.inventoryUpdated,
           soaUpdated: returnOrder.soaUpdated,
@@ -468,7 +471,7 @@ export function ReturnManagement() {
                 <TableHead>Customer</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Transportation</TableHead>
-                <TableHead>Request Date</TableHead>
+                <TableHead>Scheduled Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -503,7 +506,15 @@ export function ReturnManagement() {
                     </div>
                   </TableCell>
                   <TableCell className="text-[#6B7280]">
-                    {format(new Date(returnItem.requestDate), 'PP')}
+                    <div>
+                      <p>{format(new Date(returnItem.pickupDate || returnItem.requestDate), 'PP')}</p>
+                      {returnItem.pickupDate && returnItem.pickupTimeSlot && (
+                        <p className="text-xs text-[#6B7280]">{returnItem.pickupTimeSlot}</p>
+                      )}
+                      {!returnItem.pickupDate && (
+                        <p className="text-xs text-amber-500">Pending schedule</p>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>{getReturnStatusBadge(returnItem.status)}</TableCell>
                   <TableCell className="text-right">

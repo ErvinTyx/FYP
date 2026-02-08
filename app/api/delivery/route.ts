@@ -258,6 +258,21 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Batch-fetch additional charge statuses for all delivery sets
+    const allSetIds: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deliveryRequests.forEach((req: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      req.sets?.forEach((set: any) => { allSetIds.push(set.id); });
+    });
+    const chargeRecords = allSetIds.length > 0
+      ? await prisma.additionalCharge.findMany({
+          where: { deliverySetId: { in: allSetIds } },
+          select: { deliverySetId: true, status: true },
+        })
+      : [];
+    const chargeStatusMap = new Map(chargeRecords.map(c => [c.deliverySetId, c.status]));
+
     // Collect all scaffoldingItemIds to fetch real stock levels
     const allScaffoldingItemIds = new Set<string>();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -376,6 +391,7 @@ export async function GET(request: NextRequest) {
         verifiedOTP: set.customerAck?.verifiedOTP,
         inventoryUpdatedAt: set.customerAck?.inventoryUpdatedAt?.toISOString(),
         inventoryStatus: set.customerAck?.inventoryStatus,
+        additionalChargeStatus: chargeStatusMap.get(set.id) || null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items: set.items.map((item: any) => ({
           id: item.id,
@@ -455,6 +471,23 @@ export async function POST(request: NextRequest) {
         { success: false, message: 'A delivery request with this ID already exists' },
         { status: 400 }
       );
+    }
+
+    // Check for duplicate set names across existing delivery requests for this agreement
+    if (sets && sets.length > 0) {
+      const existingSets = await prisma.deliverySet.findMany({
+        where: { deliveryRequest: { agreementNo } },
+        select: { setName: true },
+      });
+      const existingSetNames = new Set(existingSets.map((s: { setName: string }) => s.setName));
+      const duplicates = sets.filter((s: { setName: string }) => existingSetNames.has(s.setName));
+      if (duplicates.length > 0) {
+        const names = duplicates.map((s: { setName: string }) => s.setName).join(', ');
+        return NextResponse.json(
+          { success: false, message: `Sets already requested for this agreement: ${names}` },
+          { status: 400 }
+        );
+      }
     }
 
     // Create the delivery request with sets and items
@@ -823,8 +856,10 @@ export async function PUT(request: NextRequest) {
             scheduledDate: updateData.deliveryDate ? new Date(updateData.deliveryDate) : undefined,
             // Only update scheduledTimeSlot if a non-null value is provided (don't overwrite with null)
             ...(updateData.scheduledTimeSlot && { scheduledTimeSlot: updateData.scheduledTimeSlot }),
-            confirmedAt: updateData.scheduleConfirmedAt ? new Date(updateData.scheduleConfirmedAt) : undefined,
-            confirmedBy: updateData.scheduleConfirmedBy,
+            // Only update confirmedAt if explicitly provided (don't clear existing value)
+            ...(updateData.scheduleConfirmedAt !== undefined && { confirmedAt: updateData.scheduleConfirmedAt ? new Date(updateData.scheduleConfirmedAt) : null }),
+            // Only update confirmedBy if explicitly provided
+            ...(updateData.scheduleConfirmedBy !== undefined && { confirmedBy: updateData.scheduleConfirmedBy }),
           },
         });
       }
@@ -882,6 +917,39 @@ export async function PUT(request: NextRequest) {
       // Upsert DO Issued step
       if (updateData.doNumber !== undefined || updateData.doIssuedAt !== undefined ||
           updateData.doIssuedBy !== undefined || updateData.signedDO !== undefined) {
+        // Validate that DO number is unique (not used by another set in a different request)
+        // Allow same DO number for sets in the same request (request-level DO)
+        if (updateData.doNumber) {
+          const currentSet = await prisma.deliverySet.findUnique({
+            where: { id: setId },
+            include: { deliveryRequest: true },
+          });
+          
+          if (currentSet) {
+            // Get all sets in the same request
+            const requestSets = await prisma.deliverySet.findMany({
+              where: { deliveryRequestId: currentSet.deliveryRequestId },
+              select: { id: true },
+            });
+            const requestSetIds = requestSets.map(s => s.id);
+            
+            // Check if DO number exists for a set NOT in this request
+            const existingDO = await prisma.deliveryDOIssued.findFirst({
+              where: {
+                doNumber: updateData.doNumber,
+                deliverySetId: { notIn: requestSetIds }, // Exclude all sets in this request
+              },
+            });
+            
+            if (existingDO) {
+              return NextResponse.json(
+                { success: false, message: `DO number ${updateData.doNumber} already exists for another request` },
+                { status: 400 }
+              );
+            }
+          }
+        }
+        
         await prisma.deliveryDOIssued.upsert({
           where: { deliverySetId: setId },
           create: {

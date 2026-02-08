@@ -562,46 +562,6 @@ export function DeliveryDetails({ delivery, onProcess, onBack }: DeliveryDetails
               </div>
             )}
 
-            {/* Signatures Section */}
-            {(delivery.driverSignature || delivery.customerSignature) && (
-              <div className="border-t pt-4">
-                <h4 className="font-semibold text-[#231F20] mb-4">Signatures:</h4>
-                <div className="grid grid-cols-2 gap-6">
-                  {delivery.driverSignature && (
-                    <div className="text-center">
-                      <p className="text-sm text-gray-500 mb-2">Driver Signature</p>
-                      <img
-                        src={delivery.driverSignature}
-                        alt="Driver signature"
-                        className="border rounded-lg p-2 bg-white mx-auto max-w-[200px]"
-                      />
-                      {delivery.driverAcknowledgedAt && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          {format(new Date(delivery.driverAcknowledgedAt), 'PPp')}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {delivery.customerSignature && (
-                    <div className="text-center">
-                      <p className="text-sm text-gray-500 mb-2">Customer Signature</p>
-                      <img
-                        src={delivery.customerSignature}
-                        alt="Customer signature"
-                        className="border rounded-lg p-2 bg-white mx-auto max-w-[200px]"
-                      />
-                      <p className="text-sm text-gray-600 mt-1">{delivery.customerSignedBy}</p>
-                      {delivery.customerAcknowledgedAt && (
-                        <p className="text-xs text-gray-500">
-                          {format(new Date(delivery.customerAcknowledgedAt), 'PPp')}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* OTP Verification */}
             {delivery.verifiedOTP && (
               <div className="border-t pt-4 text-center">
@@ -613,14 +573,7 @@ export function DeliveryDetails({ delivery, onProcess, onBack }: DeliveryDetails
             )}
           </div>
 
-          <div className="flex gap-2 justify-end mt-4">
-            <Button
-              variant="outline"
-              onClick={() => window.print()}
-            >
-              <Printer className="size-4 mr-2" />
-              Print
-            </Button>
+          <div className="flex justify-end mt-4">
             <Button
               className="bg-[#F15929] hover:bg-[#d94d1f]"
               onClick={() => setIsDOViewerOpen(false)}

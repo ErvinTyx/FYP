@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { appendFileSync } from 'fs';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { createChargeForReturn } from '@/lib/additional-charge-utils';
@@ -47,52 +46,38 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Try to include rfq relation and step tables, fall back to basic query if relation doesn't exist yet
-    let returnRequests;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      returnRequests = await (prisma.returnRequest.findMany as any)({
-        where,
-        include: {
-          items: {
-            include: {
-              conditions: true, // Include normalized condition breakdown
-            },
-          },
-          schedule: true,
-          pickupConfirm: true,
-          driverRecording: true,
-          warehouseReceipt: true,
-          inspection: true,
-          rcf: true,
-          notification: true,
-          completion: true,
-          rfq: {
-            include: {
-              items: true,
-            },
+    const returnRequests = await prisma.returnRequest.findMany({
+      where,
+      include: {
+        items: {
+          include: {
+            conditions: true, // Include normalized condition breakdown
           },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-    } catch {
-      // Fallback: rfq relation might not exist yet (migration not run)
-      returnRequests = await prisma.returnRequest.findMany({
-        where,
-        include: {
-          items: {
-            include: {
-              conditions: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-    }
+        schedule: true,
+        pickupConfirm: true,
+        driverRecording: true,
+        warehouseReceipt: true,
+        inspection: true,
+        rcf: true,
+        notification: true,
+        completion: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Batch-fetch additional charge statuses for all return requests
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allReturnIds = returnRequests.map((req: any) => req.id);
+    const returnChargeRecords = allReturnIds.length > 0
+      ? await prisma.additionalCharge.findMany({
+          where: { returnRequestId: { in: allReturnIds } },
+          select: { returnRequestId: true, status: true },
+        })
+      : [];
+    const returnChargeStatusMap = new Map(returnChargeRecords.map(c => [c.returnRequestId, c.status]));
 
     // Transform the data for the frontend
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,7 +90,6 @@ export async function GET(request: NextRequest) {
           agreementNo: req.agreementNo,
           setName: req.setName,
           requestDate: req.requestDate.toISOString().split('T')[0],
-          scheduledDate: req.scheduledDate?.toISOString().split('T')[0],
           status: req.status,
           reason: req.reason,
           pickupAddress: req.pickupAddress,
@@ -114,70 +98,55 @@ export async function GET(request: NextRequest) {
           pickupFee: req.pickupFee ? Number(req.pickupFee) : undefined,
           returnType: req.returnType,
           collectionMethod: req.collectionMethod,
-          rfqId: req.rfqId || null,
-          rfq: req.rfq ? {
-            id: req.rfq.id,
-            rfqNumber: req.rfq.rfqNumber,
-            customerName: req.rfq.customerName,
-            customerEmail: req.rfq.customerEmail,
-            customerPhone: req.rfq.customerPhone,
-            projectName: req.rfq.projectName,
-            projectLocation: req.rfq.projectLocation,
-            status: req.rfq.status,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            items: req.rfq.items.map((item: any) => ({
-              id: item.id,
-              scaffoldingItemId: item.scaffoldingItemId,
-              scaffoldingItemName: item.scaffoldingItemName,
-              quantity: item.quantity,
-              unit: item.unit,
-            })),
-          } : null,
+          deliverySetId: req.deliverySetId || null,
+          additionalChargeStatus: returnChargeStatusMap.get(req.id) || null,
           createdAt: req.createdAt.toISOString(),
           updatedAt: req.updatedAt.toISOString(),
-          // Flatten step data for backward compatibility
+          // Flatten step data from normalized tables
           // Schedule step
-          scheduledDate: req.schedule?.scheduledDate?.toISOString().split('T')[0] || req.scheduledDate?.toISOString().split('T')[0],
-          pickupDate: req.schedule?.scheduledDate ? req.schedule.scheduledDate.toISOString() : (req.pickupDate ? (req.pickupDate instanceof Date ? req.pickupDate.toISOString() : String(req.pickupDate)) : undefined),
-          pickupTimeSlot: req.schedule?.timeSlot || req.pickupTimeSlot,
+          scheduledDate: req.schedule?.scheduledDate?.toISOString().split('T')[0],
+          pickupDate: req.schedule?.scheduledDate?.toISOString(),
+          pickupTimeSlot: req.schedule?.timeSlot,
           // Pickup Confirm step
-          pickupDriver: req.pickupConfirm?.pickupDriver || req.pickupDriver,
-          driverContact: req.pickupConfirm?.driverContact || req.driverContact,
+          pickupDriver: req.pickupConfirm?.pickupDriver,
+          driverContact: req.pickupConfirm?.driverContact,
           // Driver Recording step
-          driverRecordPhotos: req.driverRecording?.driverPhotos || req.driverRecordPhotos,
+          driverRecordPhotos: req.driverRecording?.driverPhotos,
           // Warehouse Receipt step
-          warehousePhotos: req.warehouseReceipt?.warehousePhotos || req.warehousePhotos,
+          warehousePhotos: req.warehouseReceipt?.warehousePhotos,
           // Inspection step
-          grnNumber: req.inspection?.grnNumber || req.grnNumber,
-          productionNotes: req.inspection?.productionNotes || req.productionNotes,
-          hasExternalGoods: req.inspection?.hasExternalGoods ?? req.hasExternalGoods,
-          externalGoodsNotes: req.inspection?.externalGoodsNotes || req.externalGoodsNotes,
-          damagePhotos: req.inspection?.damagePhotos || req.damagePhotos,
+          grnNumber: req.inspection?.grnNumber,
+          productionNotes: req.inspection?.productionNotes,
+          hasExternalGoods: req.inspection?.hasExternalGoods ?? false,
+          externalGoodsNotes: req.inspection?.externalGoodsNotes,
+          externalGoodsPhotos: req.inspection?.externalGoodsPhotos,
+          damagePhotos: req.inspection?.damagePhotos,
           // RCF step
-          rcfNumber: req.rcf?.rcfNumber || req.rcfNumber,
+          rcfNumber: req.rcf?.rcfNumber,
           // Notification step
-          customerNotificationSent: req.notification?.notificationSent ?? req.customerNotificationSent,
+          customerNotificationSent: req.notification?.notificationSent ?? false,
           // Completion step
-          inventoryUpdated: req.completion?.inventoryUpdated ?? req.inventoryUpdated,
-          soaUpdated: req.completion?.soaUpdated ?? req.soaUpdated,
+          inventoryUpdated: req.completion?.inventoryUpdated ?? false,
+          soaUpdated: req.completion?.soaUpdated ?? false,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           items: req.items.map((item: any) => {
             // Build statusBreakdown from normalized ReturnItemCondition table
-            let statusBreakdown: { Good: number; Damaged: number; Replace: number } | null = null;
+            let statusBreakdown: { Good: number; Repair: number; Replace: number } | null = null;
             let primaryStatus = 'Good';
 
             if (item.conditions && item.conditions.length > 0) {
-              statusBreakdown = { Good: 0, Damaged: 0, Replace: 0 };
+              statusBreakdown = { Good: 0, Repair: 0, Replace: 0 };
               let maxQty = 0;
               for (const cond of item.conditions) {
                 if (cond.status === 'Good') statusBreakdown.Good = cond.quantity;
-                else if (cond.status === 'Damaged') statusBreakdown.Damaged = cond.quantity;
+                else if (cond.status === 'Damaged' || cond.status === 'Repair') statusBreakdown.Repair = cond.quantity;
                 else if (cond.status === 'Replace') statusBreakdown.Replace = cond.quantity;
                 
                 // Determine primary status (highest quantity)
                 if (cond.quantity > maxQty) {
                   maxQty = cond.quantity;
-                  primaryStatus = cond.status;
+                  // Normalize legacy 'Damaged' to 'Repair'
+                  primaryStatus = cond.status === 'Damaged' ? 'Repair' : cond.status;
                 }
               }
             }
@@ -249,7 +218,7 @@ export async function POST(request: NextRequest) {
       returnType,
       collectionMethod,
       items,
-      rfqId,
+      deliverySetId,
     } = body;
 
     // Validate required fields
@@ -273,70 +242,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the return request with items
-    // Try with rfq fields first, fall back if migration not run
-    let newRequest;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      newRequest = await (prisma.returnRequest.create as any)({
-        data: {
-          requestId,
-          customerName,
-          agreementNo,
-          setName,
-          reason,
-          pickupAddress,
-          customerPhone: customerPhone || null,
-          customerEmail: customerEmail || null,
-          returnType,
-          collectionMethod,
-          status: 'Requested',
-          rfqId: rfqId || null,
-          items: items ? {
-            create: items.map((item: { name: string; quantity: number; quantityReturned?: number; scaffoldingItemId?: string }) => ({
-              name: item.name,
-              quantity: item.quantity,
-              quantityReturned: item.quantityReturned ?? item.quantity,
-              scaffoldingItemId: item.scaffoldingItemId || null,
-            })),
-          } : undefined,
-        },
-        include: {
-          items: true,
-          rfq: {
-            include: {
-              items: true,
-            },
-          },
-        },
-      });
-    } catch {
-      // Fallback: rfqId/scaffoldingItemId fields might not exist yet (migration not run)
-      newRequest = await prisma.returnRequest.create({
-        data: {
-          requestId,
-          customerName,
-          agreementNo,
-          setName,
-          reason,
-          pickupAddress,
-          customerPhone: customerPhone || null,
-          customerEmail: customerEmail || null,
-          returnType,
-          collectionMethod,
-          status: 'Requested',
-          items: items ? {
-            create: items.map((item: { name: string; quantity: number; quantityReturned?: number }) => ({
-              name: item.name,
-              quantity: item.quantity,
-              quantityReturned: item.quantityReturned ?? item.quantity,
-            })),
-          } : undefined,
-        },
-        include: {
-          items: true,
-        },
-      });
-    }
+    const newRequest = await prisma.returnRequest.create({
+      data: {
+        requestId,
+        customerName,
+        agreementNo,
+        setName,
+        reason,
+        pickupAddress,
+        customerPhone: customerPhone || null,
+        customerEmail: customerEmail || null,
+        returnType,
+        collectionMethod,
+        status: collectionMethod === 'self-return' ? 'Agreed' : 'Requested',
+        deliverySetId: deliverySetId || null,
+        items: items ? {
+          create: items.map((item: { name: string; quantity: number; quantityReturned?: number; scaffoldingItemId?: string }) => ({
+            name: item.name,
+            quantity: item.quantity,
+            quantityReturned: item.quantityReturned ?? item.quantity,
+            scaffoldingItemId: item.scaffoldingItemId || null,
+          })),
+        } : undefined,
+      },
+      include: {
+        items: true,
+      },
+    });
 
     return NextResponse.json({
       success: true,
@@ -511,7 +443,7 @@ export async function PUT(request: NextRequest) {
     // Upsert Inspection step
     if (updateData.grnNumber !== undefined || updateData.productionNotes !== undefined ||
         updateData.hasExternalGoods !== undefined || updateData.externalGoodsNotes !== undefined ||
-        updateData.damagePhotos !== undefined) {
+        updateData.externalGoodsPhotos !== undefined || updateData.damagePhotos !== undefined) {
       await prisma.returnInspection.upsert({
         where: { returnRequestId: id },
         create: {
@@ -521,6 +453,7 @@ export async function PUT(request: NextRequest) {
           productionNotes: updateData.productionNotes,
           hasExternalGoods: updateData.hasExternalGoods ?? false,
           externalGoodsNotes: updateData.externalGoodsNotes,
+          externalGoodsPhotos: updateData.externalGoodsPhotos,
           damagePhotos: updateData.damagePhotos,
         },
         update: {
@@ -528,6 +461,7 @@ export async function PUT(request: NextRequest) {
           productionNotes: updateData.productionNotes,
           hasExternalGoods: updateData.hasExternalGoods,
           externalGoodsNotes: updateData.externalGoodsNotes,
+          externalGoodsPhotos: updateData.externalGoodsPhotos,
           damagePhotos: updateData.damagePhotos,
         },
       });
@@ -541,7 +475,7 @@ export async function PUT(request: NextRequest) {
           returnRequestId: id,
           rcfNumber: updateData.rcfNumber,
           generatedAt: new Date(),
-          skipped: !updateData.rcfNumber,
+          skipped: false,
         },
         update: {
           rcfNumber: updateData.rcfNumber,
@@ -551,12 +485,6 @@ export async function PUT(request: NextRequest) {
 
     // IMPORTANT: Update items BEFORE creating condition report
     // This ensures condition data is in DB when condition report is generated
-    // #region agent log
-    const firstItem = updateData.items?.[0] as { id?: string; statusBreakdown?: unknown } | undefined;
-    try {
-      appendFileSync('d:\\FYP_Development\\FYP\\.cursor\\debug.log', JSON.stringify({ location: 'api/return/route.ts:PUT', message: 'updateData.items received', data: { itemCount: updateData.items?.length, firstItemId: firstItem?.id, hasStatusBreakdown: !!firstItem?.statusBreakdown, statusBreakdown: firstItem?.statusBreakdown }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H5' }) + '\n');
-    } catch (_) {}
-    // #endregion
     if (updateData.items && Array.isArray(updateData.items)) {
       for (const item of updateData.items) {
         if (item.id) {
@@ -571,7 +499,7 @@ export async function PUT(request: NextRequest) {
 
           // Save conditions to ReturnItemCondition table if statusBreakdown provided
           if (item.statusBreakdown && typeof item.statusBreakdown === 'object') {
-            const breakdown = item.statusBreakdown as { Good?: number; Damaged?: number; Replace?: number };
+            const breakdown = item.statusBreakdown as { Good?: number; Repair?: number; Damaged?: number; Replace?: number };
             
             // Delete existing conditions for this item and recreate
             await prisma.returnItemCondition.deleteMany({
@@ -583,8 +511,9 @@ export async function PUT(request: NextRequest) {
             if (breakdown.Good && breakdown.Good > 0) {
               conditionsToCreate.push({ returnRequestItemId: item.id, status: 'Good', quantity: breakdown.Good });
             }
-            if (breakdown.Damaged && breakdown.Damaged > 0) {
-              conditionsToCreate.push({ returnRequestItemId: item.id, status: 'Damaged', quantity: breakdown.Damaged });
+            const repairQty = breakdown.Repair || breakdown.Damaged || 0;
+            if (repairQty > 0) {
+              conditionsToCreate.push({ returnRequestItemId: item.id, status: 'Repair', quantity: repairQty });
             }
             if (breakdown.Replace && breakdown.Replace > 0) {
               conditionsToCreate.push({ returnRequestItemId: item.id, status: 'Replace', quantity: breakdown.Replace });
@@ -645,7 +574,7 @@ export async function PUT(request: NextRequest) {
             if (item.conditions && item.conditions.length > 0) {
               for (const cond of item.conditions) {
                 if (cond.status === 'Good') quantityGood = cond.quantity;
-                else if (cond.status === 'Damaged') quantityRepair = cond.quantity;
+                else if (cond.status === 'Damaged' || cond.status === 'Repair') quantityRepair = cond.quantity;
                 else if (cond.status === 'Replace') quantityWriteOff = cond.quantity;
               }
             }
@@ -682,11 +611,6 @@ export async function PUT(request: NextRequest) {
               images: JSON.stringify([]),
             };
           });
-          // #region agent log
-          try {
-            appendFileSync('d:\\FYP_Development\\FYP\\.cursor\\debug.log', JSON.stringify({ location: 'api/return/route.ts:conditionReport', message: 'RCF totals from DB', data: { totalItemsInspected, totalGood, totalRepair, totalWriteOff, totalDamaged, itemConditionsSample: returnWithItems.items.slice(0, 2).map(i => ({ name: i.name, conditions: i.conditions })) }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H4' }) + '\n');
-          } catch (_) {}
-          // #endregion
           // Create the condition report linked to return request
           await prisma.conditionReport.create({
             data: {
@@ -735,18 +659,66 @@ export async function PUT(request: NextRequest) {
 
     // Upsert Completion step
     if (updateData.inventoryUpdated !== undefined || updateData.soaUpdated !== undefined) {
+      // If inventoryUpdated is being set to true, add good-condition item quantities back to inventory
+      if (updateData.inventoryUpdated === true && !existingRequest.completion?.inventoryUpdated) {
+        const returnItems = await prisma.returnRequestItem.findMany({
+          where: { returnRequestId: id },
+          include: { conditions: true },
+        });
+
+        const LOW_STOCK_THRESHOLD = 30;
+
+        await prisma.$transaction(async (tx) => {
+          for (const item of returnItems) {
+            if (!item.scaffoldingItemId) continue;
+
+            // Find the "Good" condition quantity for this item
+            let goodQty = 0;
+            for (const cond of item.conditions) {
+              if (cond.status === 'Good') {
+                goodQty = cond.quantity;
+                break;
+              }
+            }
+
+            if (goodQty > 0) {
+              const current = await tx.scaffoldingItem.findUnique({
+                where: { id: item.scaffoldingItemId },
+              });
+
+              if (current) {
+                const newAvailable = current.available + goodQty;
+                let status = 'Available';
+                if (newAvailable === 0) {
+                  status = 'Out of Stock';
+                } else if (newAvailable < LOW_STOCK_THRESHOLD) {
+                  status = 'Low Stock';
+                }
+
+                await tx.scaffoldingItem.update({
+                  where: { id: item.scaffoldingItemId },
+                  data: { available: newAvailable, status },
+                });
+              }
+            }
+          }
+        });
+
+        console.log(`[Return API] Inventory updated for return ${id} — good-condition items added back to stock`);
+      }
+
       await prisma.returnCompletion.upsert({
         where: { returnRequestId: id },
         create: {
           returnRequestId: id,
           inventoryUpdated: updateData.inventoryUpdated ?? false,
           soaUpdated: updateData.soaUpdated ?? false,
-          completedAt: (updateData.inventoryUpdated && updateData.soaUpdated) ? new Date() : null,
+          completedAt: updateData.inventoryUpdated ? new Date() : null,
         },
         update: {
           inventoryUpdated: updateData.inventoryUpdated,
           soaUpdated: updateData.soaUpdated,
-          completedAt: (updateData.inventoryUpdated && updateData.soaUpdated) ? new Date() : undefined,
+          completedAt: updateData.inventoryUpdated ? new Date() : undefined,
         },
       });
     }

@@ -674,8 +674,7 @@ export default function DeliveryReturnRequest() {
                     </div>
                   </div>
                   <p className="text-sm text-gray-600">
-                    Agreement: {request.agreementNo} | Requested: {request.requestDate}
-                    {request.scheduledDate && ` | Scheduled: ${request.scheduledDate}`}
+                    Agreement: {request.agreementNo} | {request.scheduledDate ? `Scheduled: ${request.scheduledDate}` : `Requested: ${request.requestDate}`}
                   </p>
                   <p className="text-sm text-gray-600">Reason: {request.reason}</p>
                 </div>

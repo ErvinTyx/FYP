@@ -138,20 +138,6 @@ export default function DeliveryOrderGeneration({
           tr:nth-child(even) {
             background-color: #f9f9f9;
           }
-          .signature-section {
-            margin-top: 40px;
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 40px;
-          }
-          .signature-box {
-            text-align: center;
-          }
-          .signature-line {
-            border-top: 1px solid #000;
-            margin-top: 60px;
-            padding-top: 10px;
-          }
           .footer {
             margin-top: 40px;
             padding-top: 20px;
@@ -236,18 +222,6 @@ export default function DeliveryOrderGeneration({
           </div>
         ` : ''}
 
-        <div class="signature-section">
-          <div class="signature-box">
-            <div class="signature-line">Prepared By</div>
-          </div>
-          <div class="signature-box">
-            <div class="signature-line">Delivered By</div>
-          </div>
-          <div class="signature-box">
-            <div class="signature-line">Received By</div>
-          </div>
-        </div>
-
         <div class="footer">
           This is a computer-generated document. No signature is required.<br>
           Power Metal & Steel - Scaffolding Rental Services
@@ -258,33 +232,19 @@ export default function DeliveryOrderGeneration({
 
     printWindow.document.write(printContent);
     printWindow.document.close();
-    printWindow.print();
+    printWindow.onload = () => {
+      printWindow.print();
+      printWindow.onafterprint = () => printWindow.close();
+    };
   };
 
   if (showPreview) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-            <div>
-              <h2 className="text-[#231F20]">Delivery Order Preview</h2>
-              <p className="text-gray-600">{doNumber}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handlePrint}
-                className="px-4 py-2 bg-[#F15929] text-white rounded hover:bg-[#d14a1f] flex items-center gap-2"
-              >
-                <Printer className="w-4 h-4" />
-                Print
-              </button>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
-              >
-                Close
-              </button>
-            </div>
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-[#231F20]">Delivery Order Preview</h2>
+            <p className="text-gray-600">{doNumber}</p>
           </div>
 
           <div className="p-6">
@@ -385,26 +345,28 @@ export default function DeliveryOrderGeneration({
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-8 mt-12">
-                <div className="text-center">
-                  <div className="h-16"></div>
-                  <div className="border-t border-gray-800 pt-2">Prepared By</div>
-                </div>
-                <div className="text-center">
-                  <div className="h-16"></div>
-                  <div className="border-t border-gray-800 pt-2">Delivered By</div>
-                </div>
-                <div className="text-center">
-                  <div className="h-16"></div>
-                  <div className="border-t border-gray-800 pt-2">Received By</div>
-                </div>
-              </div>
-
               <div className="mt-8 pt-4 border-t-2 border-[#F15929] text-center text-gray-600 text-sm">
                 This is a computer-generated document. No signature is required.<br />
                 Power Metal & Steel - Scaffolding Rental Services
               </div>
             </div>
+          </div>
+
+          {/* Bottom action bar */}
+          <div className="p-6 border-t border-gray-200 flex justify-end gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
+            >
+              Close
+            </button>
+            <button
+              onClick={handlePrint}
+              className="px-4 py-2 bg-[#F15929] text-white rounded hover:bg-[#d14a1f] flex items-center gap-2"
+            >
+              <Printer className="w-4 h-4" />
+              Print DO
+            </button>
           </div>
         </div>
       </div>
@@ -519,7 +481,7 @@ export default function DeliveryOrderGeneration({
             className="px-4 py-2 bg-[#F15929] text-white rounded hover:bg-[#d14a1f] flex items-center gap-2"
           >
             <FileText className="w-4 h-4" />
-            Generate DO
+            Print DO
           </button>
         </div>
       </div>

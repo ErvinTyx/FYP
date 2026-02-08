@@ -2,11 +2,11 @@ import { Printer, X, FileText, Truck, User, Phone, MapPin, Calendar, Package } f
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 
-export type ItemConditionStatus = 'Good' | 'Damaged' | 'Replace';
+export type ItemConditionStatus = 'Good' | 'Repair' | 'Replace';
 
 export interface StatusBreakdown {
   Good: number;
-  Damaged: number;
+  Repair: number;
   Replace: number;
 }
 
@@ -165,26 +165,6 @@ export function GRNViewer({ grnNumber, returnData, onClose }: GRNViewerProps) {
             border-radius: 5px;
             margin: 20px 0;
           }
-          .signature-section {
-            margin-top: 50px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 60px;
-          }
-          .signature-box {
-            text-align: center;
-          }
-          .signature-line {
-            border-top: 1px solid #000;
-            margin-top: 60px;
-            padding-top: 10px;
-            font-size: 12px;
-          }
-          .signature-name {
-            font-size: 10px;
-            color: #666;
-            margin-top: 5px;
-          }
           .footer {
             margin-top: 40px;
             padding-top: 20px;
@@ -304,21 +284,8 @@ export function GRNViewer({ grnNumber, returnData, onClose }: GRNViewerProps) {
           </tfoot>
         </table>
 
-        <div class="signature-section">
-          <div class="signature-box">
-            <div class="signature-line">Received By (Warehouse)</div>
-            <div class="signature-name">Name: _________________</div>
-            <div class="signature-name">Date: _________________</div>
-          </div>
-          <div class="signature-box">
-            <div class="signature-line">${returnData.transportationType === 'Transportation Needed' ? 'Delivered By (Driver)' : 'Delivered By (Customer)'}</div>
-            <div class="signature-name">Name: _________________</div>
-            <div class="signature-name">Date: _________________</div>
-          </div>
-        </div>
-
         <div class="footer">
-          This is a computer-generated document. No signature is required for internal records.<br>
+          This is a computer-generated document.<br>
           Power Metal & Steel - Scaffolding Rental Services<br>
           Generated on ${new Date().toLocaleString('en-MY')}
         </div>
@@ -501,27 +468,9 @@ export function GRNViewer({ grnNumber, returnData, onClose }: GRNViewerProps) {
               </table>
             </div>
 
-            {/* Signature Section */}
-            <div className="grid grid-cols-2 gap-12 mt-12">
-              <div className="text-center">
-                <div className="h-16"></div>
-                <div className="border-t border-gray-800 pt-2 text-sm font-medium">Received By (Warehouse)</div>
-                <div className="text-xs text-gray-500 mt-1">Name: _________________</div>
-                <div className="text-xs text-gray-500 mt-1">Date: _________________</div>
-              </div>
-              <div className="text-center">
-                <div className="h-16"></div>
-                <div className="border-t border-gray-800 pt-2 text-sm font-medium">
-                  {returnData.transportationType === 'Transportation Needed' ? 'Delivered By (Driver)' : 'Delivered By (Customer)'}
-                </div>
-                <div className="text-xs text-gray-500 mt-1">Name: _________________</div>
-                <div className="text-xs text-gray-500 mt-1">Date: _________________</div>
-              </div>
-            </div>
-
             {/* Footer */}
             <div className="mt-8 pt-4 border-t-2 border-[#F15929] text-center text-gray-500 text-xs">
-              This is a computer-generated document. No signature is required for internal records.<br />
+              This is a computer-generated document.<br />
               Power Metal & Steel - Scaffolding Rental Services
             </div>
           </div>

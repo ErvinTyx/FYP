@@ -18,13 +18,9 @@ const deliverySetItemSchema = z.object({
 
 const deliverySetSchema = z.object({
   setName: z.string().min(1, 'Set name is required'),
-  startDate: z.date({ required_error: 'Start date is required' }),
-  endDate: z.date({ required_error: 'End date is required' }),
+  requiredDate: z.date({ required_error: 'Required date is required' }),
   items: z.array(deliverySetItemSchema).min(1, 'At least one item is required'),
 }).refine(
-  (data) => data.endDate >= data.startDate,
-  { message: 'End date must be on or after start date', path: ['endDate'] }
-).refine(
   (data) => data.items.some(item => item.scaffoldingItemId?.trim()),
   { message: 'At least one item must be selected', path: ['items'] }
 );
@@ -44,6 +40,8 @@ const returnItemSchema = z.object({
 
 const returnRequestSchema = z.object({
   agreementId: z.string().min(1, 'Please select a rental agreement'),
+  doNumber: z.string().min(1, 'Please select a delivery order'),
+  deliverySetId: z.string().min(1, 'Please select a set'),
   setName: z.string().min(1, 'Please select a set to return'),
   returnType: z.enum(['full', 'partial'], { required_error: 'Please select a return type' }),
   collectionMethod: z.enum(['transport', 'self-return'], { required_error: 'Please select a collection method' }),
@@ -59,9 +57,9 @@ interface DeliveryFormErrors {
   agreementId?: string;
   deliveryType?: string;
   sets?: {
+    general?: string;
     [setIndex: number]: {
-      startDate?: string;
-      endDate?: string;
+      requiredDate?: string;
       items?: string;
       itemErrors?: { [itemIndex: number]: { scaffoldingItemId?: string; quantity?: string } };
     };
@@ -71,7 +69,9 @@ interface DeliveryFormErrors {
 
 interface ReturnFormErrors {
   agreementId?: string;
-  setName?: string;
+  doNumber?: string;
+  doSetId?: string; // Keep for backward compatibility
+  deliverySetId?: string;
   returnType?: string;
   collectionMethod?: string;
   reason?: string;
@@ -86,18 +86,6 @@ type ReturnStatus = 'Requested' | 'Quoted' | 'Agreed' | 'Scheduled' | 'In Transi
 type ReturnType = 'partial' | 'full';
 type CollectionMethod = 'transport' | 'self-return';
 
-interface RentalAgreementRFQ {
-  id: string;
-  rfqNumber: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  projectName: string;
-  projectLocation: string;
-  totalAmount: number;
-  items: RFQItem[];
-}
-
 interface RentalAgreement {
   id: string;
   agreementNumber: string;
@@ -107,7 +95,6 @@ interface RentalAgreement {
   location: string | null;
   status: string;
   rfqId: string | null;
-  rfq: RentalAgreementRFQ | null;
 }
 
 interface ScaffoldingItem {
@@ -126,8 +113,7 @@ interface RFQItem {
   quantity: number;
   unit: string;
   setName: string;
-  deliverDate: string;
-  returnDate: string;
+  requiredDate: string;
 }
 
 interface RFQ {
@@ -145,7 +131,7 @@ interface RFQ {
 interface DeliverySet {
   id: string;
   setName: string;
-  items: { name: string; quantity: number }[];
+  items: { name: string; quantity: number; scaffoldingItemId?: string }[];
   scheduledPeriod: string;
   status: DeliveryStatus;
   quotedAmount?: number;
@@ -157,6 +143,7 @@ interface DeliverySet {
   otp?: string;
   signedDO?: string;
   doNumber?: string; // DO number for tracking when DO is generated
+  additionalChargeStatus?: string | null;
 }
 
 interface ReturnRequest {
@@ -165,7 +152,7 @@ interface ReturnRequest {
   customerName: string;
   agreementNo: string;
   setName: string;
-  items: { name: string; quantity: number }[];
+  items: { name: string; quantity: number; scaffoldingItemId?: string }[];
   requestDate: string;
   scheduledDate?: string;
   status: ReturnStatus;
@@ -176,6 +163,8 @@ interface ReturnRequest {
   pickupFee?: number;
   returnType: ReturnType;
   collectionMethod: CollectionMethod;
+  deliverySetId?: string;
+  additionalChargeStatus?: string | null;
 }
 
 interface DeliveryRequest {
@@ -194,17 +183,17 @@ interface DeliveryRequest {
   pickupTime?: string;
 }
 
-// Calculate scheduled date: 1 day before period start
+// Calculate scheduled date: 1 day before the required date
 const calculateScheduledDateFromPeriod = (period: string): string | undefined => {
   if (!period) return undefined;
   try {
-    // Parse format like "1 Jan 2026 - 31 Mar 2026"
-    const startDateStr = period.split(' - ')[0].trim();
-    const startDate = new Date(startDateStr);
-    if (isNaN(startDate.getTime())) return undefined;
+    // Parse single date format like "7 Feb 2026" (also handles legacy "1 Jan 2026 - 31 Mar 2026")
+    const dateStr = period.split(' - ')[0].trim();
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return undefined;
     // Subtract 1 day
-    startDate.setDate(startDate.getDate() - 1);
-    return startDate.toISOString();
+    date.setDate(date.getDate() - 1);
+    return date.toISOString();
   } catch {
     return undefined;
   }
@@ -213,8 +202,7 @@ const calculateScheduledDateFromPeriod = (period: string): string | undefined =>
 // Interface for grouped RFQ set
 interface GroupedRFQSet {
   setName: string;
-  deliverDate: string;
-  returnDate: string;
+  requiredDate: string;
   items: RFQItem[];
 }
 
@@ -228,8 +216,7 @@ const groupRFQItemsBySet = (items: RFQItem[]): GroupedRFQSet[] => {
     if (!setMap.has(setName)) {
       setMap.set(setName, {
         setName,
-        deliverDate: item.deliverDate || '',
-        returnDate: item.returnDate || '',
+        requiredDate: item.requiredDate || '',
         items: [],
       });
     }
@@ -302,10 +289,10 @@ export default function DeliveryReturnManagement({
   const [deliverySets, setDeliverySets] = useState<{
     setName: string;
     scheduledPeriod: string;
-    startDate?: Date;
-    endDate?: Date;
+    requiredDate?: Date;
     items: { name: string; quantity: number; scaffoldingItemId: string }[];
-  }[]>([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+  }[]>([{ setName: 'Set A', scheduledPeriod: '', requiredDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+  const [selectedSetNames, setSelectedSetNames] = useState<Set<string>>(new Set());
 
   // Create Return Form states
   const [newReturnForm, setNewReturnForm] = useState({
@@ -317,9 +304,16 @@ export default function DeliveryReturnManagement({
   const [returnItems, setReturnItems] = useState<{ name: string; quantity: number; scaffoldingItemId: string }[]>([
     { name: '', quantity: 1, scaffoldingItemId: '' },
   ]);
+  const [selectedDOSetId, setSelectedDOSetId] = useState<string>(''); // Keep for backward compatibility, will be removed
   const [selectedReturnAgreementId, setSelectedReturnAgreementId] = useState<string>('');
-  const [selectedReturnSetName, setSelectedReturnSetName] = useState<string>('');
-  const [availableReturnSets, setAvailableReturnSets] = useState<GroupedRFQSet[]>([]);
+  const [selectedDONumbers, setSelectedDONumbers] = useState<string[]>([]);
+  const [selectedReturnSetId, setSelectedReturnSetId] = useState<string>(''); // Keep for backward compatibility
+  // Track multiple selected sets with their items
+  const [selectedReturnSets, setSelectedReturnSets] = useState<Array<{
+    setId: string;
+    setName: string;
+    items: Array<{ name: string; quantity: number; scaffoldingItemId: string }>;
+  }>>([]);
 
   // Validation error states
   const [deliveryFormErrors, setDeliveryFormErrors] = useState<DeliveryFormErrors>({});
@@ -327,11 +321,13 @@ export default function DeliveryReturnManagement({
   const [deliveryFormTouched, setDeliveryFormTouched] = useState<{
     agreementId?: boolean;
     deliveryType?: boolean;
-    sets?: { [setIndex: number]: { startDate?: boolean; endDate?: boolean; items?: { [itemIndex: number]: boolean } } };
+    sets?: { [setIndex: number]: { requiredDate?: boolean; items?: { [itemIndex: number]: boolean } } };
   }>({});
   const [returnFormTouched, setReturnFormTouched] = useState<{
     agreementId?: boolean;
-    setName?: boolean;
+    doNumber?: boolean;
+    deliverySetId?: boolean;
+    doSetId?: boolean; // Keep for backward compatibility
     reason?: boolean;
     items?: { [itemIndex: number]: boolean };
   }>({});
@@ -342,6 +338,22 @@ export default function DeliveryReturnManagement({
   const [driverAckModalErrors, setDriverAckModalErrors] = useState<{ driverName?: string; vehicleNumber?: string; general?: string }>({});
   const [customerAckModalErrors, setCustomerAckModalErrors] = useState<{ otp?: string; general?: string }>({});
   const [pickupTimeModalErrors, setPickupTimeModalErrors] = useState<{ date?: string; time?: string; general?: string }>({});
+
+  // Helper: look up the RFQ linked to a rental agreement from the separately-fetched rfqs state
+  const getRfqForAgreement = useCallback((agreementId: string): RFQ | undefined => {
+    const agreement = rentalAgreements.find(a => a.id === agreementId);
+    if (!agreement?.rfqId) return undefined;
+    return rfqs.find(r => r.id === agreement.rfqId);
+  }, [rentalAgreements, rfqs]);
+
+  // Helper: get set names already covered by existing delivery requests for a given agreement
+  const getUsedSetNames = useCallback((agreementNo: string): Set<string> => {
+    const used = new Set<string>();
+    deliveryRequests
+      .filter(dr => dr.agreementNo === agreementNo)
+      .forEach(dr => dr.sets.forEach(s => used.add(s.setName)));
+    return used;
+  }, [deliveryRequests]);
 
   // Fetch delivery requests from API
   const fetchDeliveryRequests = useCallback(async () => {
@@ -376,13 +388,13 @@ export default function DeliveryReturnManagement({
   // Fetch rental agreements for dropdown (Active agreements with linked RFQ)
   const fetchRentalAgreements = useCallback(async () => {
     try {
-      // Fetch Active agreements with linked RFQ and include RFQ items
-      const response = await fetch('/api/rental-agreement?status=Active&withRfqOnly=true&includeRfqItems=true');
+      // Fetch Active agreements with linked RFQ (items come from the separately-fetched rfqs state)
+      const response = await fetch('/api/rental-agreement?status=Active&withRfqOnly=true');
       const data = await response.json();
       if (data.success) {
-        // Filter to only include agreements that have a valid RFQ with items
+        // Filter to only include agreements that have a linked RFQ
         const validAgreements = data.agreements.filter(
-          (agreement: RentalAgreement) => agreement.rfqId && agreement.rfq && agreement.rfq.items.length > 0
+          (agreement: RentalAgreement) => agreement.rfqId
         );
         setRentalAgreements(validAgreements);
       } else {
@@ -408,17 +420,13 @@ export default function DeliveryReturnManagement({
     }
   }, []);
 
-  // Fetch RFQs for delivery creation (approved or quoted-for-delivery status)
+  // Fetch all RFQs (items and sets are sourced from here for delivery/return forms)
   const fetchRfqs = useCallback(async () => {
     try {
       const response = await fetch('/api/rfq');
       const data = await response.json();
       if (data.success) {
-        // Filter RFQs that are ready for delivery (approved or quoted-for-delivery)
-        const deliveryReadyRfqs = data.data.filter(
-          (rfq: RFQ) => rfq.status === 'approved' || rfq.status === 'quoted-for-delivery'
-        );
-        setRfqs(deliveryReadyRfqs);
+        setRfqs(data.data);
       } else {
         console.error('Failed to fetch RFQs:', data.message);
       }
@@ -427,10 +435,12 @@ export default function DeliveryReturnManagement({
     }
   }, []);
 
-  // Generate request ID based on agreement number
+  // Generate request ID based on agreement number (with counter for multiple requests per agreement)
   const generateDeliveryRequestId = (agreementNumber: string) => {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `DEL-${agreementNumber}-${date}`;
+    const existingCount = deliveryRequests.filter(dr => dr.agreementNo === agreementNumber).length;
+    const suffix = existingCount > 0 ? `-${existingCount + 1}` : '';
+    return `DEL-${agreementNumber}-${date}${suffix}`;
   };
 
   const generateReturnRequestId = (agreementNo: string) => {
@@ -450,9 +460,26 @@ export default function DeliveryReturnManagement({
       errors.agreementId = 'Please select a rental agreement';
       isValid = false;
     } else {
-      const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-      if (!agreement || !agreement.rfq) {
+      const rfq = getRfqForAgreement(selectedAgreementId);
+      if (!rfq) {
         errors.agreementId = 'Selected agreement must have a linked quotation';
+        isValid = false;
+      }
+    }
+
+    // Validate at least one set is selected
+    if (selectedSetNames.size === 0) {
+      errors.sets = { ...errors.sets, general: 'Please select at least one set to include in this delivery request' };
+      isValid = false;
+    }
+
+    // Validate selected sets are not duplicates of existing delivery requests
+    const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
+    if (agreement) {
+      const usedNames = getUsedSetNames(agreement.agreementNumber);
+      const duplicates = [...selectedSetNames].filter(name => usedNames.has(name));
+      if (duplicates.length > 0) {
+        errors.sets = { ...errors.sets, general: `Sets already requested: ${duplicates.join(', ')}` };
         isValid = false;
       }
     }
@@ -468,21 +495,15 @@ export default function DeliveryReturnManagement({
     let hasValidSet = false;
 
     deliverySets.forEach((set, setIndex) => {
+      // Only validate sets that are selected
+      if (!selectedSetNames.has(set.setName)) return;
+
       const setErrors: NonNullable<DeliveryFormErrors['sets']>[number] = {};
       const itemErrors: NonNullable<NonNullable<DeliveryFormErrors['sets']>[number]['itemErrors']> = {};
 
-      // Validate start date
-      if (!set.startDate) {
-        setErrors.startDate = 'Start date is required';
-        isValid = false;
-      }
-
-      // Validate end date
-      if (!set.endDate) {
-        setErrors.endDate = 'End date is required';
-        isValid = false;
-      } else if (set.startDate && set.endDate < set.startDate) {
-        setErrors.endDate = 'End date must be on or after start date';
+      // Validate required date
+      if (!set.requiredDate) {
+        setErrors.requiredDate = 'Required date is required';
         isValid = false;
       }
 
@@ -497,19 +518,14 @@ export default function DeliveryReturnManagement({
       set.items.forEach((item, itemIndex) => {
         const itemError: { scaffoldingItemId?: string; quantity?: string } = {};
         
-        if (!item.scaffoldingItemId?.trim() && set.items.length > 1) {
-          // Only show error if there are multiple items and this one is empty
-          // Allow empty if it's the only item (handled by hasValidItems check above)
-        }
-        
         if (item.scaffoldingItemId?.trim() && item.quantity < 1) {
           itemError.quantity = 'Quantity must be at least 1';
           isValid = false;
         }
 
         // Check if quantity exceeds quoted quantity
-        const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-        const rfqItems = agreement?.rfq?.items || [];
+        const rfqForValidation = getRfqForAgreement(selectedAgreementId);
+        const rfqItems = rfqForValidation?.items || [];
         const quotedItem = rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId);
         if (quotedItem && item.quantity > quotedItem.quantity) {
           itemError.quantity = `Quantity cannot exceed quoted amount (${quotedItem.quantity})`;
@@ -529,13 +545,13 @@ export default function DeliveryReturnManagement({
         setsErrors[setIndex] = setErrors;
       }
 
-      // Check if this set is valid (has period and items)
-      if (set.startDate && set.endDate && hasValidItems) {
+      // Check if this set is valid (has required date and items)
+      if (set.requiredDate && hasValidItems) {
         hasValidSet = true;
       }
     });
 
-    if (!hasValidSet && !errors.agreementId) {
+    if (!hasValidSet && selectedSetNames.size > 0 && !errors.agreementId) {
       errors.general = 'Please complete at least one delivery set with dates and items';
       isValid = false;
     }
@@ -583,7 +599,7 @@ export default function DeliveryReturnManagement({
       deliveryType: true,
       sets: deliverySets.reduce((acc, _, idx) => ({
         ...acc,
-        [idx]: { startDate: true, endDate: true, items: {} }
+        [idx]: { requiredDate: true, items: {} }
       }), {}),
     });
 
@@ -593,15 +609,15 @@ export default function DeliveryReturnManagement({
     }
 
     const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-    if (!agreement || !agreement.rfq) {
+    const rfq = getRfqForAgreement(selectedAgreementId);
+    if (!agreement || !rfq) {
       return;
     }
 
-    const rfq = agreement.rfq;
-
-    // Get valid sets with proper filtering
+    // Get valid sets: must be selected AND have required data
     const validSets = deliverySets.filter(set => 
-      set.startDate && set.endDate &&
+      selectedSetNames.has(set.setName) &&
+      set.requiredDate &&
       set.items.some(item => item.scaffoldingItemId?.trim())
     );
 
@@ -639,7 +655,8 @@ export default function DeliveryReturnManagement({
         setShowCreateDeliveryModal(false);
         setSelectedAgreementId('');
         setNewDeliveryForm({ customerEmail: '', deliveryType: 'delivery' });
-        setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+        setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', requiredDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+        setSelectedSetNames(new Set());
         setDeliveryFormErrors({});
         setDeliveryFormTouched({});
       } else {
@@ -658,21 +675,21 @@ export default function DeliveryReturnManagement({
     const errors: ReturnFormErrors = {};
     let isValid = true;
 
-    // Validate agreement selection
+    // Validate Agreement selection
     if (!selectedReturnAgreementId) {
       errors.agreementId = 'Please select a rental agreement';
       isValid = false;
-    } else {
-      const agreement = rentalAgreements.find(a => a.id === selectedReturnAgreementId);
-      if (!agreement || !agreement.rfq) {
-        errors.agreementId = 'Selected agreement must have a linked quotation';
-        isValid = false;
-      }
     }
 
-    // Validate set selection
-    if (!selectedReturnSetName) {
-      errors.setName = 'Please select a set to return';
+    // Validate DO selection
+    if (selectedDONumbers.length === 0) {
+      errors.doNumber = 'Please select a delivery order';
+      isValid = false;
+    }
+
+    // Validate Set selection (at least one set must be selected)
+    if (selectedReturnSets.length === 0) {
+      errors.deliverySetId = 'Please select at least one set to return';
       isValid = false;
     }
 
@@ -697,41 +714,64 @@ export default function DeliveryReturnManagement({
       isValid = false;
     }
 
-    // Validate items
-    const hasValidItems = returnItems.some(item => item.scaffoldingItemId?.trim());
+    // Validate items for all selected sets
+    const hasValidItems = selectedReturnSets.some(setData => 
+      setData.items.some(item => item.scaffoldingItemId?.trim())
+    );
     if (!hasValidItems) {
       errors.items = 'At least one item must be selected for return';
       isValid = false;
     }
 
-    // Validate individual items
+    // Validate individual items against returnable quantities
     const itemErrors: ReturnFormErrors['itemErrors'] = {};
-    const agreement = rentalAgreements.find(a => a.id === selectedReturnAgreementId);
-    const rfqItems = agreement?.rfq?.items || [];
 
-    returnItems.forEach((item, itemIndex) => {
-      const itemError: { scaffoldingItemId?: string; quantity?: string } = {};
-      
-      if (item.scaffoldingItemId?.trim() && item.quantity < 1) {
-        itemError.quantity = 'Quantity must be at least 1';
-        isValid = false;
-      }
+    // Validate items for each selected set
+    selectedReturnSets.forEach((selectedSetData, setIndex) => {
+      const alreadyReturned: Record<string, number> = {};
+      returnRequests
+        .filter(rr => rr.deliverySetId === selectedSetData.setId)
+        .forEach(rr => rr.items.forEach(ri => {
+          if (ri.scaffoldingItemId) {
+            alreadyReturned[ri.scaffoldingItemId] = (alreadyReturned[ri.scaffoldingItemId] || 0) + ri.quantity;
+          }
+        }));
 
-      // Check if quantity exceeds quoted quantity
-      const quotedItem = rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId);
-      if (quotedItem && item.quantity > quotedItem.quantity) {
-        itemError.quantity = `Quantity cannot exceed quoted amount (${quotedItem.quantity})`;
-        isValid = false;
-      }
+      // Find the selected set's original items
+      const originalSet = deliveryRequests.flatMap(req =>
+        req.sets.filter(set => set.id === selectedSetData.setId).map(set => ({ ...set, parentReq: req }))
+      )[0];
+      const doItems = originalSet?.items || [];
 
-      if (Object.keys(itemError).length > 0) {
-        itemErrors[itemIndex] = itemError;
-      }
+      // Validate items for this set
+      selectedSetData.items.forEach((item, itemIndex) => {
+        const itemError: { scaffoldingItemId?: string; quantity?: string } = {};
+        
+        if (item.scaffoldingItemId?.trim() && item.quantity < 1) {
+          itemError.quantity = 'Quantity must be at least 1';
+          isValid = false;
+        }
+
+        // Check if quantity exceeds returnable quantity
+        if (item.scaffoldingItemId?.trim()) {
+          const doItem = doItems.find(di => di.scaffoldingItemId === item.scaffoldingItemId);
+          const delivered = doItem?.quantity || 0;
+          const returned = alreadyReturned[item.scaffoldingItemId] || 0;
+          const returnable = delivered - returned;
+          if (item.quantity > returnable) {
+            itemError.quantity = `Quantity cannot exceed returnable amount (${returnable})`;
+            isValid = false;
+          }
+        }
+
+        if (Object.keys(itemError).length > 0) {
+          if (!errors.itemErrors) errors.itemErrors = {};
+          // Use a composite key: setIndex-itemIndex
+          errors.itemErrors[`${setIndex}-${itemIndex}`] = itemError;
+        }
+      });
     });
 
-    if (Object.keys(itemErrors).length > 0) {
-      errors.itemErrors = itemErrors;
-    }
 
     setReturnFormErrors(errors);
     return isValid;
@@ -747,11 +787,11 @@ export default function DeliveryReturnManagement({
   };
 
   // Clear return item error
-  const clearReturnItemError = (itemIndex: number) => {
+  const clearReturnItemError = (itemKey: string | number) => {
     setReturnFormErrors(prev => {
       if (!prev.itemErrors) return prev;
       const newItemErrors = { ...prev.itemErrors };
-      delete newItemErrors[itemIndex];
+      delete newItemErrors[itemKey];
       return {
         ...prev,
         itemErrors: Object.keys(newItemErrors).length > 0 ? newItemErrors : undefined,
@@ -764,9 +804,10 @@ export default function DeliveryReturnManagement({
     // Mark all fields as touched for validation display
     setReturnFormTouched({
       agreementId: true,
-      setName: true,
+      doNumber: true,
+      deliverySetId: true,
       reason: true,
-      items: returnItems.reduce((acc, _, idx) => ({ ...acc, [idx]: true }), {}),
+      items: {},
     });
 
     // Validate the form
@@ -774,60 +815,97 @@ export default function DeliveryReturnManagement({
       return;
     }
 
-    const agreement = rentalAgreements.find(a => a.id === selectedReturnAgreementId);
-    if (!agreement || !agreement.rfq) {
-      return;
-    }
-
-    const rfq = agreement.rfq;
-
-    // Get valid items
-    const validItems = returnItems.filter(item => item.scaffoldingItemId?.trim());
-
     setIsCreating(true);
     try {
-      const requestId = generateReturnRequestId(agreement.agreementNumber);
-      
-      const response = await fetch('/api/return', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestId,
-          customerName: rfq.customerName,
-          agreementNo: agreement.agreementNumber,
-          setName: selectedReturnSetName,
-          reason: newReturnForm.reason,
-          pickupAddress: rfq.projectLocation || '',
-          customerPhone: rfq.customerPhone || '',
-          customerEmail: rfq.customerEmail,
-          returnType: newReturnForm.returnType,
-          collectionMethod: newReturnForm.collectionMethod,
-          rfqId: rfq.id,
-          items: validItems.map(item => ({
-            name: item.name,
-            quantity: item.quantity,
-            scaffoldingItemId: item.scaffoldingItemId,
-          })),
-        }),
+      // Get the parent delivery request (all sets should be from the same agreement/DO)
+      const firstSetId = selectedReturnSets[0]?.setId;
+      if (!firstSetId) {
+        setReturnFormErrors({ general: 'No sets selected' });
+        setIsCreating(false);
+        return;
+      }
+
+      const firstSet = deliveryRequests.flatMap(req =>
+        req.sets.filter(set => set.id === firstSetId).map(set => ({ ...set, parentReq: req }))
+      )[0];
+      if (!firstSet) {
+        setReturnFormErrors({ general: 'Selected set not found' });
+        setIsCreating(false);
+        return;
+      }
+
+      const parentReq = firstSet.parentReq;
+
+      // Create return requests for each selected set
+      const createPromises = selectedReturnSets.map(async (setData) => {
+        const set = deliveryRequests.flatMap(req =>
+          req.sets.filter(s => s.id === setData.setId).map(s => ({ set: s, parentReq: req }))
+        )[0];
+        
+        if (!set) {
+          throw new Error(`Set ${setData.setId} not found`);
+        }
+
+        // Get valid items for this set
+        const validItems = setData.items.filter(item => item.scaffoldingItemId?.trim());
+
+        // Generate unique request ID for each set
+        const timestamp = new Date().toISOString().replace(/[-:T]/g, '').split('.')[0];
+        const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+        const requestId = `RET-${parentReq.agreementNo}-${timestamp}-${randomSuffix}`;
+
+        const response = await fetch('/api/return', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requestId,
+            customerName: parentReq.customerName,
+            agreementNo: parentReq.agreementNo,
+            setName: setData.setName,
+            reason: newReturnForm.reason,
+            pickupAddress: parentReq.deliveryAddress || '',
+            customerPhone: parentReq.customerPhone || '',
+            customerEmail: parentReq.customerEmail,
+            returnType: newReturnForm.returnType,
+            collectionMethod: newReturnForm.collectionMethod,
+            deliverySetId: setData.setId,
+            items: validItems.map(item => ({
+              name: item.name,
+              quantity: item.quantity,
+              scaffoldingItemId: item.scaffoldingItemId,
+            })),
+          }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error(data.message || `Failed to create return request for ${setData.setName}`);
+        }
+        return data;
       });
 
-      const data = await response.json();
-      if (data.success) {
-        await fetchReturnRequests();
-        setShowCreateReturnModal(false);
-        setSelectedReturnAgreementId('');
-        setSelectedReturnSetName('');
-        setAvailableReturnSets([]);
-        setNewReturnForm({ setName: '', reason: '', returnType: 'full', collectionMethod: 'transport' });
-        setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
-        setReturnFormErrors({});
-        setReturnFormTouched({});
-      } else {
-        setReturnFormErrors({ general: data.message || 'Failed to create return request' });
-      }
+      // Wait for all return requests to be created
+      await Promise.all(createPromises);
+
+      // Refresh data
+      await Promise.all([fetchReturnRequests(), fetchDeliveryRequests()]);
+      
+      // Reset form
+      setShowCreateReturnModal(false);
+      setSelectedReturnAgreementId('');
+      setSelectedDONumbers([]);
+      setSelectedReturnSetId('');
+      setSelectedDOSetId(''); // Clear for backward compatibility
+      setSelectedReturnSets([]);
+      setNewReturnForm({ setName: '', reason: '', returnType: 'full', collectionMethod: 'transport' });
+      setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
+      setReturnFormErrors({});
+      setReturnFormTouched({});
+      
+      toast.success(`Successfully created ${selectedReturnSets.length} return request(s)`);
     } catch (error) {
-      console.error('Error creating return request:', error);
-      setReturnFormErrors({ general: 'An error occurred while creating the return request' });
+      console.error('Error creating return requests:', error);
+      setReturnFormErrors({ general: error instanceof Error ? error.message : 'An error occurred while creating the return requests' });
     } finally {
       setIsCreating(false);
     }
@@ -842,6 +920,116 @@ export default function DeliveryReturnManagement({
     };
     fetchData();
   }, [fetchDeliveryRequests, fetchReturnRequests, fetchRentalAgreements, fetchScaffoldingItems, fetchRfqs]);
+
+  // Recalculate selectedReturnSets when returnRequests or deliveryRequests change
+  // This ensures returnable quantities are updated after creating return requests
+  useEffect(() => {
+    if (selectedReturnSets.length === 0 || selectedDONumbers.length === 0) return;
+
+    // Calculate already-returned quantities per delivery set
+    const returnedBySet: Record<string, Record<string, number>> = {};
+    returnRequests.forEach(rr => {
+      if (rr.deliverySetId) {
+        if (!returnedBySet[rr.deliverySetId]) returnedBySet[rr.deliverySetId] = {};
+        rr.items.forEach(ri => {
+          if (ri.scaffoldingItemId) {
+            returnedBySet[rr.deliverySetId][ri.scaffoldingItemId] = (returnedBySet[rr.deliverySetId][ri.scaffoldingItemId] || 0) + ri.quantity;
+          }
+        });
+      }
+    });
+
+    // Find the selected DO group
+    const selectedAgreement = rentalAgreements.find(a => a.id === selectedReturnAgreementId);
+    if (!selectedAgreement) return;
+
+    const agreementDeliveryRequests = deliveryRequests.filter(req => req.agreementNo === selectedAgreement.agreementNumber);
+    const completedStatuses = ['Completed', 'Customer Confirmed', 'Delivered'];
+
+    // Group sets by DO number
+    const doGroups = new Map<string, {
+      doNumber: string;
+      sets: Array<{
+        id: string;
+        setName: string;
+        items: { name: string; quantity: number; scaffoldingItemId?: string }[];
+        status: DeliveryStatus;
+      }>;
+    }>();
+
+    agreementDeliveryRequests.forEach(req => {
+      req.sets
+        .filter(set => set.doNumber && completedStatuses.includes(set.status))
+        .forEach(set => {
+          const doNum = set.doNumber!;
+          if (!doGroups.has(doNum)) {
+            doGroups.set(doNum, {
+              doNumber: doNum,
+              sets: [],
+            });
+          }
+          const group = doGroups.get(doNum)!;
+          const returned = returnedBySet[set.id] || {};
+          const hasReturnable = set.items.some(item => {
+            const returnedQty = item.scaffoldingItemId ? (returned[item.scaffoldingItemId] || 0) : 0;
+            return item.quantity - returnedQty > 0;
+          });
+          if (hasReturnable) {
+            group.sets.push({
+              id: set.id,
+              setName: set.setName,
+              items: set.items,
+              status: set.status,
+            });
+          }
+        });
+    });
+
+    const selectedDOGroups = Array.from(doGroups.values()).filter(d => selectedDONumbers.includes(d.doNumber));
+    if (selectedDOGroups.length === 0) {
+      // If DOs no longer exist or have no returnable items, clear selected sets
+      setSelectedReturnSets([]);
+      return;
+    }
+
+    // Recalculate items for each selected set
+    setSelectedReturnSets(prev => {
+      return prev
+        .map(setData => {
+          const originalSet = selectedDOGroups
+            .flatMap(group => group.sets)
+            .find(s => s.id === setData.setId);
+          if (!originalSet) return null; // Set no longer exists
+
+          const returned = returnedBySet[setData.setId] || {};
+          const items = originalSet.items
+            .map(item => {
+              const returnedQty = item.scaffoldingItemId ? (returned[item.scaffoldingItemId] || 0) : 0;
+              const returnable = item.quantity - returnedQty;
+              return {
+                name: item.name,
+                quantity: Math.min(setData.items.find(i => i.scaffoldingItemId === item.scaffoldingItemId)?.quantity || returnable, returnable),
+                scaffoldingItemId: item.scaffoldingItemId || '',
+              };
+            })
+            .filter(item => {
+              const returnedQty = item.scaffoldingItemId ? (returnedBySet[setData.setId]?.[item.scaffoldingItemId] || 0) : 0;
+              const originalItem = originalSet.items.find(i => i.scaffoldingItemId === item.scaffoldingItemId);
+              const returnable = (originalItem?.quantity || 0) - returnedQty;
+              return returnable > 0;
+            });
+
+          // If no returnable items left, remove this set
+          if (items.length === 0) return null;
+
+          return {
+            ...setData,
+            items,
+          };
+        })
+        .filter((set): set is NonNullable<typeof set> => set !== null);
+    });
+  }, [returnRequests, deliveryRequests, selectedReturnAgreementId, selectedDONumbers, rentalAgreements]);
 
   const getStatusColor = (status: DeliveryStatus | ReturnStatus) => {
     switch (status) {
@@ -866,9 +1054,9 @@ export default function DeliveryReturnManagement({
     }
   };
 
-  const handleIssueQuotation = (request: DeliveryRequest, set: DeliverySet) => {
+  const handleIssueQuotation = (request: DeliveryRequest) => {
     setSelectedRequest(request);
-    setSelectedSet(set);
+    setSelectedSet(null); // No longer needed for request-level quotation
     setShowQuotationModal(true);
   };
 
@@ -887,28 +1075,37 @@ export default function DeliveryReturnManagement({
 
     setQuotationModalErrors(errors);
 
-    if (!isValid || !selectedRequest || !selectedSet) {
+    if (!isValid || !selectedRequest) {
       return;
     }
 
     try {
-      const response = await fetch('/api/delivery', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          setId: selectedSet.id,
-          deliveryFee: parseFloat(deliveryFee),
-          status: 'Quoted',
-        }),
-      });
-      const data = await response.json();
-      if (data.success) {
+      // Update all sets in the request to 'Quoted' status
+      const updatePromises = selectedRequest.sets
+        .filter(set => set.status !== 'Cancelled')
+        .map(set => 
+          fetch('/api/delivery', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              setId: set.id,
+              deliveryFee: parseFloat(deliveryFee),
+              status: 'Quoted',
+            }),
+          })
+        );
+
+      const responses = await Promise.all(updatePromises);
+      const results = await Promise.all(responses.map(r => r.json()));
+      
+      if (results.every(r => r.success)) {
         await fetchDeliveryRequests();
         setShowQuotationModal(false);
         setDeliveryFee('');
         setQuotationModalErrors({});
+        toast.success('Quotation issued for all sets in the request');
       } else {
-        setQuotationModalErrors({ general: data.message || 'Failed to issue quotation' });
+        setQuotationModalErrors({ general: 'Failed to issue quotation for some sets' });
       }
     } catch (error) {
       console.error('Error issuing quotation:', error);
@@ -1148,7 +1345,9 @@ export default function DeliveryReturnManagement({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           setId: selectedSet.id,
-          driverAcknowledged: true,
+          driverName: driverName,
+          vehicleNumber: vehicleNumber,
+          driverAcknowledgedAt: new Date().toISOString(),
           status: 'Driver Acknowledged',
         }),
       });
@@ -1199,8 +1398,9 @@ export default function DeliveryReturnManagement({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           setId: selectedSet.id,
-          customerAcknowledged: true,
-          otp: customerOTP,
+          customerAcknowledgedAt: new Date().toISOString(),
+          customerOTP: customerOTP,
+          verifiedOTP: true,
           status: 'Customer Confirmed',
         }),
       });
@@ -1290,44 +1490,74 @@ export default function DeliveryReturnManagement({
     }
   };
 
-  const handleGenerateDO = (request: DeliveryRequest, set: DeliverySet) => {
-    // Open DO Generation Modal/Component
+  const handleGenerateDO = (request: DeliveryRequest) => {
+    // Open DO Generation Modal/Component for entire request
     setSelectedDORequest(request);
-    setSelectedSet(set);
+    setSelectedSet(null); // No longer needed for request-level DO
     setShowDOModal(true);
   };
 
-  const handleDOGenerated = async (request: DeliveryRequest, set: DeliverySet) => {
+  const handleDOGenerated = async (request: DeliveryRequest) => {
     try {
-      const doNumber = `DO-${request.agreementNo}-${set.setName.replace('Set ', '')}`;
-      // Calculate scheduled date from period (1 day before period start)
-      const calculatedScheduledDate = calculateScheduledDateFromPeriod(set.scheduledPeriod);
+      // Validate that request has sets
+      if (!request || !request.sets || request.sets.length === 0) {
+        toast.error('Invalid request: no sets found');
+        return;
+      }
+
+      // Generate one DO number for the entire request
+      const doNumber = `DO-${request.agreementNo}`;
       
-      // Save DO data to database via API
-      const response = await fetch('/api/delivery', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          setId: set.id,
-          status: 'DO Generated',
-          doNumber: doNumber,
-          doStatus: 'pending',
-          doIssuedAt: new Date().toISOString(),
-          doIssuedBy: 'System',
-          deliveryDate: calculatedScheduledDate || set.deliveryDate,
-          createdBy: 'System',
-        }),
-      });
-      const data = await response.json();
-      if (data.success) {
+      // Check if DO already exists for this request
+      const existingDO = request.sets.find(s => s.doNumber === doNumber);
+      if (existingDO) {
+        toast.error(`DO number ${doNumber} already exists for this request.`);
+        return;
+      }
+
+      // Get the earliest scheduled period for delivery date calculation
+      const allPeriods = request.sets
+        .filter(s => s.scheduledPeriod)
+        .map(s => s.scheduledPeriod);
+      const earliestPeriod = allPeriods.length > 0 ? allPeriods[0] : null;
+      const calculatedScheduledDate = earliestPeriod 
+        ? calculateScheduledDateFromPeriod(earliestPeriod)
+        : new Date().toISOString().split('T')[0];
+      
+      // Update all sets in the request to 'DO Generated' status with the same DO number
+      const updatePromises = request.sets
+        .filter(set => set.status !== 'Cancelled')
+        .map(set => 
+          fetch('/api/delivery', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              setId: set.id,
+              status: 'DO Generated',
+              doNumber: doNumber,
+              doStatus: 'pending',
+              doIssuedAt: new Date().toISOString(),
+              doIssuedBy: 'System',
+              deliveryDate: calculatedScheduledDate || set.deliveryDate,
+              createdBy: 'System',
+            }),
+          })
+        );
+
+      const responses = await Promise.all(updatePromises);
+      const results = await Promise.all(responses.map(r => r.json()));
+      
+      if (results.every(r => r.success)) {
         await fetchDeliveryRequests();
         setShowDOModal(false);
+        toast.success(`DO ${doNumber} generated successfully for all sets in the request`);
         // Navigate to Delivery Management page
         if (onNavigateToDeliveryManagement) {
           onNavigateToDeliveryManagement();
         }
       } else {
-        toast.error('Failed to generate DO: ' + data.message);
+        const failedCount = results.filter(r => !r.success).length;
+        toast.error(`Failed to generate DO for ${failedCount} set(s)`);
       }
     } catch (error) {
       console.error('Error generating DO:', error);
@@ -1374,40 +1604,127 @@ export default function DeliveryReturnManagement({
     setShowViewReturnDOModal(true);
   };
 
-  const canQuoteSet = (request: DeliveryRequest, set: DeliverySet) => {
-    const setIndex = request.sets.findIndex(s => s.id === set.id);
-    if (setIndex === 0) return true;
-    const previousSet = request.sets[setIndex - 1];
-    return previousSet.status === 'Confirmed' || previousSet.status === 'DO Generated' || previousSet.status === 'Customer Confirmed' || previousSet.status === 'Delivered';
+  // Request-level action function - determines actions for the entire request
+  const getRequestNextAction = (request: DeliveryRequest) => {
+    // Filter out cancelled sets
+    const activeSets = request.sets.filter(s => s.status !== 'Cancelled');
+    if (activeSets.length === 0) return null;
+
+    // Pickup: no quotation needed — go straight from Pending to Generate DO
+    if (request.deliveryType === 'pickup') {
+      const allPending = activeSets.every(s => s.status === 'Pending');
+      const allDOGenerated = activeSets.every(s => s.status === 'DO Generated');
+      const hasDO = activeSets.some(s => s.doNumber);
+
+      if (allPending) {
+        return { label: 'Generate DO', action: () => handleGenerateDO(request), color: 'green' };
+      }
+      if (allDOGenerated || hasDO) {
+        // Use first set for viewing DO (all sets have same DO number)
+        return { label: 'View DO', action: () => handleViewDO(request, activeSets[0]), color: 'green', disabled: false };
+      }
+      return null;
+    }
+
+    // Delivery: full quotation workflow — Pending → Quoted → Confirmed → DO Generated
+    if (request.deliveryType === 'delivery') {
+      const allPending = activeSets.every(s => s.status === 'Pending');
+      const allQuoted = activeSets.every(s => s.status === 'Quoted');
+      const allConfirmed = activeSets.every(s => s.status === 'Confirmed');
+      const allDOGenerated = activeSets.every(s => s.status === 'DO Generated');
+      const hasDO = activeSets.some(s => s.doNumber);
+      const allAdditionalChargesApproved = activeSets.every(s => 
+        s.additionalChargeStatus === 'approved' || !s.additionalChargeStatus
+      );
+
+      if (allPending) {
+        return { label: 'Issue Quotation', action: () => handleIssueQuotation(request), color: 'blue' };
+      }
+      if (allQuoted) {
+        // For request-level, we need to handle agree/disagree for all sets
+        return {
+          agree: { 
+            label: 'Agree', 
+            action: async () => {
+              // Agree for all sets
+              try {
+                const updatePromises = activeSets.map(set =>
+                  fetch('/api/delivery', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      setId: set.id,
+                      status: 'Confirmed',
+                    }),
+                  })
+                );
+                const responses = await Promise.all(updatePromises);
+                const results = await Promise.all(responses.map(r => r.json()));
+                if (results.every(r => r.success)) {
+                  await fetchDeliveryRequests();
+                  toast.success('Customer agreed to quotation for all sets. You can now generate the Delivery Order.');
+                } else {
+                  toast.error('Failed to confirm some sets');
+                }
+              } catch (error) {
+                console.error('Error agreeing to quotation:', error);
+                toast.error('An error occurred while agreeing to quotation');
+              }
+            }, 
+            color: 'green' 
+          },
+          disagree: { 
+            label: 'Disagree', 
+            action: async () => {
+              // Disagree for all sets
+              try {
+                const updatePromises = activeSets.map(set =>
+                  fetch('/api/delivery', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      setId: set.id,
+                      status: 'Pending',
+                    }),
+                  })
+                );
+                const responses = await Promise.all(updatePromises);
+                const results = await Promise.all(responses.map(r => r.json()));
+                if (results.every(r => r.success)) {
+                  await fetchDeliveryRequests();
+                  toast.success('Customer disagreed with quotation. Request reset to Pending.');
+                } else {
+                  toast.error('Failed to update some sets');
+                }
+              } catch (error) {
+                console.error('Error disagreeing with quotation:', error);
+                toast.error('An error occurred while disagreeing with quotation');
+              }
+            }, 
+            color: 'red' 
+          },
+        };
+      }
+      if (allConfirmed && allAdditionalChargesApproved) {
+        return { label: 'Generate DO', action: () => handleGenerateDO(request), color: 'green' };
+      }
+      if (allConfirmed && !allAdditionalChargesApproved) {
+        return { label: 'Pending Payment Approval', disabled: true, color: 'gray' };
+      }
+      if (allDOGenerated || hasDO) {
+        // Use first set for viewing DO (all sets have same DO number)
+        return { label: 'View DO', action: () => handleViewDO(request, activeSets[0]), color: 'green', disabled: false };
+      }
+      return null;
+    }
+
+    return null;
   };
 
+  // Keep old function for backward compatibility (set-level actions removed from UI)
   const getNextAction = (request: DeliveryRequest, set: DeliverySet) => {
-    if (set.status === 'Cancelled') return null;
-    
-    // Check if can quote this set
-    if (set.status === 'Pending' && !canQuoteSet(request, set)) {
-      return { label: 'Waiting for previous set', disabled: true, color: 'gray' };
-    }
-
-    // Workflow: Pending → Issue Quotation → Quoted (Agree/Disagree) → Confirmed → Generate DO → DO Generated (View DO)
-    if (request.deliveryType === 'delivery' || request.deliveryType === 'pickup') {
-      switch (set.status) {
-        case 'Pending':
-          return { label: 'Issue Quotation', action: () => handleIssueQuotation(request, set), color: 'blue' };
-        case 'Quoted':
-          // Return both agree and disagree actions
-          return {
-            agree: { label: 'Agree', action: () => handleAgreeDeliveryQuotation(request, set), color: 'green' },
-            disagree: { label: 'Disagree', action: () => handleDisagreeDeliveryQuotation(request, set), color: 'red' },
-          };
-        case 'Confirmed':
-          return { label: 'Generate DO', action: () => handleGenerateDO(request, set), color: 'green' };
-        case 'DO Generated':
-          return { label: 'View DO', action: () => handleViewDO(request, set), color: 'green', disabled: false };
-        default:
-          return null;
-      }
-    }
+    // This function is kept for any remaining set-level operations but won't be used in UI
+    return null;
   };
 
   const getReturnNextAction = (request: ReturnRequest) => {
@@ -1415,13 +1732,17 @@ export default function DeliveryReturnManagement({
       case 'Requested':
         return { label: 'Issue Quotation', action: () => handleIssueReturnQuotation(request), color: 'blue' };
       case 'Quoted':
-        // Return both agree and disagree actions
         return {
           agree: { label: 'Agree', action: () => handleAgreeReturnQuotation(request), color: 'green' },
           disagree: { label: 'Disagree', action: () => handleDisagreeReturnQuotation(request), color: 'red' },
         };
       case 'Agreed':
-        return { label: 'Agreed', disabled: true, color: 'gray' };
+        // Self-return has no charge — immediately ready for processing
+        if (request.collectionMethod === 'self-return' || request.additionalChargeStatus === 'approved') {
+          return { label: 'Ready for Processing', disabled: true, color: 'green' };
+        }
+        // Transport with charge not yet approved
+        return { label: 'Pending Payment Approval', disabled: true, color: 'gray' };
       case 'Cancelled':
         return { label: 'Cancelled', disabled: true, color: 'gray' };
       default:
@@ -1560,12 +1881,17 @@ export default function DeliveryReturnManagement({
             <div key={request.id} className="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
               {/* Request Header */}
               <div className="flex items-start justify-between pb-4 border-b">
-                <div className="space-y-2">
+                <div className="space-y-2 flex-1">
                   <div className="flex items-center space-x-3">
                     <h3 className="text-lg text-[#231F20]">{request.requestId}</h3>
                     <span className="px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
                       Delivery
                     </span>
+                    {request.sets.some(s => s.doNumber) && (
+                      <span className="px-3 py-1 rounded-full text-xs bg-green-100 text-green-800 border border-green-300">
+                        DO: {request.sets.find(s => s.doNumber)?.doNumber}
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div className="flex items-center space-x-2 text-gray-600">
@@ -1586,11 +1912,64 @@ export default function DeliveryReturnManagement({
                     </div>
                   </div>
                 </div>
+                {/* Request-Level Action Buttons */}
+                <div className="flex items-center space-x-2 ml-4">
+                  {(() => {
+                    const nextAction = getRequestNextAction(request);
+                    if (!nextAction) return null;
+                    
+                    // Check if it's the quoted state with agree/disagree options
+                    if ('agree' in nextAction && 'disagree' in nextAction) {
+                      return (
+                        <>
+                          <button
+                          onClick={nextAction.agree.action}
+                          className="px-4 py-2 rounded-lg text-sm text-white"
+                          style={{ backgroundColor: '#10b981' }}
+                        >
+                          {nextAction.agree.label}
+                        </button>
+                        <button
+                          onClick={nextAction.disagree.action}
+                          className="px-4 py-2 rounded-lg text-sm text-white"
+                          style={{ backgroundColor: '#ef4444' }}
+                        >
+                          {nextAction.disagree.label}
+                        </button>
+                      </>
+                      );
+                    }
+                    
+                    // Single action button
+                    return (
+                      <button
+                        onClick={nextAction.action}
+                        disabled={nextAction.disabled}
+                        className={`px-4 py-2 rounded-lg text-sm ${
+                          nextAction.disabled
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'text-white'
+                        }`}
+                        style={{
+                          backgroundColor: nextAction.disabled ? undefined : 
+                            nextAction.color === 'blue' ? '#3b82f6' :
+                            nextAction.color === 'indigo' ? '#6366f1' :
+                            nextAction.color === 'yellow' ? '#eab308' :
+                            nextAction.color === 'cyan' ? '#06b6d4' :
+                            nextAction.color === 'green' ? '#10b981' :
+                            nextAction.color === 'gray' ? '#9ca3af' : '#3b82f6'
+                        }}
+                      >
+                        {nextAction.label}
+                      </button>
+                    );
+                  })()}
+                </div>
               </div>
 
               {/* Sets */}
               <div className="space-y-4">
-                <h4 className="text-sm text-gray-500">Sets ({request.deliveredSets}/{request.totalSets} delivered)</h4>
+                <h4 className="text-sm text-gray-500">Sets ({request.sets.filter(s => ['Completed', 'Customer Confirmed', 'Delivered'].includes(s.status)).length}/{request.sets.length} delivered)</h4>
                 {request.sets.map((set, index) => (
                   <div key={set.id} className="border border-gray-200 rounded-lg p-4 space-y-3">
                     <div className="flex items-start justify-between">
@@ -1600,13 +1979,19 @@ export default function DeliveryReturnManagement({
                           <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(set.status)}`}>
                             {set.status}
                           </span>
-                          {index > 0 && set.status === 'Pending' && !canQuoteSet(request, set) && (
-                            <span className="text-xs text-gray-500 italic">
-                              (Will quote after Set {String.fromCharCode(65 + index - 1)} is completed)
+                          {set.doNumber && (
+                            <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 border border-green-300">
+                              DO: {set.doNumber}
                             </span>
                           )}
                         </div>
                         <p className="text-sm text-gray-600">Period: {set.scheduledPeriod}</p>
+                        {set.doNumber && (
+                          <div className="flex items-center space-x-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded border border-green-200">
+                            <FileText className="size-4" />
+                            <span>Delivery Order: <strong>{set.doNumber}</strong> generated</span>
+                          </div>
+                        )}
                         
                         {/* Items */}
                         <div className="bg-gray-50 rounded p-3 space-y-1">
@@ -1631,60 +2016,6 @@ export default function DeliveryReturnManagement({
                             )}
                           </div>
                         )}
-                      </div>
-
-                      {/* Action Button */}
-                      <div className="flex items-center space-x-2">
-                        {(() => {
-                          const nextAction = getNextAction(request, set);
-                          if (!nextAction) return null;
-                          
-                          // Check if it's the quoted state with agree/disagree options
-                          if ('agree' in nextAction && 'disagree' in nextAction) {
-                            return (
-                              <>
-                                <button
-                                  onClick={nextAction.agree.action}
-                                  className="px-4 py-2 rounded-lg text-sm text-white"
-                                  style={{ backgroundColor: '#10b981' }}
-                                >
-                                  {nextAction.agree.label}
-                                </button>
-                                <button
-                                  onClick={nextAction.disagree.action}
-                                  className="px-4 py-2 rounded-lg text-sm text-white"
-                                  style={{ backgroundColor: '#ef4444' }}
-                                >
-                                  {nextAction.disagree.label}
-                                </button>
-                              </>
-                            );
-                          }
-                          
-                          // Single action button (existing logic)
-                          return (
-                            <button
-                              onClick={nextAction.action}
-                              disabled={nextAction.disabled}
-                              className={`px-4 py-2 rounded-lg text-sm ${
-                                nextAction.disabled
-                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                  : `bg-${nextAction.color}-500 hover:bg-${nextAction.color}-600 text-white`
-                              }`}
-                              style={{
-                                backgroundColor: nextAction.disabled ? undefined : 
-                                  nextAction.color === 'blue' ? '#3b82f6' :
-                                  nextAction.color === 'indigo' ? '#6366f1' :
-                                  nextAction.color === 'yellow' ? '#eab308' :
-                                  nextAction.color === 'cyan' ? '#06b6d4' :
-                                  nextAction.color === 'green' ? '#10b981' :
-                                  nextAction.color === 'gray' ? '#9ca3af' : '#3b82f6'
-                              }}
-                            >
-                              {nextAction.label}
-                            </button>
-                          );
-                        })()}
                       </div>
                     </div>
                   </div>
@@ -1757,12 +2088,14 @@ export default function DeliveryReturnManagement({
                   )}
 
                   <p className="text-sm text-gray-600">Reason: {request.reason}</p>
-                  {request.scheduledDate && (
-                    <div className="flex items-center space-x-2 text-sm text-gray-600">
-                      <CalendarIcon className="size-4" />
+                  <div className="flex items-center space-x-2 text-sm text-gray-600">
+                    <CalendarIcon className="size-4" />
+                    {request.scheduledDate ? (
                       <span>Scheduled: {request.scheduledDate}</span>
-                    </div>
-                  )}
+                    ) : (
+                      <span>Requested: {request.requestDate}</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Action Button */}
@@ -1833,7 +2166,7 @@ export default function DeliveryReturnManagement({
       )}
 
       {/* Quotation Modal for Delivery */}
-      {showQuotationModal && selectedRequest && selectedSet && (
+      {showQuotationModal && selectedRequest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md space-y-4">
             <h3 className="text-xl text-[#231F20]">Issue Quotation & Delivery Fee</h3>
@@ -1847,8 +2180,9 @@ export default function DeliveryReturnManagement({
             
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gray-600">Set: {selectedSet.setName}</p>
-                <p className="text-sm text-gray-600">Rental Amount: RM {selectedSet.quotedAmount?.toLocaleString()}</p>
+                <p className="text-sm text-gray-600">Request: {selectedRequest.requestId}</p>
+                <p className="text-sm text-gray-600">Customer: {selectedRequest.customerName}</p>
+                <p className="text-sm text-gray-600">Sets: {selectedRequest.sets.filter(s => s.status !== 'Cancelled').map(s => s.setName).join(', ')}</p>
               </div>
               <div>
                 <label className={`block text-sm mb-2 ${quotationModalErrors.deliveryFee ? 'text-red-600' : 'text-gray-700'}`}>
@@ -2033,22 +2367,24 @@ export default function DeliveryReturnManagement({
       )}
 
       {/* DO Generation Modal for Delivery */}
-      {showDOModal && selectedDORequest && selectedSet && (
+      {showDOModal && selectedDORequest && (
         <DeliveryOrderGeneration
           requestId={selectedDORequest.requestId}
           customerName={selectedDORequest.customerName}
           agreementNo={selectedDORequest.agreementNo}
           setDetails={{
-            setName: selectedSet.setName,
-            items: selectedSet.items.map(item => ({ ...item, unit: 'pcs' }))
+            setName: `All Sets (${selectedDORequest.sets.length})`,
+            items: selectedDORequest.sets.flatMap(set => 
+              set.items.map(item => ({ ...item, unit: 'pcs' }))
+            )
           }}
           deliveryAddress={selectedDORequest.deliveryAddress}
           deliveryDate={new Date().toISOString().split('T')[0]}
-          scheduledPeriod={selectedSet.scheduledPeriod}
+          scheduledPeriod={selectedDORequest.sets[0]?.scheduledPeriod || ''}
           customerPhone={selectedDORequest.customerPhone}
           customerEmail={selectedDORequest.customerEmail}
           onClose={() => {
-            handleDOGenerated(selectedDORequest, selectedSet);
+            handleDOGenerated(selectedDORequest);
           }}
         />
       )}
@@ -2136,26 +2472,26 @@ export default function DeliveryReturnManagement({
                     clearDeliveryError('agreementId');
                     
                     // Auto-populate delivery sets from RFQ
-                    const agreement = rentalAgreements.find(a => a.id === agreementId);
-                    if (agreement?.rfq?.items && agreement.rfq.items.length > 0) {
+                    const linkedRfq = rfqs.find(r => {
+                      const agr = rentalAgreements.find(a => a.id === agreementId);
+                      return agr?.rfqId ? r.id === agr.rfqId : false;
+                    });
+                    if (linkedRfq?.items && linkedRfq.items.length > 0) {
                       // Group items by setName and create delivery sets
-                      const groupedSets = groupRFQItemsBySet(agreement.rfq.items);
+                      const groupedSets = groupRFQItemsBySet(linkedRfq.items);
                       
                       const autoSets = groupedSets.map(group => {
-                        const startDate = group.deliverDate ? new Date(group.deliverDate) : undefined;
-                        const endDate = group.returnDate ? new Date(group.returnDate) : undefined;
+                        const requiredDate = group.requiredDate ? new Date(group.requiredDate) : undefined;
                         
-                        // Format scheduled period string
-                        let scheduledPeriod = '';
-                        if (startDate && endDate && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
-                          scheduledPeriod = `${format(startDate, 'd MMM yyyy')} - ${format(endDate, 'd MMM yyyy')}`;
-                        }
+                        // Format scheduled period string from required date
+                        const scheduledPeriod = requiredDate && !isNaN(requiredDate.getTime())
+                          ? format(requiredDate, 'd MMM yyyy')
+                          : '';
                         
                         return {
                           setName: group.setName,
                           scheduledPeriod,
-                          startDate,
-                          endDate,
+                          requiredDate,
                           items: group.items.map(item => ({
                             name: item.scaffoldingItemName,
                             quantity: item.quantity,
@@ -2164,10 +2500,16 @@ export default function DeliveryReturnManagement({
                         };
                       });
                       
-                      setDeliverySets(autoSets.length > 0 ? autoSets : [{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+                      setDeliverySets(autoSets.length > 0 ? autoSets : [{ setName: 'Set A', scheduledPeriod: '', requiredDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+
+                      // Pre-select only the sets not already used
+                      const agr = rentalAgreements.find(a => a.id === agreementId);
+                      const usedNames = agr ? getUsedSetNames(agr.agreementNumber) : new Set<string>();
+                      setSelectedSetNames(new Set(autoSets.map(s => s.setName).filter(n => !usedNames.has(n))));
                     } else {
                       // Reset to default if no RFQ items
-                      setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+                      setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', requiredDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+                      setSelectedSetNames(new Set());
                     }
                     // Clear set errors when agreement changes
                     setDeliveryFormErrors(prev => ({ ...prev, sets: undefined }));
@@ -2178,11 +2520,22 @@ export default function DeliveryReturnManagement({
                   }`}
                 >
                   <option value="">-- Select Rental Agreement --</option>
-                  {rentalAgreements.map((agreement) => (
-                    <option key={agreement.id} value={agreement.id}>
-                      {agreement.agreementNumber} - {agreement.hirer} ({agreement.projectName})
-                    </option>
-                  ))}
+                  {(() => {
+                    return rentalAgreements
+                      .filter((agreement) => {
+                        // Only hide if ALL RFQ sets are already covered by existing delivery requests
+                        const linkedRfq = rfqs.find(r => agreement.rfqId ? r.id === agreement.rfqId : false);
+                        if (!linkedRfq?.items?.length) return true; // show agreements without RFQ items
+                        const rfqSetNames = new Set(groupRFQItemsBySet(linkedRfq.items).map(g => g.setName));
+                        const usedNames = getUsedSetNames(agreement.agreementNumber);
+                        return ![...rfqSetNames].every(name => usedNames.has(name));
+                      })
+                      .map((agreement) => (
+                        <option key={agreement.id} value={agreement.id}>
+                          {agreement.agreementNumber} - {agreement.hirer} ({agreement.projectName})
+                        </option>
+                      ));
+                  })()}
                 </select>
                 {deliveryFormErrors.agreementId && (
                   <p className="text-xs text-red-600 mt-1 flex items-center">
@@ -2200,8 +2553,8 @@ export default function DeliveryReturnManagement({
               {/* Auto-populated fields (read-only display) */}
               {selectedAgreementId && (() => {
                 const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-                if (!agreement || !agreement.rfq) return null;
-                const rfq = agreement.rfq;
+                const rfq = getRfqForAgreement(selectedAgreementId);
+                if (!agreement || !rfq) return null;
                 return (
                   <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                     <p className="text-sm text-gray-500 font-medium">Auto-populated from Agreement & Quotation:</p>
@@ -2281,139 +2634,57 @@ export default function DeliveryReturnManagement({
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-medium text-gray-700">Delivery Sets *</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextSetLetter = String.fromCharCode(65 + deliverySets.length);
-                      setDeliverySets([
-                        ...deliverySets,
-                        { setName: `Set ${nextSetLetter}`, scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] },
-                      ]);
-                    }}
-                    className="text-sm text-[#F15929] hover:text-[#d94d1f] flex items-center space-x-1"
-                    disabled={!selectedAgreementId}
-                  >
-                    <Plus className="size-4" />
-                    <span>Add Set</span>
-                  </button>
                 </div>
+                {deliveryFormErrors.sets?.general && (
+                  <p className="text-xs text-red-600 flex items-center">
+                    <AlertCircle className="size-3 mr-1" />
+                    {deliveryFormErrors.sets.general}
+                  </p>
+                )}
 
-                {deliverySets.map((set, setIndex) => (
-                  <div key={setIndex} className="border border-gray-200 rounded-lg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
+                {deliverySets.map((set, setIndex) => {
+                  const agreement = rentalAgreements.find(a => a.id === selectedAgreementId);
+                  const usedNames = agreement ? getUsedSetNames(agreement.agreementNumber) : new Set<string>();
+                  const isAlreadyUsed = usedNames.has(set.setName);
+                  const isSelected = selectedSetNames.has(set.setName);
+                  const isDisabled = isAlreadyUsed || !isSelected;
+
+                  return (
+                  <div key={setIndex} className={`border rounded-lg p-4 space-y-3 ${isAlreadyUsed ? 'border-gray-200 bg-gray-50 opacity-60' : isSelected ? 'border-gray-200' : 'border-gray-200 opacity-50'}`}>
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={isAlreadyUsed}
+                        onChange={() => {
+                          setSelectedSetNames(prev => {
+                            const next = new Set(prev);
+                            if (next.has(set.setName)) {
+                              next.delete(set.setName);
+                            } else {
+                              next.add(set.setName);
+                            }
+                            return next;
+                          });
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-[#F15929] focus:ring-[#F15929]"
+                      />
                       <h5 className="font-medium text-gray-700">{set.setName}</h5>
-                      {deliverySets.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const filtered = deliverySets.filter((_, i) => i !== setIndex);
-                            // Rename sets to maintain sequential naming
-                            const renamed = filtered.map((s, i) => ({
-                              ...s,
-                              setName: `Set ${String.fromCharCode(65 + i)}`
-                            }));
-                            setDeliverySets(renamed);
-                          }}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <X className="size-4" />
-                        </button>
+                      {isAlreadyUsed && (
+                        <span className="text-xs text-gray-500 italic">(Already requested)</span>
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Start Date */}
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">Start Date *</label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button
-                              type="button"
-                              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-left flex items-center justify-between bg-white hover:bg-gray-50 ${
-                                deliveryFormErrors.sets?.[setIndex]?.startDate ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                              }`}
-                            >
-                              <span className={set.startDate ? 'text-gray-900' : 'text-gray-400'}>
-                                {set.startDate ? format(set.startDate, 'd MMM yyyy') : 'Select start date'}
-                              </span>
-                              <CalendarIcon className="size-4 text-gray-400" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={set.startDate}
-                              onSelect={(date) => {
-                                const updated = [...deliverySets];
-                                updated[setIndex].startDate = date;
-                                // Update scheduledPeriod string for backward compatibility
-                                if (date && updated[setIndex].endDate) {
-                                  updated[setIndex].scheduledPeriod = `${format(date, 'd MMM yyyy')} - ${format(updated[setIndex].endDate!, 'd MMM yyyy')}`;
-                                } else if (date) {
-                                  updated[setIndex].scheduledPeriod = format(date, 'd MMM yyyy');
-                                } else {
-                                  updated[setIndex].scheduledPeriod = '';
-                                }
-                                setDeliverySets(updated);
-                                clearDeliverySetError(setIndex, 'startDate');
-                              }}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        {deliveryFormErrors.sets?.[setIndex]?.startDate && (
-                          <p className="text-xs text-red-600 mt-1 flex items-center">
-                            <AlertCircle className="size-3 mr-1" />
-                            {deliveryFormErrors.sets[setIndex].startDate}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* End Date */}
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">End Date *</label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button
-                              type="button"
-                              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-left flex items-center justify-between bg-white hover:bg-gray-50 ${
-                                deliveryFormErrors.sets?.[setIndex]?.endDate ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                              }`}
-                            >
-                              <span className={set.endDate ? 'text-gray-900' : 'text-gray-400'}>
-                                {set.endDate ? format(set.endDate, 'd MMM yyyy') : 'Select end date'}
-                              </span>
-                              <CalendarIcon className="size-4 text-gray-400" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={set.endDate}
-                              onSelect={(date) => {
-                                const updated = [...deliverySets];
-                                updated[setIndex].endDate = date;
-                                // Update scheduledPeriod string for backward compatibility
-                                if (updated[setIndex].startDate && date) {
-                                  updated[setIndex].scheduledPeriod = `${format(updated[setIndex].startDate!, 'd MMM yyyy')} - ${format(date, 'd MMM yyyy')}`;
-                                } else if (date) {
-                                  updated[setIndex].scheduledPeriod = format(date, 'd MMM yyyy');
-                                }
-                                setDeliverySets(updated);
-                                clearDeliverySetError(setIndex, 'endDate');
-                              }}
-                              disabled={(date) => set.startDate ? date < set.startDate : false}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        {deliveryFormErrors.sets?.[setIndex]?.endDate && (
-                          <p className="text-xs text-red-600 mt-1 flex items-center">
-                            <AlertCircle className="size-3 mr-1" />
-                            {deliveryFormErrors.sets[setIndex].endDate}
-                          </p>
-                        )}
-                      </div>
+                    {/* Required Date (read-only, auto-populated from RFQ) */}
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Required Date *</label>
+                      <input
+                        type="text"
+                        value={set.requiredDate ? format(set.requiredDate, 'd MMM yyyy') : 'No date set'}
+                        readOnly
+                        disabled
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-100"
+                      />
                     </div>
 
                     {/* Items in Set - only show items from selected agreement's RFQ */}
@@ -2422,18 +2693,6 @@ export default function DeliveryReturnManagement({
                         <label className={`block text-xs ${deliveryFormErrors.sets?.[setIndex]?.items ? 'text-red-600' : 'text-gray-500'}`}>
                           Items from Quotation *
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = [...deliverySets];
-                            updated[setIndex].items.push({ name: '', quantity: 1, scaffoldingItemId: '' });
-                            setDeliverySets(updated);
-                          }}
-                          className="text-xs text-[#F15929] hover:text-[#d94d1f]"
-                          disabled={!selectedAgreementId}
-                        >
-                          + Add Item
-                        </button>
                       </div>
                       {deliveryFormErrors.sets?.[setIndex]?.items && (
                         <p className="text-xs text-red-600 flex items-center">
@@ -2442,71 +2701,34 @@ export default function DeliveryReturnManagement({
                         </p>
                       )}
                       {set.items.map((item, itemIndex) => {
-                        const selectedAgreement = rentalAgreements.find(a => a.id === selectedAgreementId);
-                        const rfqItems = selectedAgreement?.rfq?.items || [];
+                        const rfqForItems = getRfqForAgreement(selectedAgreementId);
+                        const rfqItems = rfqForItems?.items || [];
                         const itemError = deliveryFormErrors.sets?.[setIndex]?.itemErrors?.[itemIndex];
                         
                         return (
                           <div key={itemIndex} className="space-y-1">
                             <div className="flex items-center space-x-2">
-                              <select
-                                value={item.scaffoldingItemId}
-                                onChange={(e) => {
-                                  const updated = [...deliverySets];
-                                  const selectedItem = rfqItems.find(ri => ri.scaffoldingItemId === e.target.value);
-                                  updated[setIndex].items[itemIndex].scaffoldingItemId = e.target.value;
-                                  updated[setIndex].items[itemIndex].name = selectedItem?.scaffoldingItemName || '';
-                                  setDeliverySets(updated);
-                                  clearDeliverySetError(setIndex, 'items');
-                                }}
-                                className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm bg-white disabled:bg-gray-100 ${
+                              <input
+                                type="text"
+                                value={item.name ? `${item.name} (Quoted: ${rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.quantity ?? ''} ${rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.unit ?? ''})` : ''}
+                                readOnly
+                                disabled
+                                className={`flex-1 px-3 py-2 border rounded-lg text-sm disabled:bg-gray-100 ${
                                   itemError?.scaffoldingItemId ? 'border-red-500 bg-red-50' : 'border-gray-300'
                                 }`}
-                                disabled={!selectedAgreementId}
-                              >
-                                <option value="">-- Select Item from Quotation --</option>
-                                {rfqItems.map((rfqItem) => (
-                                  <option key={rfqItem.scaffoldingItemId} value={rfqItem.scaffoldingItemId}>
-                                    {rfqItem.scaffoldingItemName} (Quoted: {rfqItem.quantity} {rfqItem.unit})
-                                  </option>
-                                ))}
-                              </select>
+                              />
                               <input
                                 type="number"
                                 min="1"
-                                max={rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.quantity || 9999}
                                 value={item.quantity}
-                                onChange={(e) => {
-                                  const updated = [...deliverySets];
-                                  updated[setIndex].items[itemIndex].quantity = parseInt(e.target.value) || 1;
-                                  setDeliverySets(updated);
-                                }}
-                                className={`w-24 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-center disabled:bg-gray-100 ${
+                                onChange={() => {}}
+                                className={`w-24 px-3 py-2 border rounded-lg text-sm text-center disabled:bg-gray-100 ${
                                   itemError?.quantity ? 'border-red-500 bg-red-50' : 'border-gray-300'
                                 }`}
                                 placeholder="Qty"
-                                disabled={!selectedAgreementId}
+                                disabled
                               />
-                              {set.items.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const updated = [...deliverySets];
-                                    updated[setIndex].items = updated[setIndex].items.filter((_, i) => i !== itemIndex);
-                                    setDeliverySets(updated);
-                                  }}
-                                  className="text-red-500 hover:text-red-700"
-                                >
-                                  <X className="size-4" />
-                                </button>
-                              )}
                             </div>
-                            {itemError?.quantity && (
-                              <p className="text-xs text-red-600 ml-0 flex items-center">
-                                <AlertCircle className="size-3 mr-1" />
-                                {itemError.quantity}
-                              </p>
-                            )}
                           </div>
                         );
                       })}
@@ -2517,7 +2739,8 @@ export default function DeliveryReturnManagement({
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -2527,7 +2750,8 @@ export default function DeliveryReturnManagement({
                   setShowCreateDeliveryModal(false);
                   setSelectedAgreementId('');
                   setNewDeliveryForm({ customerEmail: '', deliveryType: 'delivery' });
-                  setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', startDate: undefined, endDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+                  setDeliverySets([{ setName: 'Set A', scheduledPeriod: '', requiredDate: undefined, items: [{ name: '', quantity: 1, scaffoldingItemId: '' }] }]);
+                  setSelectedSetNames(new Set());
                   setDeliveryFormErrors({});
                   setDeliveryFormTouched({});
                 }}
@@ -2564,349 +2788,569 @@ export default function DeliveryReturnManagement({
             )}
 
             <div className="space-y-4">
-              {/* Rental Agreement Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Rental Agreement *</label>
-                <select
-                  value={selectedReturnAgreementId}
-                  onChange={(e) => {
-                    const agreementId = e.target.value;
-                    setSelectedReturnAgreementId(agreementId);
-                    setSelectedReturnSetName('');
-                    setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
-                    clearReturnError('agreementId');
-                    clearReturnError('setName');
-                    clearReturnError('items');
-                    
-                    // Group RFQ items by set when agreement is selected
-                    const agreement = rentalAgreements.find(a => a.id === agreementId);
-                    if (agreement?.rfq?.items && agreement.rfq.items.length > 0) {
-                      const groupedSets = groupRFQItemsBySet(agreement.rfq.items);
-                      setAvailableReturnSets(groupedSets);
-                    } else {
-                      setAvailableReturnSets([]);
-                    }
-                  }}
-                  onBlur={() => setReturnFormTouched(prev => ({ ...prev, agreementId: true }))}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
-                    returnFormErrors.agreementId ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">-- Select Rental Agreement --</option>
-                  {rentalAgreements.map((agreement) => (
-                    <option key={agreement.id} value={agreement.id}>
-                      {agreement.agreementNumber} - {agreement.hirer} ({agreement.projectName})
-                    </option>
-                  ))}
-                </select>
-                {returnFormErrors.agreementId && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center">
-                    <AlertCircle className="size-3 mr-1" />
-                    {returnFormErrors.agreementId}
-                  </p>
-                )}
-                {rentalAgreements.length === 0 && !returnFormErrors.agreementId && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    No active rental agreements with quotations available. Please create an active rental agreement with a linked quotation first.
-                  </p>
-                )}
-              </div>
-
-              {/* Auto-populated fields (read-only display) */}
-              {selectedReturnAgreementId && (() => {
-                const agreement = rentalAgreements.find(a => a.id === selectedReturnAgreementId);
-                if (!agreement || !agreement.rfq) return null;
-                const rfq = agreement.rfq;
-                return (
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                    <p className="text-sm text-gray-500 font-medium">Auto-populated from Agreement & Quotation:</p>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="col-span-2">
-                        <span className="text-gray-500">Agreement Number:</span>
-                        <span className="ml-2 text-gray-900 font-semibold">{agreement.agreementNumber}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Customer Name:</span>
-                        <span className="ml-2 text-gray-900">{rfq.customerName}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Email:</span>
-                        <span className="ml-2 text-gray-900">{rfq.customerEmail}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Phone:</span>
-                        <span className="ml-2 text-gray-900">{rfq.customerPhone || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Project:</span>
-                        <span className="ml-2 text-gray-900">{rfq.projectName}</span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-gray-500">Pickup Address:</span>
-                        <span className="ml-2 text-gray-900">{rfq.projectLocation || 'N/A'}</span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-gray-500">Request ID:</span>
-                        <span className="ml-2 text-gray-900 font-mono">
-                          RET-{agreement.agreementNumber}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Set Selection */}
-              {selectedReturnAgreementId && availableReturnSets.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Set for Return *</label>
-                  <select
-                    value={selectedReturnSetName}
-                    onChange={(e) => {
-                      const setName = e.target.value;
-                      setSelectedReturnSetName(setName);
-                      clearReturnError('setName');
-                      clearReturnError('items');
-                      
-                      // Auto-populate items from selected set
-                      const selectedSet = availableReturnSets.find(s => s.setName === setName);
-                      if (selectedSet) {
-                        const items = selectedSet.items.map(item => ({
-                          name: item.scaffoldingItemName,
-                          quantity: item.quantity,
-                          scaffoldingItemId: item.scaffoldingItemId,
-                        }));
-                        setReturnItems(items.length > 0 ? items : [{ name: '', quantity: 1, scaffoldingItemId: '' }]);
-                      } else {
-                        setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
+              {(() => {
+                // Derive available DOs: delivery sets with a DO number and delivered/completed status
+                const completedStatuses = ['Completed', 'Customer Confirmed', 'Delivered'];
+                
+                // Calculate already-returned quantities per delivery set
+                const returnedBySet: Record<string, Record<string, number>> = {};
+                returnRequests.forEach(rr => {
+                  if (rr.deliverySetId) {
+                    if (!returnedBySet[rr.deliverySetId]) returnedBySet[rr.deliverySetId] = {};
+                    rr.items.forEach(ri => {
+                      if (ri.scaffoldingItemId) {
+                        returnedBySet[rr.deliverySetId][ri.scaffoldingItemId] = (returnedBySet[rr.deliverySetId][ri.scaffoldingItemId] || 0) + ri.quantity;
                       }
-                    }}
-                    onBlur={() => setReturnFormTouched(prev => ({ ...prev, setName: true }))}
-                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
-                      returnFormErrors.setName ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">-- Select Set --</option>
-                    {availableReturnSets.map((set) => (
-                      <option key={set.setName} value={set.setName}>
-                        {set.setName} ({set.items.length} items)
-                        {set.returnDate && ` - Return Date: ${new Date(set.returnDate).toLocaleDateString()}`}
-                      </option>
-                    ))}
-                  </select>
-                  {returnFormErrors.setName && (
-                    <p className="text-xs text-red-600 mt-1 flex items-center">
-                      <AlertCircle className="size-3 mr-1" />
-                      {returnFormErrors.setName}
-                    </p>
-                  )}
-                </div>
-              )}
+                    });
+                  }
+                });
 
-              {/* Selected Set Info */}
-              {selectedReturnSetName && (() => {
-                const selectedSet = availableReturnSets.find(s => s.setName === selectedReturnSetName);
-                if (!selectedSet) return null;
+                // Step 1: Filter agreements that have completed delivery orders
+                const agreementsWithCompletedDOs = rentalAgreements.filter(agreement => {
+                  return deliveryRequests.some(req => 
+                    req.agreementNo === agreement.agreementNumber &&
+                    req.sets.some(set => {
+                      if (!set.doNumber || !completedStatuses.includes(set.status)) return false;
+                      const returned = returnedBySet[set.id] || {};
+                      return set.items.some(item => {
+                        const returnedQty = item.scaffoldingItemId ? (returned[item.scaffoldingItemId] || 0) : 0;
+                        return item.quantity - returnedQty > 0;
+                      });
+                    })
+                  );
+                });
+
+                // Step 2: Get selected agreement
+                const selectedAgreement = rentalAgreements.find(a => a.id === selectedReturnAgreementId);
+
+                // Step 3: Filter delivery requests by selected agreement and group by DO number
+                const agreementDeliveryRequests = selectedAgreement
+                  ? deliveryRequests.filter(req => req.agreementNo === selectedAgreement.agreementNumber)
+                  : [];
+
+                // Group sets by DO number
+                const doGroups = new Map<string, {
+                  doNumber: string;
+                  sets: Array<{
+                    id: string;
+                    setName: string;
+                    items: { name: string; quantity: number; scaffoldingItemId?: string }[];
+                    status: DeliveryStatus;
+                  }>;
+                  customerName: string;
+                  agreementNo: string;
+                  deliveryAddress: string;
+                  customerPhone: string;
+                  customerEmail: string;
+                }>();
+
+                agreementDeliveryRequests.forEach(req => {
+                  req.sets
+                    .filter(set => set.doNumber && completedStatuses.includes(set.status))
+                    .forEach(set => {
+                      const doNum = set.doNumber!;
+                      if (!doGroups.has(doNum)) {
+                        doGroups.set(doNum, {
+                          doNumber: doNum,
+                          sets: [],
+                          customerName: req.customerName,
+                          agreementNo: req.agreementNo,
+                          deliveryAddress: req.deliveryAddress,
+                          customerPhone: req.customerPhone,
+                          customerEmail: req.customerEmail,
+                        });
+                      }
+                      const group = doGroups.get(doNum)!;
+                      // Check if DO has returnable items
+                      const returned = returnedBySet[set.id] || {};
+                      const hasReturnable = set.items.some(item => {
+                        const returnedQty = item.scaffoldingItemId ? (returned[item.scaffoldingItemId] || 0) : 0;
+                        return item.quantity - returnedQty > 0;
+                      });
+                      if (hasReturnable) {
+                        group.sets.push({
+                          id: set.id,
+                          setName: set.setName,
+                          items: set.items,
+                          status: set.status,
+                        });
+                      }
+                    });
+                });
+
+                // Filter out DOs where all sets have no returnable items
+                const availableDOs = Array.from(doGroups.values()).filter(doGroup => doGroup.sets.length > 0);
+
+                // Step 4: Get selected DOs and their sets
+                const selectedDOGroups = availableDOs.filter(d => selectedDONumbers.includes(d.doNumber));
+
                 return (
-                  <div className="bg-blue-50 rounded-lg p-4 space-y-2">
-                    <p className="text-sm text-blue-700 font-medium">Items in {selectedSet.setName}:</p>
-                    <div className="space-y-1">
-                      {selectedSet.items.map((item, idx) => (
-                        <p key={idx} className="text-sm text-blue-900">
-                          • {item.scaffoldingItemName} - Qty: {item.quantity} {item.unit}
-                        </p>
-                      ))}
-                    </div>
-                    {selectedSet.deliverDate && (
-                      <p className="text-xs text-blue-600 mt-2">
-                        Delivery Date: {new Date(selectedSet.deliverDate).toLocaleDateString()}
-                        {selectedSet.returnDate && ` | Expected Return: ${new Date(selectedSet.returnDate).toLocaleDateString()}`}
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Return Type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Return Type *</label>
-                <select
-                  value={newReturnForm.returnType}
-                  onChange={(e) => {
-                    setNewReturnForm({ ...newReturnForm, returnType: e.target.value as ReturnType });
-                    clearReturnError('returnType');
-                  }}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
-                    returnFormErrors.returnType ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="full">Full Return (All items in set)</option>
-                  <option value="partial">Partial Return (Some items)</option>
-                </select>
-                {returnFormErrors.returnType && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center">
-                    <AlertCircle className="size-3 mr-1" />
-                    {returnFormErrors.returnType}
-                  </p>
-                )}
-              </div>
-
-              {/* Collection Method */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Collection Method *</label>
-                <select
-                  value={newReturnForm.collectionMethod}
-                  onChange={(e) => {
-                    setNewReturnForm({ ...newReturnForm, collectionMethod: e.target.value as CollectionMethod });
-                    clearReturnError('collectionMethod');
-                  }}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
-                    returnFormErrors.collectionMethod ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="transport">Transport (Company picks up)</option>
-                  <option value="self-return">Self Return (Customer delivers)</option>
-                </select>
-                {returnFormErrors.collectionMethod && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center">
-                    <AlertCircle className="size-3 mr-1" />
-                    {returnFormErrors.collectionMethod}
-                  </p>
-                )}
-              </div>
-
-              {/* Reason */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Reason for Return *</label>
-                <textarea
-                  value={newReturnForm.reason}
-                  onChange={(e) => {
-                    setNewReturnForm({ ...newReturnForm, reason: e.target.value });
-                    if (e.target.value.trim()) {
-                      clearReturnError('reason');
-                    }
-                  }}
-                  onBlur={() => setReturnFormTouched(prev => ({ ...prev, reason: true }))}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
-                    returnFormErrors.reason ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                  }`}
-                  rows={3}
-                  placeholder="Enter reason for return..."
-                />
-                <div className="flex justify-between items-center mt-1">
-                  {returnFormErrors.reason ? (
-                    <p className="text-xs text-red-600 flex items-center">
-                      <AlertCircle className="size-3 mr-1" />
-                      {returnFormErrors.reason}
-                    </p>
-                  ) : (
-                    <span />
-                  )}
-                  <span className={`text-xs ${newReturnForm.reason.length > 500 ? 'text-red-600' : 'text-gray-400'}`}>
-                    {newReturnForm.reason.length}/500
-                  </span>
-                </div>
-              </div>
-
-              {/* Items Section - auto-populated from selected set, can be adjusted */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className={`block text-sm font-medium ${returnFormErrors.items ? 'text-red-600' : 'text-gray-700'}`}>
-                    Items to Return *
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setReturnItems([...returnItems, { name: '', quantity: 1, scaffoldingItemId: '' }])}
-                    className="text-sm text-[#F15929] hover:text-[#d94d1f] flex items-center space-x-1"
-                    disabled={!selectedReturnSetName}
-                  >
-                    <Plus className="size-4" />
-                    <span>Add Item</span>
-                  </button>
-                </div>
-                {returnFormErrors.items && (
-                  <p className="text-xs text-red-600 flex items-center">
-                    <AlertCircle className="size-3 mr-1" />
-                    {returnFormErrors.items}
-                  </p>
-                )}
-                {returnItems.map((item, index) => {
-                  const agreement = rentalAgreements.find(a => a.id === selectedReturnAgreementId);
-                  const rfqItems = agreement?.rfq?.items || [];
-                  // Filter to show only items from the selected set
-                  const setItems = selectedReturnSetName 
-                    ? rfqItems.filter(ri => ri.setName === selectedReturnSetName)
-                    : rfqItems;
-                  const itemError = returnFormErrors.itemErrors?.[index];
-                  
-                  return (
-                    <div key={index} className="space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <select
-                          value={item.scaffoldingItemId}
-                          onChange={(e) => {
-                            const updated = [...returnItems];
-                            const selectedItem = rfqItems.find(ri => ri.scaffoldingItemId === e.target.value);
-                            updated[index].scaffoldingItemId = e.target.value;
-                            updated[index].name = selectedItem?.scaffoldingItemName || '';
-                            setReturnItems(updated);
-                            clearReturnError('items');
-                            clearReturnItemError(index);
-                          }}
-                          className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm bg-white disabled:bg-gray-100 ${
-                            itemError?.scaffoldingItemId ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                          }`}
-                          disabled={!selectedReturnSetName}
-                        >
-                          <option value="">-- Select Item --</option>
-                          {setItems.map((rfqItem) => (
-                            <option key={rfqItem.scaffoldingItemId} value={rfqItem.scaffoldingItemId}>
-                              {rfqItem.scaffoldingItemName} (Quoted: {rfqItem.quantity} {rfqItem.unit})
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          min="1"
-                          max={rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.quantity || 9999}
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const updated = [...returnItems];
-                            updated[index].quantity = parseInt(e.target.value) || 1;
-                            setReturnItems(updated);
-                            clearReturnItemError(index);
-                          }}
-                          className={`w-24 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-center disabled:bg-gray-100 ${
-                            itemError?.quantity ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                          }`}
-                          placeholder="Qty"
-                          disabled={!selectedReturnSetName}
-                        />
-                        {returnItems.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => setReturnItems(returnItems.filter((_, i) => i !== index))}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <X className="size-4" />
-                          </button>
-                        )}
-                      </div>
-                      {itemError?.quantity && (
-                        <p className="text-xs text-red-600 flex items-center">
+                  <>
+                    {/* Step 1: Rental Agreement Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Select Rental Agreement *</label>
+                      <select
+                        value={selectedReturnAgreementId}
+                        onChange={(e) => {
+                          const agreementId = e.target.value;
+                          setSelectedReturnAgreementId(agreementId);
+                          setSelectedDONumbers([]); // Reset DO selection
+                          setSelectedReturnSetId(''); // Reset Set selection
+                          setSelectedReturnSets([]); // Clear all selected sets
+                          setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
+                          clearReturnError('agreementId');
+                          clearReturnError('doNumber');
+                          clearReturnError('deliverySetId');
+                          clearReturnError('items');
+                        }}
+                        onBlur={() => setReturnFormTouched(prev => ({ ...prev, agreementId: true }))}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
+                          returnFormErrors.agreementId ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                        }`}
+                      >
+                        <option value="">-- Select Rental Agreement --</option>
+                        {agreementsWithCompletedDOs.map((agreement) => (
+                          <option key={agreement.id} value={agreement.id}>
+                            {agreement.agreementNumber} - {agreement.projectName}
+                          </option>
+                        ))}
+                      </select>
+                      {returnFormErrors.agreementId && (
+                        <p className="text-xs text-red-600 mt-1 flex items-center">
                           <AlertCircle className="size-3 mr-1" />
-                          {itemError.quantity}
+                          {returnFormErrors.agreementId}
+                        </p>
+                      )}
+                      {agreementsWithCompletedDOs.length === 0 && !returnFormErrors.agreementId && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          No rental agreements with completed delivery orders available for return.
                         </p>
                       )}
                     </div>
-                  );
-                })}
-                {!selectedReturnSetName && (
-                  <p className="text-xs text-gray-500 italic">
-                    Please select a set first to see and adjust items for return
-                  </p>
-                )}
-              </div>
+
+                    {/* Step 2: DO Selection (only shown after agreement is selected) */}
+                    {selectedReturnAgreementId && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Delivery Order *</label>
+                        <div
+                          className={`border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto ${
+                            returnFormErrors.doNumber ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                          }`}
+                        >
+                          {availableDOs.map((doGroup) => {
+                            const isSelected = selectedDONumbers.includes(doGroup.doNumber);
+                            return (
+                              <label
+                                key={doGroup.doNumber}
+                                className="flex items-start space-x-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedDONumbers(prev => [...prev, doGroup.doNumber]);
+                                    } else {
+                                      setSelectedDONumbers(prev => prev.filter(n => n !== doGroup.doNumber));
+                                      // Remove sets from the deselected DO
+                                      setSelectedReturnSets(prev =>
+                                        prev.filter(s => !doGroup.sets.some(set => set.id === s.setId))
+                                      );
+                                    }
+                                    setSelectedReturnSetId(''); // Reset Set selection
+                                    clearReturnError('doNumber');
+                                    clearReturnError('deliverySetId');
+                                    clearReturnError('items');
+                                  }}
+                                  onBlur={() => setReturnFormTouched(prev => ({ ...prev, doNumber: true }))}
+                                  className="mt-1"
+                                />
+                                <div className="flex-1">
+                                  <div className="font-medium text-sm text-gray-900">{doGroup.doNumber}</div>
+                                  <div className="text-xs text-gray-500">
+                                    {doGroup.customerName} • {doGroup.sets.length} set(s)
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {returnFormErrors.doNumber && (
+                          <p className="text-xs text-red-600 mt-1 flex items-center">
+                            <AlertCircle className="size-3 mr-1" />
+                            {returnFormErrors.doNumber}
+                          </p>
+                        )}
+                        {availableDOs.length === 0 && !returnFormErrors.doNumber && (
+                          <p className="text-xs text-amber-600 mt-1">
+                            No completed delivery orders available for this agreement.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Step 3: Set Selection (only shown after DO is selected) - Multi-select with checkboxes */}
+                    {selectedDONumbers.length > 0 && selectedDOGroups.length > 0 && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Select Sets to Return *</label>
+                        <div className={`border rounded-lg p-3 space-y-2 max-h-60 overflow-y-auto ${
+                          returnFormErrors.deliverySetId ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                        }`}>
+                          {selectedDOGroups.flatMap(group =>
+                            group.sets.map(set => ({ ...set, doNumber: group.doNumber }))
+                          ).map((set) => {
+                            const isSelected = selectedReturnSets.some(s => s.setId === set.id);
+                            const returned = returnedBySet[set.id] || {};
+                            
+                            // Calculate returnable items for this set
+                            const returnableItems = set.items
+                              .map(item => {
+                                const returnedQty = item.scaffoldingItemId ? (returned[item.scaffoldingItemId] || 0) : 0;
+                                const returnable = item.quantity - returnedQty;
+                                return { ...item, returnable };
+                              })
+                              .filter(item => item.returnable > 0);
+                            
+                            const hasReturnableItems = returnableItems.length > 0;
+                            
+                            return (
+                              <label 
+                                key={set.id} 
+                                className={`flex items-start space-x-3 p-2 rounded ${
+                                  hasReturnableItems 
+                                    ? 'hover:bg-gray-50 cursor-pointer' 
+                                    : 'opacity-50 cursor-not-allowed bg-gray-100'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  disabled={!hasReturnableItems}
+                                  onChange={(e) => {
+                                    if (e.target.checked && hasReturnableItems) {
+                                      // Add set with returnable items
+                                      const items = returnableItems.map(item => ({
+                                        name: item.name,
+                                        quantity: item.returnable,
+                                        scaffoldingItemId: item.scaffoldingItemId || '',
+                                      }));
+                                      
+                                      setSelectedReturnSets(prev => [...prev, {
+                                        setId: set.id,
+                                        setName: set.setName,
+                                        items: items,
+                                      }]);
+                                    } else {
+                                      // Remove set
+                                      setSelectedReturnSets(prev => prev.filter(s => s.setId !== set.id));
+                                    }
+                                    clearReturnError('deliverySetId');
+                                    clearReturnError('items');
+                                  }}
+                                  onBlur={() => setReturnFormTouched(prev => ({ ...prev, deliverySetId: true }))}
+                                  className="mt-1"
+                                />
+                                <div className="flex-1">
+                                  <div className={`font-medium text-sm ${hasReturnableItems ? 'text-gray-900' : 'text-gray-500'}`}>
+                                    {set.setName} <span className="text-xs text-gray-400">({set.doNumber})</span>
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {hasReturnableItems 
+                                      ? `${returnableItems.length} returnable item(s) of ${set.items.length} total`
+                                      : 'All items fully returned'
+                                    }
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {returnFormErrors.deliverySetId && (
+                          <p className="text-xs text-red-600 mt-1 flex items-center">
+                            <AlertCircle className="size-3 mr-1" />
+                            {returnFormErrors.deliverySetId}
+                          </p>
+                        )}
+                        {selectedReturnSets.length > 0 && (
+                          <p className="text-xs text-gray-600 mt-1">
+                            {selectedReturnSets.length} set(s) selected
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Auto-populated fields and items for all selected sets */}
+                    {selectedReturnSets.length > 0 && selectedDOGroups.length > 0 && (
+                      <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                        <div>
+                          <p className="text-sm text-gray-500 font-medium mb-2">Delivery Order Information:</p>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="col-span-2">
+                              <span className="text-gray-500">DO Number:</span>
+                              <span className="ml-2 text-gray-900 font-semibold">
+                                {selectedDOGroups.map(d => d.doNumber).join(', ')}
+                              </span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-gray-500">Agreement No:</span>
+                              <span className="ml-2 text-gray-900">{selectedDOGroups[0]?.agreementNo}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Customer Name:</span>
+                              <span className="ml-2 text-gray-900">{selectedDOGroups[0]?.customerName}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Email:</span>
+                              <span className="ml-2 text-gray-900">{selectedDOGroups[0]?.customerEmail}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Phone:</span>
+                              <span className="ml-2 text-gray-900">{selectedDOGroups[0]?.customerPhone || 'N/A'}</span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-gray-500">Pickup Address:</span>
+                              <span className="ml-2 text-gray-900">{selectedDOGroups[0]?.deliveryAddress || 'N/A'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Show items for each selected set */}
+                        {selectedReturnSets.map((setData, setIndex) => {
+                          const originalSet = selectedDOGroups
+                            .flatMap(group => group.sets)
+                            .find(s => s.id === setData.setId);
+                          const returned = returnedBySet[setData.setId] || {};
+                          
+                          // Recalculate returnable items dynamically based on current returnedBySet data
+                          const returnableItems = originalSet?.items
+                            .map(item => {
+                              const returnedQty = item.scaffoldingItemId ? (returned[item.scaffoldingItemId] || 0) : 0;
+                              const returnable = item.quantity - returnedQty;
+                              return {
+                                ...item,
+                                returnable,
+                                returnedQty,
+                              };
+                            })
+                            .filter(item => item.returnable > 0) || [];
+                          
+                          // If no returnable items left, show message
+                          if (returnableItems.length === 0) {
+                            return (
+                              <div key={setData.setId} className="border-t border-gray-200 pt-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-sm font-medium text-gray-900">{setData.setName}</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedReturnSets(prev => prev.filter(s => s.setId !== setData.setId));
+                                      clearReturnError('deliverySetId');
+                                    }}
+                                    className="text-red-500 hover:text-red-700 text-xs"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                  <p className="text-xs text-amber-700">
+                                    All items in this set have been fully returned. Please remove this set.
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <div key={setData.setId} className="border-t border-gray-200 pt-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-sm font-medium text-gray-900">{setData.setName}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedReturnSets(prev => prev.filter(s => s.setId !== setData.setId));
+                                    clearReturnError('deliverySetId');
+                                  }}
+                                  className="text-red-500 hover:text-red-700 text-xs"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <div className="space-y-2">
+                                {returnableItems.map((item, itemIndex) => {
+                                  const delivered = item.quantity;
+                                  const returnable = item.returnable;
+                                  // Find the corresponding item in setData.items to get the current quantity input value
+                                  const setDataItem = setData.items.find(i => i.scaffoldingItemId === item.scaffoldingItemId);
+                                  const currentQuantity = setDataItem?.quantity || returnable;
+                                  // Use a stable index based on scaffoldingItemId for error lookup
+                                  const itemErrorKey = setData.items.findIndex(i => i.scaffoldingItemId === item.scaffoldingItemId);
+                                  const itemError = returnFormErrors.itemErrors?.[`${setIndex}-${itemErrorKey}`];
+                                  
+                                  return (
+                                    <div key={item.scaffoldingItemId || itemIndex} className="flex items-center space-x-2">
+                                      <div className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700">
+                                        {item.name || 'Unknown item'}
+                                        <span className="text-xs text-gray-500 ml-2">(Returnable: {returnable} / {delivered})</span>
+                                      </div>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max={returnable || 1}
+                                        value={currentQuantity}
+                                        onChange={(e) => {
+                                          const updated = [...selectedReturnSets];
+                                          const itemIdx = updated[setIndex].items.findIndex(i => i.scaffoldingItemId === item.scaffoldingItemId);
+                                          if (itemIdx >= 0) {
+                                            updated[setIndex].items[itemIdx].quantity = Math.min(parseInt(e.target.value) || 1, returnable);
+                                            setSelectedReturnSets(updated);
+                                            clearReturnItemError(`${setIndex}-${itemIdx}`);
+                                          }
+                                        }}
+                                        className={`w-24 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-center disabled:bg-gray-100 ${
+                                          itemError?.quantity ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                                        }`}
+                                        placeholder="Qty"
+                                        disabled={newReturnForm.returnType === 'full'}
+                                      />
+                                      {itemError?.quantity && (
+                                        <p className="text-xs text-red-600">
+                                          {itemError.quantity}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Return Type */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Return Type *</label>
+                      <select
+                        value={newReturnForm.returnType}
+                        onChange={(e) => {
+                          const newReturnType = e.target.value as ReturnType;
+                          setNewReturnForm({ ...newReturnForm, returnType: newReturnType });
+                          
+                          // If switching to "full", set all quantities to returnable amounts
+                          if (newReturnType === 'full' && selectedDOGroups.length > 0) {
+                            setSelectedReturnSets(prev => prev.map(setData => {
+                              const originalSet = selectedDOGroups
+                                .flatMap(group => group.sets)
+                                .find(s => s.id === setData.setId);
+                              const returned = returnedBySet[setData.setId] || {};
+                              const items = originalSet?.items.map(item => {
+                                const returnedQty = item.scaffoldingItemId ? (returned[item.scaffoldingItemId] || 0) : 0;
+                                const returnable = item.quantity - returnedQty;
+                                return {
+                                  name: item.name,
+                                  quantity: returnable,
+                                  scaffoldingItemId: item.scaffoldingItemId || '',
+                                };
+                              }).filter(item => item.quantity > 0) || [];
+                              
+                              return {
+                                ...setData,
+                                items: items,
+                              };
+                            }));
+                          }
+                          
+                          clearReturnError('returnType');
+                        }}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
+                          returnFormErrors.returnType ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                        }`}
+                      >
+                        <option value="full">Full Return (All remaining items)</option>
+                        <option value="partial">Partial Return (Some items)</option>
+                      </select>
+                      {returnFormErrors.returnType && (
+                        <p className="text-xs text-red-600 mt-1 flex items-center">
+                          <AlertCircle className="size-3 mr-1" />
+                          {returnFormErrors.returnType}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Collection Method */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Collection Method *</label>
+                      <select
+                        value={newReturnForm.collectionMethod}
+                        onChange={(e) => {
+                          setNewReturnForm({ ...newReturnForm, collectionMethod: e.target.value as CollectionMethod });
+                          clearReturnError('collectionMethod');
+                        }}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
+                          returnFormErrors.collectionMethod ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                        }`}
+                      >
+                        <option value="transport">Transport (Company picks up)</option>
+                        <option value="self-return">Self Return (Customer delivers)</option>
+                      </select>
+                      {returnFormErrors.collectionMethod && (
+                        <p className="text-xs text-red-600 mt-1 flex items-center">
+                          <AlertCircle className="size-3 mr-1" />
+                          {returnFormErrors.collectionMethod}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Reason */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Reason for Return *</label>
+                      <textarea
+                        value={newReturnForm.reason}
+                        onChange={(e) => {
+                          setNewReturnForm({ ...newReturnForm, reason: e.target.value });
+                          if (e.target.value.trim()) {
+                            clearReturnError('reason');
+                          }
+                        }}
+                        onBlur={() => setReturnFormTouched(prev => ({ ...prev, reason: true }))}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
+                          returnFormErrors.reason ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                        }`}
+                        rows={3}
+                        placeholder="Enter reason for return..."
+                      />
+                      <div className="flex justify-between items-center mt-1">
+                        {returnFormErrors.reason ? (
+                          <p className="text-xs text-red-600 flex items-center">
+                            <AlertCircle className="size-3 mr-1" />
+                            {returnFormErrors.reason}
+                          </p>
+                        ) : (
+                          <span />
+                        )}
+                        <span className={`text-xs ${newReturnForm.reason.length > 500 ? 'text-red-600' : 'text-gray-400'}`}>
+                          {newReturnForm.reason.length}/500
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Items validation message */}
+                    {returnFormErrors.items && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                        <p className="text-xs text-red-600 flex items-center">
+                          <AlertCircle className="size-3 mr-1" />
+                          {returnFormErrors.items}
+                        </p>
+                      </div>
+                    )}
+                    {selectedReturnSets.length === 0 && selectedDONumbers.length > 0 && (
+                      <p className="text-xs text-gray-500 italic">
+                        Please select at least one set to return
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             <div className="flex items-center justify-end space-x-3 pt-4 border-t">
@@ -2914,8 +3358,10 @@ export default function DeliveryReturnManagement({
                 onClick={() => {
                   setShowCreateReturnModal(false);
                   setSelectedReturnAgreementId('');
-                  setSelectedReturnSetName('');
-                  setAvailableReturnSets([]);
+                  setSelectedDONumbers([]);
+                  setSelectedReturnSetId('');
+                  setSelectedDOSetId(''); // Clear for backward compatibility
+                  setSelectedReturnSets([]);
                   setNewReturnForm({ setName: '', reason: '', returnType: 'full', collectionMethod: 'transport' });
                   setReturnItems([{ name: '', quantity: 1, scaffoldingItemId: '' }]);
                   setReturnFormErrors({});

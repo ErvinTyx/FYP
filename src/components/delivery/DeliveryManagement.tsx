@@ -34,6 +34,43 @@ import { DeliveryWorkflow } from './DeliveryWorkflow';
 import { DeliveryDetails } from './DeliveryDetails';
 import { toast } from 'sonner';
 
+// Compute default scheduled date: 1 day before the required date (from scheduledPeriod string)
+const getDefaultScheduledDate = (scheduledPeriod: string | undefined): string | undefined => {
+  if (!scheduledPeriod) return undefined;
+
+  try {
+    // Parse format: "7 Feb 2026" (single date) or "1 Jan 2026 - 31 Mar 2026" (range)
+    const dateStr = scheduledPeriod.split(' - ')[0].trim();
+    const dateMatch = dateStr.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
+
+    if (!dateMatch) {
+      // Fallback to Date parsing if format doesn't match
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return undefined;
+      date.setDate(date.getDate() - 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+    
+    const dayNum = parseInt(dateMatch[1], 10);
+    const monthName = dateMatch[2];
+    const yearNum = parseInt(dateMatch[3], 10);
+    
+    const monthMap: Record<string, number> = {
+      'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+      'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+    };
+    const monthNum = monthMap[monthName];
+    if (!monthNum) return undefined;
+    
+    // Create date in UTC, subtract 1 day, format as YYYY-MM-DD
+    const date = new Date(Date.UTC(yearNum, monthNum - 1, dayNum));
+    date.setUTCDate(date.getUTCDate() - 1);
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+  } catch {
+    return undefined;
+  }
+};
+
 export interface DeliveryItem {
   id: string;
   scaffoldingItemId: string;
@@ -56,6 +93,7 @@ export interface DeliveryOrder {
   siteAddress: string;
   type: 'delivery' | 'pickup';  // Type of delivery
   items: DeliveryItem[];
+  setIds?: string[]; // IDs of all sets that share this DO number (for combined orders)
   
   // Workflow status (matching database values)
   status: 
@@ -143,83 +181,189 @@ export function DeliveryManagement() {
       
       if (data.success) {
         // Transform API data to DeliveryOrder format
-        // Only include sets that have a DO generated (doNumber exists or status is DO Generated)
+        // Group sets by DO number and combine items from all sets with the same DO number
         const deliveryOrders: DeliveryOrder[] = [];
+        
+        // Valid statuses for delivery management
+        const validStatuses = [
+          'Confirmed', 'DO Generated',  // RFQ statuses that allow DO
+          'Pending', 'Packing List Issued', 'Stock Checked', 'Packing & Loading',  // Delivery workflow statuses
+          'In Transit', 'Ready for Pickup', 'Completed'  // Delivery completion statuses
+        ];
+        
+        // Group sets by DO number
+        const doGroups = new Map<string, Array<{req: any, set: any}>>();
         
         for (const req of data.deliveryRequests) {
           for (const set of req.sets) {
-            // Only include sets that have a DO number (delivery order generated)
-            // A set with doNumber means it has passed through RFQ approval and DO generation
-            // Status can be any delivery workflow status: DO Generated, Packing List Issued, Stock Checked, etc.
             const isDoGenerated = !!set.doNumber;
-            
-            // Valid statuses for delivery management (RFQ statuses that indicate DO was generated, plus all delivery workflow statuses)
-            const validStatuses = [
-              'Confirmed', 'DO Generated',  // RFQ statuses that allow DO
-              'Pending', 'Packing List Issued', 'Stock Checked', 'Packing & Loading',  // Delivery workflow statuses
-              'In Transit', 'Ready for Pickup', 'Completed'  // Delivery completion statuses
-            ];
             const hasValidStatus = validStatuses.includes(set.status);
             
             if (hasValidStatus && isDoGenerated) {
-              deliveryOrders.push({
-                id: `${req.id}-${set.id}`,
-                doNumber: set.doNumber || `DO-${req.agreementNo}-${set.setName.replace('Set ', '')}`,
-                orderId: req.requestId,
-                agreementId: req.agreementNo,
-                customerName: req.customerName,
-                customerContact: req.customerPhone || '',
-                customerAddress: req.deliveryAddress,
-                siteAddress: req.deliveryAddress,
-                type: req.deliveryType as 'delivery' | 'pickup',
-                items: set.items.map((item: { id: string; name: string; quantity: number; scaffoldingItemId?: string; availableStock?: number }) => ({
-                  id: item.id,
-                  scaffoldingItemId: item.scaffoldingItemId || item.id,
-                  scaffoldingItemName: item.name,
-                  quantity: item.quantity,
-                  unit: 'pcs',
-                  availableStock: item.availableStock ?? 0,
-                })),
-                status: (set.status || 'Pending') as DeliveryOrder['status'],
-                packingListNumber: set.packingListNumber,
-                packingListDate: set.packingListDate,
-                stockCheckDate: set.stockCheckDate,
-                stockCheckBy: set.stockCheckBy,
-                stockCheckNotes: set.stockCheckNotes,
-                allItemsAvailable: set.allItemsAvailable,
-                scheduledDate: set.deliveryDate,
-                scheduledTimeSlot: set.scheduledTimeSlot,
-                scheduleConfirmedAt: set.scheduleConfirmedAt,
-                scheduleConfirmedBy: set.scheduleConfirmedBy,
-                packingStartedAt: set.packingStartedAt,
-                packingStartedBy: set.packingStartedBy,
-                loadingCompletedAt: set.loadingCompletedAt,
-                loadingCompletedBy: set.loadingCompletedBy,
-                packingPhotos: set.packingPhotos as string[] | undefined,
-                driverName: set.driverName,
-                driverContact: set.driverContact,
-                vehicleNumber: set.vehicleNumber,
-                driverSignature: set.driverSignature,
-                driverAcknowledgedAt: set.driverAcknowledgedAt,
-                dispatchedAt: set.dispatchedAt,
-                doIssuedAt: set.doIssuedAt,
-                doIssuedBy: set.doIssuedBy,
-                deliveredAt: set.deliveredAt,
-                deliveryPhotos: set.deliveryPhotos as string[] | undefined,
-                customerAcknowledgedAt: set.customerAcknowledgedAt,
-                customerSignature: set.customerSignature,
-                customerSignedBy: set.customerSignedBy,
-                customerOTP: set.customerOTP,
-                verifiedOTP: set.verifiedOTP,
-                inventoryUpdatedAt: set.inventoryUpdatedAt,
-                inventoryStatus: set.inventoryStatus as 'HQ' | 'Rental' | undefined,
-                createdBy: set.createdBy || 'System',
-                createdAt: set.createdAt || new Date().toISOString(),
-                updatedAt: set.updatedAt || new Date().toISOString(),
-                notes: set.notes,
-              });
+              const doNumber = set.doNumber || `DO-${req.agreementNo}-${set.setName.replace('Set ', '')}`;
+              if (!doGroups.has(doNumber)) {
+                doGroups.set(doNumber, []);
+              }
+              doGroups.get(doNumber)!.push({ req, set });
             }
           }
+        }
+        
+        // Status priority order (most advanced to least advanced)
+        const statusPriority: Record<string, number> = {
+          'Completed': 7,
+          'In Transit': 6,
+          'Ready for Pickup': 6,
+          'Packing & Loading': 5,
+          'Stock Checked': 4,
+          'Packing List Issued': 3,
+          'Pending': 2,
+          'DO Generated': 1,
+          'Confirmed': 1,
+        };
+        
+        // Create one DeliveryOrder per DO number
+        for (const [doNumber, sets] of doGroups) {
+          const firstSet = sets[0];
+          const req = firstSet.req;
+          
+          // Combine items from all sets
+          const combinedItems = new Map<string, DeliveryItem>();
+          for (const { set } of sets) {
+            for (const item of set.items) {
+              const key = item.scaffoldingItemId || item.id;
+              const itemData = {
+                id: item.id,
+                scaffoldingItemId: item.scaffoldingItemId || item.id,
+                scaffoldingItemName: item.name,
+                quantity: item.quantity,
+                unit: 'pcs' as const,
+                availableStock: item.availableStock ?? 0,
+              };
+              
+              if (combinedItems.has(key)) {
+                // Sum quantities for duplicate items
+                const existing = combinedItems.get(key)!;
+                existing.quantity += itemData.quantity;
+                // Use the maximum available stock
+                existing.availableStock = Math.max(existing.availableStock, itemData.availableStock);
+              } else {
+                combinedItems.set(key, itemData);
+              }
+            }
+          }
+          
+          // Determine status using priority (most advanced status)
+          let combinedStatus = 'Pending';
+          let maxPriority = 0;
+          for (const { set } of sets) {
+            const setStatus = (['DO Generated', 'Confirmed'].includes(set.status) ? 'Pending' : (set.status || 'Pending')) as DeliveryOrder['status'];
+            const priority = statusPriority[setStatus] || 0;
+            if (priority > maxPriority) {
+              maxPriority = priority;
+              combinedStatus = setStatus;
+            }
+          }
+          
+          // Aggregate other fields
+          // Use earliest scheduled date
+          let earliestScheduledDate: string | undefined;
+          let earliestDate: Date | null = null;
+          for (const { set } of sets) {
+            const scheduledDate = ((set.scheduleConfirmedAt || set.scheduleConfirmedBy) && set.deliveryDate && typeof set.deliveryDate === 'string' && set.deliveryDate.trim() !== '') 
+              ? set.deliveryDate 
+              : getDefaultScheduledDate(set.scheduledPeriod);
+            if (scheduledDate) {
+              const date = new Date(scheduledDate);
+              if (!earliestDate || date < earliestDate) {
+                earliestDate = date;
+                earliestScheduledDate = scheduledDate;
+              }
+            }
+          }
+          
+          // Use most recent timestamps for workflow steps
+          const getLatestTimestamp = (field: string) => {
+            let latest: string | undefined;
+            let latestDate: Date | null = null;
+            for (const { set } of sets) {
+              const value = set[field];
+              if (value) {
+                const date = new Date(value);
+                if (!latestDate || date > latestDate) {
+                  latestDate = date;
+                  latest = value;
+                }
+              }
+            }
+            return latest;
+          };
+          
+          // Combine notes
+          const combinedNotes = sets
+            .map(({ set }) => set.notes)
+            .filter((note): note is string => !!note)
+            .join('; ');
+          
+          // Use values from most advanced set for workflow fields
+          const mostAdvancedSet = sets.reduce((prev, curr) => {
+            const prevStatus = prev.set.status || 'Pending';
+            const currStatus = curr.set.status || 'Pending';
+            const prevPriority = statusPriority[prevStatus] || 0;
+            const currPriority = statusPriority[currStatus] || 0;
+            return currPriority > prevPriority ? curr : prev;
+          }).set;
+          
+          deliveryOrders.push({
+            id: doNumber, // Use DO number as unique ID
+            doNumber: doNumber,
+            setIds: sets.map(({ set }) => set.id), // Store all set IDs for this DO
+            orderId: req.requestId,
+            agreementId: req.agreementNo,
+            customerName: req.customerName,
+            customerContact: req.customerPhone || '',
+            customerAddress: req.deliveryAddress,
+            siteAddress: req.deliveryAddress,
+            type: req.deliveryType as 'delivery' | 'pickup',
+            items: Array.from(combinedItems.values()),
+            status: combinedStatus as DeliveryOrder['status'],
+            packingListNumber: mostAdvancedSet.packingListNumber,
+            packingListDate: mostAdvancedSet.packingListDate,
+            stockCheckDate: mostAdvancedSet.stockCheckDate,
+            stockCheckBy: mostAdvancedSet.stockCheckBy,
+            stockCheckNotes: mostAdvancedSet.stockCheckNotes,
+            allItemsAvailable: sets.every(({ set }) => set.allItemsAvailable !== false),
+            scheduledDate: earliestScheduledDate,
+            scheduledTimeSlot: mostAdvancedSet.scheduledTimeSlot,
+            scheduleConfirmedAt: getLatestTimestamp('scheduleConfirmedAt'),
+            scheduleConfirmedBy: mostAdvancedSet.scheduleConfirmedBy,
+            packingStartedAt: getLatestTimestamp('packingStartedAt'),
+            packingStartedBy: mostAdvancedSet.packingStartedBy,
+            loadingCompletedAt: getLatestTimestamp('loadingCompletedAt'),
+            loadingCompletedBy: mostAdvancedSet.loadingCompletedBy,
+            packingPhotos: mostAdvancedSet.packingPhotos as string[] | undefined,
+            driverName: mostAdvancedSet.driverName,
+            driverContact: mostAdvancedSet.driverContact,
+            vehicleNumber: mostAdvancedSet.vehicleNumber,
+            driverSignature: mostAdvancedSet.driverSignature,
+            driverAcknowledgedAt: getLatestTimestamp('driverAcknowledgedAt'),
+            dispatchedAt: getLatestTimestamp('dispatchedAt'),
+            doIssuedAt: getLatestTimestamp('doIssuedAt'),
+            doIssuedBy: mostAdvancedSet.doIssuedBy,
+            deliveredAt: getLatestTimestamp('deliveredAt'),
+            deliveryPhotos: mostAdvancedSet.deliveryPhotos as string[] | undefined,
+            customerAcknowledgedAt: getLatestTimestamp('customerAcknowledgedAt'),
+            customerSignature: mostAdvancedSet.customerSignature,
+            customerSignedBy: mostAdvancedSet.customerSignedBy,
+            customerOTP: mostAdvancedSet.customerOTP,
+            verifiedOTP: mostAdvancedSet.verifiedOTP,
+            inventoryUpdatedAt: getLatestTimestamp('inventoryUpdatedAt'),
+            inventoryStatus: mostAdvancedSet.inventoryStatus as 'HQ' | 'Rental' | undefined,
+            createdBy: mostAdvancedSet.createdBy || 'System',
+            createdAt: sets[0].set.createdAt || new Date().toISOString(),
+            updatedAt: getLatestTimestamp('updatedAt') || new Date().toISOString(),
+            notes: combinedNotes || mostAdvancedSet.notes,
+          });
         }
         
         setDeliveries(deliveryOrders);
@@ -272,61 +416,101 @@ export function DeliveryManagement() {
 
   const saveDeliveryToApi = async (delivery: DeliveryOrder): Promise<boolean> => {
     try {
-      // Extract setId from the composite id (requestId-setId)
-      const setId = delivery.id.split('-').slice(1).join('-');
+      // If setIds are provided (combined order), update all sets with the same DO number
+      // Otherwise, try to extract setId from ID (backward compatibility)
+      let setIdsToUpdate: string[] = [];
       
-      const response = await fetch('/api/delivery', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          setId,
-          status: delivery.status,
-          doNumber: delivery.doNumber,
-          packingListNumber: delivery.packingListNumber,
-          packingListDate: delivery.packingListDate,
-          stockCheckDate: delivery.stockCheckDate,
-          stockCheckBy: delivery.stockCheckBy,
-          stockCheckNotes: delivery.stockCheckNotes,
-          allItemsAvailable: delivery.allItemsAvailable,
-          // Only send scheduledTimeSlot if it has a value (prevent null overwrites)
-          ...(delivery.scheduledTimeSlot && { scheduledTimeSlot: delivery.scheduledTimeSlot }),
-          deliveryDate: delivery.scheduledDate, // H2: Add deliveryDate for API schedule upsert
-          scheduleConfirmedAt: delivery.scheduleConfirmedAt,
-          scheduleConfirmedBy: delivery.scheduleConfirmedBy,
-          packingStartedAt: delivery.packingStartedAt,
-          packingStartedBy: delivery.packingStartedBy,
-          loadingCompletedAt: delivery.loadingCompletedAt,
-          loadingCompletedBy: delivery.loadingCompletedBy,
-          packingPhotos: delivery.packingPhotos,
-          driverName: delivery.driverName,
-          driverContact: delivery.driverContact,
-          vehicleNumber: delivery.vehicleNumber,
-          driverSignature: delivery.driverSignature,
-          driverAcknowledgedAt: delivery.driverAcknowledgedAt,
-          dispatchedAt: delivery.dispatchedAt,
-          doIssuedAt: delivery.doIssuedAt,
-          doIssuedBy: delivery.doIssuedBy,
-          deliveredAt: delivery.deliveredAt,
-          deliveryPhotos: delivery.deliveryPhotos,
-          customerAcknowledgedAt: delivery.customerAcknowledgedAt,
-          customerSignature: delivery.customerSignature,
-          customerSignedBy: delivery.customerSignedBy,
-          customerOTP: delivery.customerOTP,
-          verifiedOTP: delivery.verifiedOTP,
-          inventoryUpdatedAt: delivery.inventoryUpdatedAt,
-          inventoryStatus: delivery.inventoryStatus,
-          notes: delivery.notes,
-        }),
-      });
-      
-      const data = await response.json();
-      
-      // Handle insufficient stock validation error
-      if (!response.ok && data.insufficientItems) {
-        throw new InsufficientStockError(data.message, data.insufficientItems);
+      if (delivery.setIds && delivery.setIds.length > 0) {
+        // Combined order: update all sets with this DO number
+        setIdsToUpdate = delivery.setIds;
+      } else {
+        // Fallback: try to extract setId from ID (for backward compatibility)
+        // This handles cases where the ID might still be in the old format
+        const parts = delivery.id.split('-');
+        if (parts.length > 1) {
+          // Old format: requestId-setId
+          setIdsToUpdate = [delivery.id.split('-').slice(1).join('-')];
+        } else {
+          // New format: DO number as ID - need to find sets by DO number
+          // Query API to find sets with this DO number
+          const findResponse = await fetch('/api/delivery');
+          const findData = await findResponse.json();
+          if (findData.success) {
+            for (const req of findData.deliveryRequests) {
+              for (const set of req.sets) {
+                if (set.doNumber === delivery.doNumber) {
+                  setIdsToUpdate.push(set.id);
+                }
+              }
+            }
+          }
+        }
       }
       
-      return data.success;
+      if (setIdsToUpdate.length === 0) {
+        console.error('No sets found to update for DO:', delivery.doNumber);
+        return false;
+      }
+      
+      // Update all sets with the same DO number
+      const updatePromises = setIdsToUpdate.map(setId => {
+        return fetch('/api/delivery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            setId,
+            status: delivery.status,
+            doNumber: delivery.doNumber,
+            packingListNumber: delivery.packingListNumber,
+            packingListDate: delivery.packingListDate,
+            stockCheckDate: delivery.stockCheckDate,
+            stockCheckBy: delivery.stockCheckBy,
+            stockCheckNotes: delivery.stockCheckNotes,
+            allItemsAvailable: delivery.allItemsAvailable,
+            // Only send scheduledTimeSlot if it has a value (prevent null overwrites)
+            ...(delivery.scheduledTimeSlot && { scheduledTimeSlot: delivery.scheduledTimeSlot }),
+            deliveryDate: delivery.scheduledDate,
+            scheduleConfirmedAt: delivery.scheduleConfirmedAt,
+            scheduleConfirmedBy: delivery.scheduleConfirmedBy,
+            packingStartedAt: delivery.packingStartedAt,
+            packingStartedBy: delivery.packingStartedBy,
+            loadingCompletedAt: delivery.loadingCompletedAt,
+            loadingCompletedBy: delivery.loadingCompletedBy,
+            packingPhotos: delivery.packingPhotos,
+            driverName: delivery.driverName,
+            driverContact: delivery.driverContact,
+            vehicleNumber: delivery.vehicleNumber,
+            driverSignature: delivery.driverSignature,
+            driverAcknowledgedAt: delivery.driverAcknowledgedAt,
+            dispatchedAt: delivery.dispatchedAt,
+            doIssuedAt: delivery.doIssuedAt,
+            doIssuedBy: delivery.doIssuedBy,
+            deliveredAt: delivery.deliveredAt,
+            deliveryPhotos: delivery.deliveryPhotos,
+            customerAcknowledgedAt: delivery.customerAcknowledgedAt,
+            customerSignature: delivery.customerSignature,
+            customerSignedBy: delivery.customerSignedBy,
+            customerOTP: delivery.customerOTP,
+            verifiedOTP: delivery.verifiedOTP,
+            inventoryUpdatedAt: delivery.inventoryUpdatedAt,
+            inventoryStatus: delivery.inventoryStatus,
+            notes: delivery.notes,
+          }),
+        });
+      });
+      
+      const responses = await Promise.all(updatePromises);
+      const results = await Promise.all(responses.map(r => r.json()));
+      
+      // Check for insufficient stock errors
+      for (const result of results) {
+        if (!result.success && result.insufficientItems) {
+          throw new InsufficientStockError(result.message, result.insufficientItems);
+        }
+      }
+      
+      // Return true if all updates succeeded
+      return results.every(r => r.success);
     } catch (error) {
       // Re-throw InsufficientStockError to be handled by caller
       if (error instanceof InsufficientStockError) {

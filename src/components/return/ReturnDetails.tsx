@@ -46,7 +46,7 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
     const config = {
       'Pending': { color: 'bg-gray-100 text-gray-800', icon: Package },
       'Good': { color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
-      'Damaged': { color: 'bg-red-100 text-red-800', icon: AlertCircle },
+      'Repair': { color: 'bg-red-100 text-red-800', icon: AlertCircle },
       'Replace': { color: 'bg-amber-100 text-amber-800', icon: PackageX },
     };
     const { color, icon: Icon } = config[status] || config['Pending'];

@@ -105,7 +105,7 @@ export async function uploadFiles(
  */
 export async function uploadReturnPhotos(
   files: File[],
-  type: 'driver' | 'warehouse' | 'damage'
+  type: 'driver' | 'warehouse' | 'damage' | 'external-goods'
 ): Promise<UploadResult[]> {
   return uploadFiles(files, {
     folder: `returns/${type}`,

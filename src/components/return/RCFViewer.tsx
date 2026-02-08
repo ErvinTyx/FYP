@@ -2,11 +2,11 @@ import { Printer, X, FileText, AlertCircle, CheckCircle2, PackageX, AlertTriangl
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 
-export type ItemConditionStatus = 'Good' | 'Damaged' | 'Replace';
+export type ItemConditionStatus = 'Good' | 'Repair' | 'Replace';
 
 export interface StatusBreakdown {
   Good: number;
-  Damaged: number;
+  Repair: number;
   Replace: number;
 }
 
@@ -45,7 +45,7 @@ interface RCFViewerProps {
 
 const statusConfig: Record<ReturnItem['status'], { color: string; bgColor: string; printColor: string; icon: React.ElementType }> = {
   'Good': { color: 'text-green-800', bgColor: 'bg-green-100', printColor: '#166534', icon: CheckCircle2 },
-  'Damaged': { color: 'text-red-800', bgColor: 'bg-red-100', printColor: '#991b1b', icon: AlertCircle },
+  'Repair': { color: 'text-red-800', bgColor: 'bg-red-100', printColor: '#991b1b', icon: AlertCircle },
   'Replace': { color: 'text-amber-800', bgColor: 'bg-amber-100', printColor: '#92400e', icon: PackageX },
 };
 
@@ -77,7 +77,7 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
     const getStatusStyle = (status: ReturnItem['status']) => {
       const colors: Record<string, { bg: string; text: string }> = {
         'Good': { bg: '#dcfce7', text: '#166534' },
-        'Damaged': { bg: '#fee2e2', text: '#991b1b' },
+        'Repair': { bg: '#fee2e2', text: '#991b1b' },
         'Replace': { bg: '#fef3c7', text: '#92400e' },
       };
       return colors[status] || { bg: '#f3f4f6', text: '#374151' };
@@ -217,26 +217,6 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
             border-radius: 5px;
             margin: 15px 0;
           }
-          .signature-section {
-            margin-top: 30px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 50px;
-          }
-          .signature-box {
-            text-align: center;
-          }
-          .signature-line {
-            border-top: 1px solid #000;
-            margin-top: 50px;
-            padding-top: 8px;
-            font-size: 11px;
-          }
-          .signature-name {
-            font-size: 9px;
-            color: #666;
-            margin-top: 3px;
-          }
           .footer {
             margin-top: 30px;
             padding-top: 15px;
@@ -283,8 +263,8 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
             <div class="summary-label" style="color: #166534;">Good</div>
           </div>
           <div class="summary-card" style="border-color: #ef4444;">
-            <div class="summary-count" style="color: #991b1b;">${statusCounts['Damaged'] || 0}</div>
-            <div class="summary-label" style="color: #991b1b;">Damaged</div>
+            <div class="summary-count" style="color: #991b1b;">${statusCounts['Repair'] || 0}</div>
+            <div class="summary-label" style="color: #991b1b;">Repair</div>
           </div>
           <div class="summary-card" style="border-color: #f59e0b;">
             <div class="summary-count" style="color: #92400e;">${statusCounts['Replace'] || 0}</div>
@@ -348,21 +328,8 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
           </div>
         ` : ''}
 
-        <div class="signature-section">
-          <div class="signature-box">
-            <div class="signature-line">Inspected By</div>
-            <div class="signature-name">Name: _________________</div>
-            <div class="signature-name">Date: _________________</div>
-          </div>
-          <div class="signature-box">
-            <div class="signature-line">Approved By</div>
-            <div class="signature-name">Name: _________________</div>
-            <div class="signature-name">Date: _________________</div>
-          </div>
-        </div>
-
         <div class="footer">
-          This is a computer-generated document. Signatures required for approval.<br>
+          This is a computer-generated document.<br>
           Power Metal & Steel - Scaffolding Rental Services<br>
           Generated on ${new Date().toLocaleString('en-MY')}
         </div>
@@ -467,8 +434,8 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
                   <div className="text-xs font-semibold text-green-600 uppercase">Good</div>
                 </div>
                 <div className="border border-red-300 rounded-lg p-3 text-center bg-red-50">
-                  <div className="text-2xl font-bold text-red-700">{statusCounts['Damaged'] || 0}</div>
-                  <div className="text-xs font-semibold text-red-600 uppercase">Damaged</div>
+                  <div className="text-2xl font-bold text-red-700">{statusCounts['Repair'] || 0}</div>
+                  <div className="text-xs font-semibold text-red-600 uppercase">Repair</div>
                 </div>
                 <div className="border border-amber-300 rounded-lg p-3 text-center bg-amber-50">
                   <div className="text-2xl font-bold text-amber-700">{statusCounts['Replace'] || 0}</div>
@@ -542,25 +509,9 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
               </div>
             )}
 
-            {/* Signature Section */}
-            <div className="grid grid-cols-2 gap-12 mt-10">
-              <div className="text-center">
-                <div className="h-14"></div>
-                <div className="border-t border-gray-800 pt-2 text-sm font-medium">Inspected By</div>
-                <div className="text-xs text-gray-500 mt-1">Name: _________________</div>
-                <div className="text-xs text-gray-500 mt-1">Date: _________________</div>
-              </div>
-              <div className="text-center">
-                <div className="h-14"></div>
-                <div className="border-t border-gray-800 pt-2 text-sm font-medium">Approved By</div>
-                <div className="text-xs text-gray-500 mt-1">Name: _________________</div>
-                <div className="text-xs text-gray-500 mt-1">Date: _________________</div>
-              </div>
-            </div>
-
             {/* Footer */}
             <div className="mt-8 pt-4 border-t-2 border-[#F15929] text-center text-gray-500 text-xs">
-              This is a computer-generated document. Signatures required for approval.<br />
+              This is a computer-generated document.<br />
               Power Metal & Steel - Scaffolding Rental Services
             </div>
           </div>

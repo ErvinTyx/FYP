@@ -29,11 +29,11 @@ import {
 import { GRNViewer } from './GRNViewer';
 import { RCFViewer } from './RCFViewer';
 
-export type ItemConditionStatus = 'Good' | 'Damaged' | 'Replace';
+export type ItemConditionStatus = 'Good' | 'Repair' | 'Replace';
 
 export interface StatusBreakdown {
   Good: number;
-  Damaged: number;
+  Repair: number;
   Replace: number;
 }
 
@@ -83,6 +83,7 @@ export interface Return {
   driverRecordPhotos?: ReturnPhoto[];
   warehousePhotos?: ReturnPhoto[];
   damagePhotos?: ReturnPhoto[];
+  externalGoodsPhotos?: ReturnPhoto[];
   productionNotes?: string;
   customerNotificationSent?: boolean;
   customerDispute?: {
@@ -126,7 +127,9 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
   const [driverPhotos, setDriverPhotos] = useState<string[]>([]);
   const [warehousePhotos, setWarehousePhotos] = useState<string[]>([]);
   const [damagePhotos, setDamagePhotos] = useState<string[]>([]);
+  const [externalGoodsPhotos, setExternalGoodsPhotos] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const externalGoodsFileInputRef = useRef<HTMLInputElement>(null);
   
   // Inspection
   const [inspectionNotes, setInspectionNotes] = useState('');
@@ -169,6 +172,8 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
   const [step5Errors, setStep5Errors] = useState<{
     items?: { [itemId: string]: string };
     externalGoodsNotes?: string;
+    externalGoodsPhotos?: string;
+    damagePhotos?: string;
     general?: string;
   }>({});
 
@@ -204,8 +209,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       }
       
       // If RCF exists and status is 'Sorting Complete', RCF is complete → advance to Customer Notification step
-      // Note: rcfNumber can be set OR rcfSkipped can be true (user can skip RCF)
-      if (returnOrder.status === 'Sorting Complete' && (returnOrder.rcfNumber || returnOrder.rcfSkipped)) {
+      if (returnOrder.status === 'Sorting Complete' && returnOrder.rcfNumber) {
         mappedStep = isTransportNeeded ? 7 : 5;
       }
       
@@ -244,7 +248,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
           // Initialize with all quantity as the current status, or Good if pending
           breakdowns[item.id] = {
             'Good': item.status === 'Good' ? item.quantityReturned : 0,
-            'Damaged': item.status === 'Damaged' ? item.quantityReturned : 0,
+            'Repair': item.status === 'Repair' ? item.quantityReturned : 0,
             'Replace': item.status === 'Replace' ? item.quantityReturned : 0,
           };
         }
@@ -261,6 +265,20 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       }
       if (returnOrder.externalGoodsNotes) {
         setExternalGoodsNotes(returnOrder.externalGoodsNotes);
+      }
+      if (returnOrder.externalGoodsPhotos) {
+        setExternalGoodsPhotos(
+          Array.isArray(returnOrder.externalGoodsPhotos)
+            ? returnOrder.externalGoodsPhotos.map((p: string | { url: string }) => typeof p === 'string' ? p : p.url)
+            : []
+        );
+      }
+      if (returnOrder.damagePhotos) {
+        setDamagePhotos(
+          Array.isArray(returnOrder.damagePhotos)
+            ? returnOrder.damagePhotos.map((p: string | { url: string }) => typeof p === 'string' ? p : p.url)
+            : []
+        );
       }
     }
   }, [returnOrder]);
@@ -576,10 +594,26 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       errors.items = itemErrors;
     }
 
-    // Validate external goods notes if checkbox is checked
-    if (hasExternalGoods && !externalGoodsNotes.trim()) {
-      errors.externalGoodsNotes = 'Please describe the external goods';
+    // Validate damage photos required when any item has Repair or Replace
+    const hasRepairOrReplace = formData.items?.some(item => {
+      const bd = itemStatusBreakdowns[item.id];
+      return bd && ((bd.Repair || 0) > 0 || (bd.Replace || 0) > 0);
+    });
+    if (hasRepairOrReplace && damagePhotos.length === 0) {
+      errors.damagePhotos = 'Photos are required when items need repair or replacement';
       isValid = false;
+    }
+
+    // Validate external goods notes and photos if checkbox is checked
+    if (hasExternalGoods) {
+      if (!externalGoodsNotes.trim()) {
+        errors.externalGoodsNotes = 'Please describe the external goods';
+        isValid = false;
+      }
+      if (externalGoodsPhotos.length === 0) {
+        errors.externalGoodsPhotos = 'Please upload at least one photo of the external goods';
+        isValid = false;
+      }
     }
 
     setStep5Errors(errors);
@@ -600,7 +634,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
   };
 
   // Clear Step 5 field error
-  const clearStep5Error = (field: 'externalGoodsNotes' | 'general') => {
+  const clearStep5Error = (field: 'externalGoodsNotes' | 'externalGoodsPhotos' | 'damagePhotos' | 'general') => {
     setStep5Errors(prev => {
       const newErrors = { ...prev };
       delete newErrors[field];
@@ -634,6 +668,8 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       productionNotes: inspectionNotes,
       hasExternalGoods,
       externalGoodsNotes: hasExternalGoods ? externalGoodsNotes : undefined,
+      externalGoodsPhotos: hasExternalGoods ? externalGoodsPhotos : undefined,
+      damagePhotos,
       grnNumber,
       status: 'Under Inspection' as const,
     };
@@ -690,40 +726,11 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     }
   };
 
-  const handleSkipRCF = async () => {
-    const updatedData = {
-      ...formData,
-      status: 'Sorting Complete' as const,
-    };
-    setFormData(updatedData);
-    
-    setIsSaving(true);
-    try {
-      await onSave(updatedData as Return); // Save to database - this also auto-creates condition report
-      toast.info('RCF skipped');
-      // Show additional toast about condition report creation
-      toast.success('Condition Report created in Inspection & Maintenance module', {
-        description: 'Items are now ready for detailed inspection',
-        duration: 5000,
-      });
-      setIsRCFDialogOpen(false);
-      
-      if (formData.transportationType === 'Transportation Needed') {
-        setCurrentStep(7);
-      } else {
-        setCurrentStep(5);
-      }
-    } catch {
-      toast.error('Failed to save. Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleNotifyCustomer = async () => {
     const updatedData = {
       ...formData,
       customerNotificationSent: true,
+      inventoryUpdated: true,
       status: 'Customer Notified' as const,
     };
     setFormData(updatedData);
@@ -731,7 +738,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     setIsSaving(true);
     try {
       await onSave(updatedData as Return); // Save to database
-      toast.success('Customer notification sent');
+      toast.success('Customer notification sent — good items added back to inventory');
       
       if (formData.transportationType === 'Transportation Needed') {
         setCurrentStep(8);
@@ -749,7 +756,6 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     const updatedData = {
       ...formData,
       inventoryUpdated: true,
-      soaUpdated: true,
       status: 'Completed' as const,
     };
     setFormData(updatedData);
@@ -757,7 +763,8 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     setIsSaving(true);
     try {
       await onSave(updatedData as Return); // Save to database
-      toast.success('Return process completed - inventory and SOA updated');
+      alert('Update inventory successfully');
+      toast.success('Return process completed');
       // Navigation handled by onSave for completed status
     } catch {
       toast.error('Failed to complete. Please try again.');
@@ -831,6 +838,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
           setWarehousePhotos([...warehousePhotos, ...newPhotoUrls]);
         } else {
           setDamagePhotos([...damagePhotos, ...newPhotoUrls]);
+          clearStep5Error('damagePhotos');
         }
         
         toast.success(`${successfulUploads.length} photo(s) uploaded to server`);
@@ -844,11 +852,64 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     }
   };
 
-  const removePhoto = (index: number, type: 'driver' | 'warehouse' | 'damage') => {
+  const handleExternalGoodsPhotoUpload = () => {
+    externalGoodsFileInputRef.current?.click();
+  };
+
+  const onExternalGoodsFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const fileArray = Array.from(files);
+    const validFiles = fileArray.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        toast.error(`${file.name} is not an image file`);
+        return false;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name} is too large (max 5MB)`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const results = await uploadReturnPhotos(validFiles, 'external-goods');
+      const successfulUploads = results.filter(r => r.success && r.url);
+      const failedCount = results.filter(r => !r.success).length;
+
+      if (failedCount > 0) {
+        toast.error(`${failedCount} file(s) failed to upload`);
+      }
+
+      if (successfulUploads.length > 0) {
+        const newPhotoUrls = successfulUploads.map(r => r.url!);
+        setExternalGoodsPhotos(prev => [...prev, ...newPhotoUrls]);
+        clearStep5Error('externalGoodsPhotos');
+        toast.success(`${successfulUploads.length} photo(s) uploaded`);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload photos');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const removePhoto = (index: number, type: 'driver' | 'warehouse' | 'damage' | 'external-goods') => {
     if (type === 'driver') {
       setDriverPhotos(driverPhotos.filter((_, i) => i !== index));
     } else if (type === 'warehouse') {
       setWarehousePhotos(warehousePhotos.filter((_, i) => i !== index));
+    } else if (type === 'external-goods') {
+      setExternalGoodsPhotos(externalGoodsPhotos.filter((_, i) => i !== index));
     } else {
       setDamagePhotos(damagePhotos.filter((_, i) => i !== index));
     }
@@ -859,7 +920,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     const config = {
       'Pending': { color: 'bg-gray-100 text-gray-800', icon: Package },
       'Good': { color: 'bg-green-100 text-green-800', icon: CheckCircle2 },
-      'Damaged': { color: 'bg-red-100 text-red-800', icon: AlertCircle },
+      'Repair': { color: 'bg-red-100 text-red-800', icon: AlertCircle },
       'Replace': { color: 'bg-amber-100 text-amber-800', icon: PackageX },
     };
     const { color, icon: Icon } = config[status] || config['Pending'];
@@ -1317,7 +1378,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               {formData.items?.map((item) => {
                 const breakdown = itemStatusBreakdowns[item.id] || {
                   'Good': 0,
-                  'Damaged': 0,
+                  'Repair': 0,
                   'Replace': 0,
                 };
                 const totalAssigned = Object.values(breakdown).reduce((sum, qty) => sum + qty, 0);
@@ -1341,7 +1402,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                     ...itemStatusBreakdowns,
                     [item.id]: {
                       'Good': status === 'Good' ? item.quantityReturned : 0,
-                      'Damaged': status === 'Damaged' ? item.quantityReturned : 0,
+                      'Repair': status === 'Repair' ? item.quantityReturned : 0,
                       'Replace': status === 'Replace' ? item.quantityReturned : 0,
                     },
                   });
@@ -1387,9 +1448,9 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                         variant="outline"
                         size="sm"
                         className="h-7 text-xs bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
-                        onClick={() => setAllToStatus('Damaged')}
+                        onClick={() => setAllToStatus('Repair')}
                       >
-                        All Damaged
+                        All Repair
                       </Button>
                       <Button
                         type="button"
@@ -1421,14 +1482,14 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                       <div className="space-y-1">
                         <Label className="text-xs flex items-center gap-1">
                           <AlertCircle className="size-3 text-red-600" />
-                          Damaged
+                          Repair
                         </Label>
                         <Input
                           type="number"
                           min={0}
                           max={item.quantityReturned}
-                          value={breakdown['Damaged']}
-                          onChange={(e) => updateBreakdown('Damaged', parseInt(e.target.value) || 0)}
+                          value={breakdown['Repair']}
+                          onChange={(e) => updateBreakdown('Repair', parseInt(e.target.value) || 0)}
                           className="h-9 text-center bg-red-50 border-red-200 focus:ring-red-500"
                         />
                       </div>
@@ -1503,34 +1564,98 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
             </div>
 
             {hasExternalGoods && (
-              <div className="space-y-2">
-                <Label className={step5Errors.externalGoodsNotes ? 'text-red-600' : ''}>External Goods Notes *</Label>
-                <Textarea
-                  value={externalGoodsNotes}
-                  onChange={(e) => {
-                    setExternalGoodsNotes(e.target.value);
-                    if (e.target.value.trim()) clearStep5Error('externalGoodsNotes');
-                  }}
-                  placeholder="Describe the external goods..."
-                  rows={2}
-                  className={step5Errors.externalGoodsNotes ? 'border-red-500 bg-red-50' : ''}
-                />
-                {step5Errors.externalGoodsNotes && (
-                  <p className="text-xs text-red-600 flex items-center">
-                    <AlertCircle className="size-3 mr-1" />
-                    {step5Errors.externalGoodsNotes}
-                  </p>
-                )}
+              <div className="space-y-4 border border-amber-200 bg-amber-50 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-amber-700">
+                  <AlertTriangle className="size-4" />
+                  <span className="text-sm font-medium">External Goods Documentation</span>
+                </div>
+
+                {/* External Goods Notes */}
+                <div className="space-y-2">
+                  <Label className={step5Errors.externalGoodsNotes ? 'text-red-600' : ''}>External Goods Notes *</Label>
+                  <Textarea
+                    value={externalGoodsNotes}
+                    onChange={(e) => {
+                      setExternalGoodsNotes(e.target.value);
+                      if (e.target.value.trim()) clearStep5Error('externalGoodsNotes');
+                    }}
+                    placeholder="Describe the external goods..."
+                    rows={2}
+                    className={step5Errors.externalGoodsNotes ? 'border-red-500 bg-red-50' : 'bg-white'}
+                  />
+                  {step5Errors.externalGoodsNotes && (
+                    <p className="text-xs text-red-600 flex items-center">
+                      <AlertCircle className="size-3 mr-1" />
+                      {step5Errors.externalGoodsNotes}
+                    </p>
+                  )}
+                </div>
+
+                {/* External Goods Photos */}
+                <div className="space-y-2">
+                  <Label className={step5Errors.externalGoodsPhotos ? 'text-red-600' : ''}>External Goods Photos *</Label>
+                  <Button variant="outline" onClick={handleExternalGoodsPhotoUpload} className="w-full bg-white" disabled={isUploading}>
+                    {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
+                    {isUploading ? 'Uploading...' : 'Upload External Goods Photos'}
+                  </Button>
+                  <input
+                    ref={externalGoodsFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={onExternalGoodsFileSelect}
+                    className="hidden"
+                  />
+                  {step5Errors.externalGoodsPhotos && (
+                    <p className="text-xs text-red-600 flex items-center">
+                      <AlertCircle className="size-3 mr-1" />
+                      {step5Errors.externalGoodsPhotos}
+                    </p>
+                  )}
+                  {externalGoodsPhotos.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2 mt-2">
+                      {externalGoodsPhotos.map((photo, index) => (
+                        <div key={index} className="relative">
+                          <img src={photo} alt={`External goods ${index + 1}`} className="w-full h-24 object-cover rounded" />
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="absolute top-1 right-1 size-6 p-0"
+                            onClick={() => removePhoto(index, 'external-goods')}
+                          >
+                            <X className="size-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Damage Photos (Optional) */}
+            {/* Damage Photos */}
             <div className="space-y-2">
-              <Label>Damage Photos (Optional)</Label>
+              {(() => {
+                const needsPhotos = formData.items?.some(item => {
+                  const bd = itemStatusBreakdowns[item.id];
+                  return bd && ((bd.Repair || 0) > 0 || (bd.Replace || 0) > 0);
+                });
+                return (
+                  <Label className={step5Errors.damagePhotos ? 'text-red-600' : ''}>
+                    Damage Photos {needsPhotos ? '(Required)' : '(Optional)'}
+                  </Label>
+                );
+              })()}
               <Button variant="outline" onClick={handlePhotoUpload} className="w-full" disabled={isUploading}>
                 {isUploading ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Upload className="size-4 mr-2" />}
                 {isUploading ? 'Uploading...' : 'Upload Damage Photos'}
               </Button>
+              {step5Errors.damagePhotos && (
+                <p className="text-sm text-red-600 flex items-center gap-1">
+                  <AlertCircle className="size-3" />
+                  {step5Errors.damagePhotos}
+                </p>
+              )}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1582,7 +1707,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-gray-600">
-              Review inspection results and generate RCF if needed for damaged/repairable items.
+              Review inspection results and generate RCF for items requiring repair or replacement.
             </p>
 
             <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
@@ -1607,7 +1732,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               {formData.items?.map((item) => {
                 const bd = item.statusBreakdown;
                 const good = bd?.Good ?? 0;
-                const damage = bd?.Damaged ?? 0;
+                const damage = bd?.Repair ?? 0;
                 const repair = bd?.Replace ?? 0;
                 return (
                   <div key={item.id} className="flex flex-col gap-2 p-3 border rounded-lg">
@@ -1622,22 +1747,13 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               })}
             </div>
 
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setIsRCFDialogOpen(true)}
-                className="bg-[#F15929] hover:bg-[#d94d1f] flex-1"
-              >
-                <FileText className="size-4 mr-2" />
-                Generate RCF
-              </Button>
-              <Button
-                onClick={handleSkipRCF}
-                variant="outline"
-                className="flex-1"
-              >
-                Skip RCF
-              </Button>
-            </div>
+            <Button
+              onClick={() => setIsRCFDialogOpen(true)}
+              className="bg-[#F15929] hover:bg-[#d94d1f] w-full"
+            >
+              <FileText className="size-4 mr-2" />
+              Generate RCF
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -1698,15 +1814,24 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                 <p>Customer: {formData.customer}</p>
                 <p>Order ID: {formData.orderId}</p>
                 <p>Items Returned: {formData.items?.length} items</p>
-                <p>
-                  Good Items: {formData.items?.filter(i => i.status === 'Good').length}
-                </p>
-                <p>
-                  Damaged: {formData.items?.filter(i => i.status === 'Damaged').length}
-                </p>
-                <p>
-                  Replace: {formData.items?.filter(i => i.status === 'Replace').length}
-                </p>
+                {(() => {
+                  let totalGood = 0, totalRepair = 0, totalReplace = 0;
+                  formData.items?.forEach(item => {
+                    const bd = itemStatusBreakdowns[item.id] || item.statusBreakdown;
+                    if (bd) {
+                      totalGood += bd.Good || 0;
+                      totalRepair += bd.Repair || 0;
+                      totalReplace += bd.Replace || 0;
+                    }
+                  });
+                  return (
+                    <>
+                      <p>Good: {totalGood} qty</p>
+                      <p>Repair: {totalRepair} qty</p>
+                      <p>Replace: {totalReplace} qty</p>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -1781,10 +1906,6 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                   <span>Update Inventory</span>
                   <Badge className="bg-amber-100 text-amber-800">Pending</Badge>
                 </div>
-                <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                  <span>Update Statement of Account</span>
-                  <Badge className="bg-amber-100 text-amber-800">Pending</Badge>
-                </div>
               </div>
             </div>
 
@@ -1811,20 +1932,33 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
           
           <div className="space-y-4">
             <div className="max-h-96 overflow-y-auto space-y-2">
-              {formData.items?.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-sm text-[#231F20]">{item.name}</p>
-                    <p className="text-xs text-gray-500">Qty: {item.quantityReturned}</p>
-                    {item.notes && (
-                      <p className="text-xs text-gray-500 mt-1">Note: {item.notes}</p>
+              {formData.items?.map((item) => {
+                const bd = itemStatusBreakdowns[item.id] || item.statusBreakdown;
+                return (
+                  <div key={item.id} className="p-3 border rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-[#231F20]">{item.name}</p>
+                      <p className="text-xs text-gray-500">Total Qty: {item.quantityReturned}</p>
+                      {item.notes && (
+                        <p className="text-xs text-gray-500 mt-1">Note: {item.notes}</p>
+                      )}
+                    </div>
+                    {bd && (
+                      <div className="flex gap-2 mt-2">
+                        {(bd.Good || 0) > 0 && (
+                          <Badge className="bg-green-100 text-green-800 text-xs">Good: {bd.Good}</Badge>
+                        )}
+                        {(bd.Repair || 0) > 0 && (
+                          <Badge className="bg-red-100 text-red-800 text-xs">Repair: {bd.Repair}</Badge>
+                        )}
+                        {(bd.Replace || 0) > 0 && (
+                          <Badge className="bg-amber-100 text-amber-800 text-xs">Replace: {bd.Replace}</Badge>
+                        )}
+                      </div>
                     )}
                   </div>
-                  <div>
-                    {getItemStatusBadge(item.status)}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {formData.productionNotes && (
