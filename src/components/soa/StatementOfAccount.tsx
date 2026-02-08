@@ -230,48 +230,7 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
           {/* Financial Summary Cards */}
           <FinancialSummaryCards summary={soaData.summary} />
 
-          {/* Project Financial Status Indicator */}
-          <div
-            className={`p-6 rounded-lg border-2 ${
-              soaData.summary.finalBalance > 0
-                ? "border-[#DC2626] bg-[#FEF2F2]"
-                : "border-[#10B981] bg-[#F0FDF4]"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-[#6B7280] mb-1">
-                  Project Financial Status
-                </p>
-                <p
-                  className={`text-3xl ${
-                    soaData.summary.finalBalance > 0
-                      ? "text-[#DC2626]"
-                      : "text-[#10B981]"
-                  }`}
-                >
-                  {soaData.summary.finalBalance > 0 ? (
-                    <>⚠️ Customer Owes: RM{soaData.summary.finalBalance.toFixed(2)}</>
-                  ) : (
-                    <>✓ Customer Has Credit: RM{Math.abs(soaData.summary.finalBalance).toFixed(2)}</>
-                  )}
-                </p>
-              </div>
-              <div className="text-right text-sm text-[#6B7280]">
-                <p>Formula: Total Charged - Total Paid</p>
-                <p className="mt-1">
-                  RM{(
-                    soaData.summary.totalDepositCollected +
-                    soaData.summary.totalMonthlyBilling +
-                    soaData.summary.totalPenalty +
-                    soaData.summary.totalAdditionalCharges
-                  ).toFixed(2)}{" "}
-                  - RM{soaData.summary.totalPaid.toFixed(2)} = RM
-                  {soaData.summary.finalBalance.toFixed(2)}
-                </p>
-              </div>
-            </div>
-          </div>
+          
 
           {/* Transaction Ledger */}
           <TransactionLedger
