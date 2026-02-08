@@ -7,7 +7,6 @@ import {
   Calendar,
   CreditCard,
   RotateCcw,
-  FileSpreadsheet,
   Search,
   Menu,
   Wallet,
@@ -81,7 +80,6 @@ import { ReturnManagement } from "./components/ReturnManagement";
 import { ReportGenerationEnhanced } from "./components/reports/ReportGenerationEnhanced";
 import { RentalAgreement } from "./components/RentalAgreement";
 import { ManageDepositFlow } from "./components/deposits/ManageDepositFlow";
-import { ReportFinancial } from "./components/reports/ReportFinancial";
 import { ProfilePage } from "./components/ProfilePage";
 import { ProjectClosureManagement } from "./components/ProjectClosureManagement";
 import DeliveryReturnManagement from "./components/DeliveryReturnManagement";
@@ -104,7 +102,6 @@ type Page =
   | "rental-agreement"
   | "project-closure"
   | "report-generation"
-  | "report-financial"
   | "customer-portal"
   | "content-management"
   | "customer-content-view"
@@ -492,7 +489,6 @@ export default function App() {
         section: "Reports",
         items: [
           { id: "report-generation" as Page, label: "Report Generation", icon: BarChart3 },
-          { id: "report-financial" as Page, label: "Financial Reports", icon: FileSpreadsheet },
         ],
       },
     ];
@@ -528,7 +524,7 @@ export default function App() {
       case "billing-dashboard":
         return <BillingDashboard 
           onNavigateToCreditNotes={() => setCurrentPage("credit-notes")}
-          onNavigateToFinancialReports={() => setCurrentPage("report-financial")}
+          onNavigateToFinancialReports={() => setCurrentPage("report-generation")}
           onNavigateToMonthlyRental={() => setCurrentPage("monthly-rental")}
           onNavigateToManageDeposits={() => setCurrentPage("manage-deposits")}
           onNavigateToRefunds={() => setCurrentPage("refund-management")}
@@ -591,8 +587,6 @@ export default function App() {
         return <ReturnManagement />;
       case "report-generation":
         return <ReportGenerationEnhanced />;
-      case "report-financial":
-        return <ReportFinancial />;
       case "customer-portal":
         return <CustomerPortal />;
       case "content-management":
