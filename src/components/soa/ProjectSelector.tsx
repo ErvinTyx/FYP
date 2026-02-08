@@ -1,4 +1,5 @@
-import { Search, Calendar, User, Briefcase, Loader2 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Calendar, User, Briefcase, Loader2 } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Card, CardContent } from "../ui/card";
 import {
@@ -34,31 +35,143 @@ export function ProjectSelector({
   onProjectChange,
   loadingProjects = false,
 }: ProjectSelectorProps) {
+  const [localSelectedCustomerId, setLocalSelectedCustomerId] = useState<string | null>(selectedCustomer?.id || null);
+
+  // Sync local state with prop
+  useEffect(() => {
+    setLocalSelectedCustomerId(selectedCustomer?.id || null);
+  }, [selectedCustomer?.id]);
+
+  // Filter projects based on selected customer
+  const filteredProjects = useMemo(() => {
+    if (!localSelectedCustomerId) {
+      return projects;
+    }
+    return projects.filter((p) => p.customerId === localSelectedCustomerId);
+  }, [projects, localSelectedCustomerId]);
+
+  // Filter customers based on search query
+  const filteredCustomers = useMemo(() => {
+    if (!searchQuery?.trim()) {
+      return customers;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.email.toLowerCase().includes(query)
+    );
+  }, [customers, searchQuery]);
+
+  const handleCustomerSelect = (customerId: string) => {
+    const customer = customers.find((c) => c.id === customerId);
+    if (customer) {
+      setLocalSelectedCustomerId(customerId);
+      onCustomerChange(customer);
+      // Note: Project selection is not cleared - user can still select a project directly
+    }
+  };
+
+  const handleProjectSelect = (projectId: string) => {
+    const project = filteredProjects.find((p) => p.id === projectId);
+    if (project) {
+      onProjectChange(project);
+      // Auto-select the customer for this project
+      const customer = customers.find((c) => c.id === project.customerId);
+      if (customer) {
+        setLocalSelectedCustomerId(customer.id);
+        onCustomerChange(customer);
+      }
+    }
+  };
+
   return (
     <Card className="border-[#E5E7EB]">
       <CardContent className="pt-6">
         <div className="space-y-4">
-          {/* Name / project search */}
+          {/* Customer search */}
           {onSearchChange && (
             <div>
               <label className="text-sm text-[#374151] mb-2 block">
-                Search by project or customer name
+                Search by customer email or name
               </label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9CA3AF]" />
                 <Input
                   type="text"
-                  placeholder="Type project or customer name..."
+                  placeholder="Type customer email or name..."
                   value={searchQuery}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  className="pl-9 h-10 border-[#D1D5DB] rounded-md"
+                  onChange={(e) => {
+                    onSearchChange(e.target.value);
+                    // Clear customer selection when search changes
+                    if (e.target.value.trim() === "") {
+                      setLocalSelectedCustomerId(null);
+                    }
+                  }}
+                  className="h-10 border-[#D1D5DB] rounded-md"
                 />
                 {loadingProjects && (
                   <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-[#F15929]" />
                 )}
               </div>
+              {/* Customer list - Show filtered customers below search */}
+              {filteredCustomers.length > 0 && searchQuery.trim() && (
+                <div className="mt-2 border border-[#E5E7EB] rounded-md bg-white max-h-48 overflow-y-auto">
+                  {filteredCustomers.map((customer) => (
+                    <div
+                      key={customer.id}
+                      onClick={() => {
+                        handleCustomerSelect(customer.id);
+                        onSearchChange("");
+                      }}
+                      className={`px-4 py-3 cursor-pointer hover:bg-[#F9FAFB] border-b border-[#E5E7EB] last:border-b-0 ${
+                        localSelectedCustomerId === customer.id
+                          ? "bg-[#F0FDF4] border-l-4 border-l-[#059669]"
+                          : ""
+                      }`}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-[#111827] font-medium">
+                          {customer.name}
+                        </span>
+                        {customer.email && (
+                          <span className="text-xs text-[#6B7280] mt-0.5">
+                            {customer.email}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Selected customer indicator */}
+              {localSelectedCustomerId && selectedCustomer && (
+                <div className="mt-2 px-3 py-2 bg-[#F0FDF4] border border-[#059669] rounded-md">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-sm text-[#047857] font-medium">
+                        Selected: {selectedCustomer.name}
+                      </span>
+                      {selectedCustomer.email && (
+                        <span className="text-xs text-[#6B7280] mt-0.5">
+                          {selectedCustomer.email}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setLocalSelectedCustomerId(null);
+                        onSearchChange("");
+                      }}
+                      className="text-xs text-[#059669] hover:text-[#047857] underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
+
           {/* Project Selector */}
           <div>
             <label className="text-sm text-[#374151] mb-2 block">
@@ -67,30 +180,27 @@ export function ProjectSelector({
             <Select
               value={selectedProject?.id}
               disabled={loadingProjects}
-              onValueChange={(value) => {
-                const project = projects.find((p) => p.id === value);
-                if (project) {
-                  onProjectChange(project);
-                  // Auto-select the customer for this project
-                  const customer = customers.find((c) => c.id === project.customerId);
-                  if (customer) onCustomerChange(customer);
-                }
-              }}
+              onValueChange={handleProjectSelect}
             >
               <SelectTrigger className="w-full h-10 border-[#D1D5DB] rounded-md">
                 <SelectValue placeholder="Choose a project to view its statement of account" />
               </SelectTrigger>
               <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    <div className="flex flex-col">
-                      <span>{project.projectName}</span>
-                      <span className="text-xs text-[#6B7280]">
-                        {project.id} · {project.customerName} · {project.status}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
+                {filteredProjects.length === 0 ? (
+                  <div className="px-2 py-1.5 text-sm text-[#6B7280]">
+                    {localSelectedCustomerId
+                      ? "No projects found for selected customer"
+                      : "No projects available"}
+                  </div>
+                ) : (
+                  filteredProjects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      <div className="flex flex-col">
+                        <span>{project.projectName} - {project.status} {!localSelectedCustomerId && ( `- ${project.customerName}`)}</span>     
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
