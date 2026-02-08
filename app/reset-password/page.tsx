@@ -128,6 +128,7 @@ export default function ResetPasswordPage() {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-[#1E40AF] to-[#1E3A8A] flex items-center justify-center px-6 py-4 sm:px-8 md:px-12">
         <div className="w-full max-w-[480px] bg-white rounded-2xl shadow-2xl p-8 text-center mx-4">
+          <h1 className=" text-2xl font-bold mb-4">Power Metal & Steel</h1>
           <Loader2 className="h-12 w-12 animate-spin text-[#1E40AF] mx-auto mb-4" />
           <p className="text-[#6B7280]">Validating your link...</p>
         </div>
@@ -140,6 +141,7 @@ export default function ResetPasswordPage() {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-[#1E40AF] to-[#1E3A8A] flex items-center justify-center px-6 py-4 sm:px-8 md:px-12">
         <div className="w-full max-w-[480px] bg-white rounded-2xl shadow-2xl p-8 text-center mx-4">
+          <h1 className=" text-2xl font-bold mb-4">Power Metal & Steel</h1>
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="h-8 w-8 text-[#DC2626]" />
           </div>
@@ -161,6 +163,7 @@ export default function ResetPasswordPage() {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-[#1E40AF] to-[#1E3A8A] flex items-center justify-center px-6 py-4 sm:px-8 md:px-12">
         <div className="w-full max-w-[480px] bg-white rounded-2xl shadow-2xl p-8 text-center mx-4">
+          <h1 className=" text-2xl font-bold mb-4">Power Metal & Steel</h1>
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="h-8 w-8 text-[#059669]" />
           </div>
@@ -188,6 +191,7 @@ export default function ResetPasswordPage() {
           <div className="w-16 h-16 bg-[#EFF6FF] rounded-full flex items-center justify-center mx-auto mb-4">
             <KeyRound className="h-8 w-8 text-[#1E40AF]" />
           </div>
+          <h1 className="text-[#1E40AF] text-2xl font-bold mb-1">Power Metal & Steel</h1>
           <h2 className="text-[#111827] text-xl font-semibold mb-2">Reset Your Password</h2>
           <p className="text-[#6B7280]">
             Hi, {userInfo?.firstName || 'User'}! Enter your new password below.

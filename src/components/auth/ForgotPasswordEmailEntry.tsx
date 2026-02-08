@@ -97,7 +97,7 @@ export function ForgotPasswordEmailEntry({
           </div>
 
           {/* Footer */}
-          <div className="text-center mt-6 text-white/80 text-sm">
+          <div className="text-center mt-6 text-white text-sm">
             © {new Date().getFullYear()} Power Metal & Steel. All rights reserved.
           </div>
         </div>
