@@ -47,7 +47,7 @@ export function ForgotPasswordSuccess({
 
         {/* Footer */}
         <div className="text-center mt-6 text-white text-sm">
-          © 2025 Power Metal & Steel. All rights reserved.
+          © {new Date().getFullYear()} Power Metal & Steel. All rights reserved.
         </div>
       </div>
     </div>
