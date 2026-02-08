@@ -719,7 +719,6 @@ export default function App() {
                   <Users className="h-4 w-4 mr-2" />
                   My Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem>Settings</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
                   className="text-[#DC2626] focus:text-[#DC2626] focus:bg-[#FEE2E2]" 

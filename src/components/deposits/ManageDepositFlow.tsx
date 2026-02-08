@@ -62,7 +62,8 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
       setTotal(typeof data.total === 'number' ? data.total : (data.deposits?.length ?? 0));
       
       // Transform API data to match frontend interface
-      const transformedDeposits: Deposit[] = data.deposits.map((d: Deposit) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const transformedDeposits: Deposit[] = data.deposits.map((d: any) => ({
         ...d,
         // Map API fields to legacy fields for backwards compatibility
         depositId: d.depositNumber,
@@ -87,7 +88,7 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
         } : undefined,
         referenceId: d.referenceNumber,
         lastUpdated: d.updatedAt,
-        rentalItems: d.agreement?.rfq?.items?.map((item: { id: string; scaffoldingItemName: string; quantity: number; unitPrice: number; totalPrice: number }) => ({
+        rentalItems: d.agreement?.rfq?.items?.map((item: { id: string; scaffoldingItemName: string; quantity: number; unitPrice: number; totalPrice: number; }) => ({
           id: item.id,
           itemName: item.scaffoldingItemName,
           quantity: item.quantity,
@@ -389,19 +390,6 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
               Track and manage deposit payments, rental agreements, and payment approvals
             </p>
           </div>
-          <Button
-            onClick={handleRefresh}
-            variant="outline"
-            className="border-[#D1D5DB] text-[#374151] hover:bg-[#F3F4F6]"
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RotateCcw className="mr-2 h-4 w-4" />
-            )}
-            Refresh
-          </Button>
         </div>
       )}
 
