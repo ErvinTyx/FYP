@@ -209,15 +209,6 @@ export function UnifiedLogin({
             </Button>
           </form>
 
-          {/* Super Admin Credentials Info */}
-          <div className="mt-8 p-4 bg-[#F3F4F6] rounded-lg">
-            <p className="text-xs text-[#6B7280] mb-2">Super Admin Credentials:</p>
-            <div className="text-xs text-[#374151] space-y-1">
-              <p>• superadmin@powermetalsteel.com</p>
-              <p className="mt-2 text-[#6B7280]">Password: SuperAdmin@2024!</p>
-            </div>
-          </div>
-
           {/* Sign Up Link */}
           <div className="mt-6 text-center">
             <p className="text-sm text-[#6B7280]">

@@ -8,7 +8,6 @@ import {
   CreditCard,
   RotateCcw,
   FileSpreadsheet,
-  Bell,
   Search,
   Menu,
   Wallet,
@@ -26,11 +25,8 @@ import {
   BarChart3,
   FileSignature,
   FileX,
-  TruckIcon,
   PackageOpen,
-  Edit,
   AlertCircle,
-  Receipt,
 } from "lucide-react";
 
 import { Button } from "./components/ui/button";
@@ -57,14 +53,10 @@ import { Toaster } from "./components/ui/sonner";
 
 // Auth Components
 import { UnifiedLogin } from "./components/auth/UnifiedLogin";
-import { PortalSelector } from "./components/auth/PortalSelector";
-import { LoginPage } from "./components/auth/LoginPage";
-import { CustomerLoginPage } from "./components/auth/CustomerLoginPage";
 import { RegistrationSelector } from "./components/auth/RegistrationSelector";
 import { InternalRegistration } from "./components/auth/InternalRegistration";
 import { CustomerRegistration } from "./components/auth/CustomerRegistration";
 import { VendorRegistration } from "./components/auth/VendorRegistration";
-import { WelcomeScreen } from "./components/auth/WelcomeScreen";
 import { ForgotPasswordEmailEntry } from "./components/auth/ForgotPasswordEmailEntry";
 import { ForgotPasswordCodeEntry } from "./components/auth/ForgotPasswordCodeEntry";
 import { ForgotPasswordNewPassword } from "./components/auth/ForgotPasswordNewPassword";
@@ -78,8 +70,6 @@ import { MonthlyRentalBilling } from "./components/monthly-rental/MonthlyRentalB
 import { CreditNotes } from "./components/CreditNotes";
 import { RefundManagementMain } from "./components/refunds/RefundManagementMain";
 import { ScaffoldingManagement } from "./components/ScaffoldingManagement";
-import { OrderSales } from "./components/OrderSales";
-import { DeliveryReturns } from "./components/DeliveryReturns";
 import { CustomerPortal } from "./components/CustomerPortal";
 import { ContentManagement } from "./components/ContentManagement";
 import { CustomerContentView } from "./components/CustomerContentView";
@@ -88,7 +78,6 @@ import { NotificationCenter } from "./components/notifications/NotificationCente
 import { InspectionMaintenanceModule } from "./components/inspection/InspectionMaintenanceModule";
 import { DeliveryManagement } from "./components/delivery/DeliveryManagement";
 import { ReturnManagement } from "./components/ReturnManagement";
-import { ReportGeneration } from "./components/reports/ReportGeneration";
 import { ReportGenerationEnhanced } from "./components/reports/ReportGenerationEnhanced";
 import { RentalAgreement } from "./components/RentalAgreement";
 import { ManageDepositFlow } from "./components/deposits/ManageDepositFlow";
@@ -109,12 +98,9 @@ type Page =
   | "additional-charges"
   | "statement-of-account"
   | "scaffolding-management"
-  | "order-sales"
-  | "delivery-returns"
   | "delivery-management"
   | "return-management"
   | "delivery-return-requests"
-  | "delivery-return-flow"
   | "rental-agreement"
   | "project-closure"
   | "report-generation"
@@ -128,13 +114,10 @@ type Page =
 
 type AuthScreen =
   | "portal-selector"
-  | "staff-login"
-  | "customer-login"
   | "register-select"
   | "register-internal"
   | "register-customer"
   | "register-vendor"
-  | "welcome"
   | "dashboard"
   | "forgot-password-email"
   | "forgot-password-code"
@@ -302,28 +285,6 @@ export default function App() {
     setAuthScreen("dashboard");
   };
 
-  const handlePortalSelect = (portal: "customer" | "staff") => {
-    if (portal === "customer") {
-      setAuthScreen("customer-login");
-    } else {
-      setAuthScreen("staff-login");
-    }
-  };
-
-  const handleStaffLogin = (role: string) => {
-    setUserRole(role);
-    setSystemMode("ERP");
-    setCurrentPage("billing-dashboard");
-    setAuthScreen("dashboard");
-  };
-
-  const handleCustomerLogin = () => {
-    setUserRole("customer");
-    setSystemMode("CRM");
-    setCurrentPage("customer-portal");
-    setAuthScreen("dashboard");
-  };
-
   const handleRegistrationTypeSelect = (
     type: "internal" | "customer" | "vendor"
   ) => {
@@ -386,27 +347,6 @@ export default function App() {
   // Show authentication screens if not authenticated
   if (status === "unauthenticated" && authScreen === "portal-selector") {
     return <UnifiedLogin onLogin={handleUnifiedLogin} onNavigateToRegister={() => setAuthScreen("register-select")} onNavigateToForgotPassword={() => setAuthScreen("forgot-password-email")} />;
-  }
-
-  if (authScreen === "staff-login") {
-    return (
-      <LoginPage
-        onLogin={handleStaffLogin}
-        onNavigateToRegister={() => setAuthScreen("register-select")}
-        onNavigateToForgotPassword={() => setAuthScreen("forgot-password-email")}
-        onBack={() => setAuthScreen("portal-selector")}
-      />
-    );
-  }
-
-  if (authScreen === "customer-login") {
-    return (
-      <CustomerLoginPage
-        onLogin={handleCustomerLogin}
-        onNavigateToRegister={() => setAuthScreen("register-customer")}
-        onBack={() => setAuthScreen("portal-selector")}
-      />
-    );
   }
 
   if (authScreen === "register-select") {
@@ -641,10 +581,6 @@ export default function App() {
         );
       case "scaffolding-management":
         return <ScaffoldingManagement />;
-      case "order-sales":
-        return <OrderSales />;
-      case "delivery-returns":
-        return <DeliveryReturns />;
       case "delivery-management":
         return <DeliveryManagement />;
       case "return-management":
