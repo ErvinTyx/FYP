@@ -5,6 +5,13 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { ConditionReport, InspectionItem, InspectionImage } from '../../types/inspection';
 
 // Interface for scaffolding items from API
@@ -49,6 +56,21 @@ interface ConditionReportFormProps {
   agreementNo?: string;
 }
 
+interface StaffUserSummary {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  roles: string[];
+}
+
+interface ReturnPhoto {
+  url: string;
+  uploadedAt?: string;
+  description?: string;
+  uploadedBy?: string;
+}
+
 export function ConditionReportForm({ 
   report, 
   onSave, 
@@ -73,6 +95,10 @@ export function ConditionReportForm({
   const [items, setItems] = useState<InspectionItem[]>([]);
   const [scaffoldingItems, setScaffoldingItems] = useState<ScaffoldingItem[]>([]);
   const [loadingScaffoldingItems, setLoadingScaffoldingItems] = useState(true);
+  const [staffUsers, setStaffUsers] = useState<StaffUserSummary[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(true);
+  const [returnPhotos, setReturnPhotos] = useState<InspectionImage[]>([]);
+  const [appliedReturnPhotos, setAppliedReturnPhotos] = useState(false);
   
   // Store original return quantities for validation
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
@@ -101,6 +127,84 @@ export function ConditionReportForm({
       }
     };
     fetchScaffoldingItems();
+  }, []);
+
+  const normalizeReturnPhotos = (photos: unknown, prefix: string): InspectionImage[] => {
+    if (!photos || !Array.isArray(photos)) return [];
+    const normalized: InspectionImage[] = [];
+    photos.forEach((photo, index) => {
+      if (typeof photo === 'string') {
+        normalized.push({
+          id: `return-${prefix}-${index}`,
+          url: photo,
+          caption: `${prefix} photo`,
+          uploadedAt: new Date().toISOString(),
+        });
+        return;
+      }
+      const p = photo as ReturnPhoto;
+      if (!p.url) return;
+      normalized.push({
+        id: `return-${prefix}-${index}`,
+        url: p.url,
+        caption: p.description || `${prefix} photo`,
+        uploadedAt: p.uploadedAt || new Date().toISOString(),
+      });
+    });
+    return normalized;
+  };
+
+  // Fetch return photos for display in condition report
+  useEffect(() => {
+    const fetchReturnPhotos = async () => {
+      if (!returnRequestId) return;
+      try {
+        const response = await fetch('/api/return');
+        const result = await response.json();
+        if (!result.success || !result.returnRequests) return;
+        const matched = result.returnRequests.find((req: { id: string; requestId: string }) =>
+          req.id === returnRequestId || req.requestId === returnRequestId
+        );
+        if (!matched) return;
+        const photos = [
+          ...normalizeReturnPhotos(matched.damagePhotos, 'Damage'),
+          ...normalizeReturnPhotos(matched.warehousePhotos, 'Warehouse'),
+          ...normalizeReturnPhotos(matched.driverRecordPhotos, 'Driver'),
+          ...normalizeReturnPhotos(matched.externalGoodsPhotos, 'External'),
+        ];
+        setReturnPhotos(photos);
+        setAppliedReturnPhotos(false);
+      } catch (error) {
+        console.error('Error fetching return photos:', error);
+      }
+    };
+    fetchReturnPhotos();
+  }, [returnRequestId]);
+
+  // Fetch staff users for inspector selection
+  useEffect(() => {
+    const fetchStaffUsers = async () => {
+      try {
+        setLoadingStaff(true);
+        const response = await fetch('/api/user-management');
+        const result = await response.json();
+        if (result.success && result.users) {
+          const allowedRoles = new Set(['super_user', 'admin', 'operations', 'production']);
+          const staff = result.users.filter((user: StaffUserSummary) =>
+            user.roles?.some(role => allowedRoles.has(role))
+          );
+          setStaffUsers(staff);
+        } else {
+          toast.error('Failed to load staff users');
+        }
+      } catch (error) {
+        console.error('Error fetching staff users:', error);
+        toast.error('Failed to load staff users');
+      } finally {
+        setLoadingStaff(false);
+      }
+    };
+    fetchStaffUsers();
   }, []);
 
   // Auto-populate items from return request
@@ -163,6 +267,22 @@ export function ConditionReportForm({
       toast.success(`${autoItems.length} item(s) auto-populated from return request`);
     }
   }, [returnRequestItems, report, scaffoldingItems, propCustomerName, agreementNo]);
+
+  // Apply return photos into item images (if empty)
+  useEffect(() => {
+    if (appliedReturnPhotos || returnPhotos.length === 0 || items.length === 0) return;
+    const nextItems = items.map(item => {
+      if (item.images && item.images.length > 0) {
+        return item;
+      }
+      return {
+        ...item,
+        images: returnPhotos,
+      };
+    });
+    setItems(nextItems);
+    setAppliedReturnPhotos(true);
+  }, [returnPhotos, items, appliedReturnPhotos]);
 
   useEffect(() => {
     if (report) {
@@ -494,12 +614,26 @@ export function ConditionReportForm({
             </div>
             <div className="space-y-2">
               <Label htmlFor="inspectedBy">Inspected By</Label>
-              <Input
-                id="inspectedBy"
+              <Select
                 value={formData.inspectedBy}
-                onChange={(e) => setFormData({ ...formData, inspectedBy: e.target.value })}
-                placeholder="Inspector name"
-              />
+                onValueChange={(value) => setFormData({ ...formData, inspectedBy: value })}
+                disabled={loadingStaff}
+              >
+                <SelectTrigger id="inspectedBy">
+                  <SelectValue placeholder={loadingStaff ? 'Loading staff...' : 'Select inspector'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {staffUsers.map(user => {
+                    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+                    const label = fullName || user.email;
+                    return (
+                      <SelectItem key={user.id} value={label}>
+                        {label}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="space-y-2">

@@ -764,6 +764,7 @@ model ScaffoldingItem {
   name          String
   category      String
   available     Int                       @default(0)
+  reservedQuantity Int                    @default(0)
   price         Decimal                   @default(0)
   originPrice   Decimal?                  @default(0)
   status        String                    @default("Available")

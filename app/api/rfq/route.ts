@@ -120,6 +120,48 @@ export async function POST(request: NextRequest) {
     const result = await prisma.$transaction(async (tx) => {
       const rfqNumber = generateRFQNumber();
 
+      // Aggregate requested quantities by scaffolding item
+      const requestedQuantities = new Map<string, number>();
+      if (items && Array.isArray(items) && items.length > 0) {
+        for (const item of items) {
+          const itemId = item.scaffoldingItemId;
+          const qty = Number(item.quantity || 0);
+          if (!itemId) {
+            throw new Error('RFQ_STOCK: Missing scaffolding item');
+          }
+          if (!Number.isFinite(qty) || qty <= 0) {
+            throw new Error('RFQ_STOCK: Invalid quantity');
+          }
+          requestedQuantities.set(itemId, (requestedQuantities.get(itemId) || 0) + qty);
+        }
+      }
+
+      if (requestedQuantities.size > 0) {
+        const itemIds = Array.from(requestedQuantities.keys());
+        const scaffoldingItems = await (tx.scaffoldingItem as any).findMany({
+          where: { id: { in: itemIds } },
+          select: { id: true, available: true, reservedQuantity: true },
+        });
+        if (scaffoldingItems.length !== itemIds.length) {
+          throw new Error('RFQ_STOCK: Scaffolding item not found');
+        }
+
+        for (const scaffoldingItem of scaffoldingItems) {
+          const requestedQty = requestedQuantities.get(scaffoldingItem.id) || 0;
+          const currentAvailable = Number(scaffoldingItem.available || 0);
+          const currentReserved = Number(scaffoldingItem.reservedQuantity || 0);
+          const availableForRfq = currentAvailable - currentReserved;
+          if (requestedQty > availableForRfq) {
+            throw new Error('RFQ_STOCK: Insufficient stock');
+          }
+          const newReserved = currentReserved + requestedQty;
+          await (tx.scaffoldingItem as any).update({
+            where: { id: scaffoldingItem.id },
+            data: { reservedQuantity: newReserved },
+          });
+        }
+      }
+
       // Create RFQ header
       const rfq = await tx.rFQ.create({
         data: {
@@ -177,6 +219,16 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error('[RFQ API] POST error:', error);
+    const message = error instanceof Error ? error.message : 'An error occurred while creating RFQ';
+    if (message.startsWith('RFQ_STOCK:')) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: message.replace('RFQ_STOCK: ', ''),
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       {
         success: false,
