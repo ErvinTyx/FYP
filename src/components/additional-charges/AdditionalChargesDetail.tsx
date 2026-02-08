@@ -242,64 +242,155 @@ export function AdditionalChargesDetail({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={onBack} className="hover:bg-[#F3F4F6]">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
           <div>
-            <h1>Additional Charge Details</h1>
-            <p className="text-[#374151]">View and manage additional charge information</p>
+            <div className="flex items-center gap-3">
+              <h1>{charge.invoiceNo}</h1>
+              <AdditionalChargeStatusBadge status={charge.status} isOverdue={isOverdue} />
+            </div>
+            <p className="text-[#374151]">
+              Last updated: {formatRfqDate(charge.lastUpdated)}
+            </p>
           </div>
         </div>
-        <AdditionalChargeStatusBadge status={charge.status} isOverdue={isOverdue} />
       </div>
 
-      <Card className="border-[#E5E7EB]">
-        <CardHeader>
-          <CardTitle className="text-[18px]">Charge Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="space-y-1">
-              <p className="text-sm text-[#6B7280]">Charge ID</p>
-              <p className="text-[#231F20]">{charge.id}</p>
+      
+
+
+      {/* Rejection Info */}
+      {charge.status === "Rejected" && charge.rejectionReason && (
+        <Card className="border-[#DC2626] bg-[#FEF2F2]">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <XCircle className="h-5 w-5 text-[#DC2626] mt-0.5" />
+              <div className="flex-1">
+                <p className="text-[#991B1B]">
+                  Payment Rejected
+                </p>
+                {charge.rejectionDate && (
+                  <p className="text-[14px] text-[#6B7280] mt-1">
+                    Rejected on {formatRfqDate(charge.rejectionDate)}
+                  </p>
+                )}
+                <div className="mt-3 p-3 bg-white rounded-lg border border-[#FEE2E2]">
+                  <p className="text-[14px] text-[#111827]">
+                    <span className="text-[#991B1B]">Reason:</span> {charge.rejectionReason}
+                  </p>
+                </div>
+                {canResubmit() && (
+                  <p className="text-[14px] text-[#6B7280] mt-3">
+                    Please review the reason above and re-upload the correct payment proof below.
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6B7280]">Invoice No.</p>
-              <p className="text-[#231F20]">{charge.invoiceNo}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Paid Status Info */}
+      {charge.status === "Paid" && (
+        <Card className="border-[#059669] bg-[#F0FDF4]">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-[#059669]" />
+                  <div>
+                    <p className="text-[#047857]">
+                      Payment Approved
+                    </p>
+                    <p className="text-[14px] text-[#6B7280] mt-1">
+                      Approved by {charge.uploadedByEmail ? charge.uploadedByEmail.split('@')[0] : "Admin"} on {charge.approvalDate ? formatRfqDate(charge.approvalDate) : formatRfqDate(charge.lastUpdated || charge.dueDate)}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}
+                  className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  View Receipt
+                </Button>
+              </div>
+              {charge.referenceId && (
+                <div className="bg-white rounded-lg border border-[#BBF7D0] p-4">
+                  <p className="text-[14px] text-[#6B7280]">Bank Reference Number</p>
+                  <p className="text-[#111827] mt-1 font-mono">{charge.referenceId}</p>
+                </div>
+              )}
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6B7280]">Delivery Order (DO)</p>
-              <p className="text-[#231F20]">{charge.doId}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Charge Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="border-[#E5E7EB]">
+          <CardHeader>
+            <CardTitle className="text-[18px]">Charge Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="text-[14px] text-[#6B7280]">Invoice Number</p>
+              <p className="text-[#111827]">{charge.invoiceNo}</p>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6B7280]">Customer Name</p>
-              <p className="text-[#231F20]">{charge.customerName}</p>
+            <div>
+              <p className="text-[14px] text-[#6B7280]">Delivery Order (DO)</p>
+              <p className="text-[#111827]">{charge.doId}</p>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6B7280]">Returned Date</p>
-              <p className="text-[#231F20]">
+            <div>
+              <p className="text-[14px] text-[#6B7280]">Customer Name</p>
+              <p className="text-[#111827]">{charge.customerName}</p>
+            </div>
+            <div>
+              <p className="text-[14px] text-[#6B7280]">Total Additional Charges</p>
+              <p className="text-[#111827] font-semibold">
+                RM{charge.totalCharges.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-[#E5E7EB]">
+          <CardHeader>
+            <CardTitle className="text-[18px]">Payment Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="text-[14px] text-[#6B7280]">Returned Date</p>
+              <p className="text-[#111827]">
                 {charge.returnedDate
                   ? formatRfqDate(charge.returnedDate)
                   : "—"}
               </p>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6B7280]">Due Date</p>
-              <p className={isDueDatePassed() ? "text-[#DC2626]" : "text-[#231F20]"}>
-                {formatRfqDate(charge.dueDate)}
-                {isOverdue && " (Overdue)"}
-              </p>
+            <div>
+              <p className="text-[14px] text-[#6B7280]">Due Date</p>
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-[#6B7280]" />
+                <p className={isDueDatePassed() ? "text-[#DC2626]" : "text-[#111827]"}>
+                  {formatRfqDate(charge.dueDate)}
+                  {isOverdue && " (Overdue)"}
+                </p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6B7280]">Total Additional Charges</p>
-              <p className="text-[#F15929] text-lg">RM{charge.totalCharges.toFixed(2)}</p>
+            <div>
+              <p className="text-[14px] text-[#6B7280]">Current Status</p>
+              <div className="mt-2">
+                <AdditionalChargeStatusBadge status={charge.status} isOverdue={isOverdue} />
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {shouldShowPaymentBreakdown && (
         <Card className="border-[#BFDBFE] bg-[#EFF6FF]">
@@ -364,66 +455,6 @@ export function AdditionalChargesDetail({
                 </p>
               </>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-
-      {charge.status === "Rejected" && charge.rejectionReason && (
-        <Card className="border-[#DC2626] bg-[#FEF2F2]">
-          <CardContent className="pt-6">
-            <div className="flex gap-3">
-              <AlertCircle className="h-5 w-5 text-[#DC2626] mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm text-[#991B1B]">
-                  <strong>Rejected Reason:</strong>
-                </p>
-                <p className="text-sm text-[#DC2626] mt-1">{charge.rejectionReason}</p>
-                {canResubmit() && (
-                  <p className="text-xs text-[#991B1B] mt-2">
-                    You can resubmit proof of payment until the charge is paid.
-                  </p>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {charge.status === "Paid" && charge.referenceId && (
-        <Card className="border-[#059669] bg-[#F0FDF4]">
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-[#059669]" />
-                  <div>
-                    <p className="text-[#047857]">
-                      Payment Paid
-                    </p>
-                    {charge.approvalDate && (
-                      <p className="text-[14px] text-[#6B7280] mt-1">
-                        Paid on {formatRfqDate(charge.approvalDate)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}>
-                    <FileText className="h-4 w-4 mr-2" />
-                    View Document
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Receipt
-                  </Button>
-                </div>
-              </div>
-              <div className="bg-white rounded-lg border border-[#BBF7D0] p-4">
-                <p className="text-[14px] text-[#6B7280]">Reference ID</p>
-                <p className="text-[#111827] mt-1 font-mono">{charge.referenceId}</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       )}
