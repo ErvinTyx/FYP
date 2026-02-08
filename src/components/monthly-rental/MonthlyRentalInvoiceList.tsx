@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Search, Eye, AlertCircle, Calendar, TrendingUp, FileText, MoreVertical, Edit } from 'lucide-react';
+import { formatRfqDate } from '../../lib/rfqDate';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -280,7 +281,7 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
                     <TableCell className="text-[#374151]">
                       <div className="flex items-center gap-1">
                         <Calendar className="h-4 w-4 text-gray-400" />
-                        {new Date(invoice.dueDate).toLocaleDateString()}
+                        {formatRfqDate(invoice.dueDate)}
                       </div>
                     </TableCell>
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>

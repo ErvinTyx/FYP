@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Search, Eye, FileText, Calendar, DollarSign, AlertCircle, MoreVertical, Upload, CalendarClock, XCircle, Ban } from "lucide-react";
+import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -300,11 +301,11 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
                       </TableCell>
                       <TableCell>
                         <div className={isOverdueOrExpired ? "text-[#EA580C]" : "text-[#374151]"}>
-                          {new Date(deposit.dueDate).toLocaleDateString()}
+                          {formatRfqDate(deposit.dueDate)}
                         </div>
                       </TableCell>
                       <TableCell className="text-[#374151]">
-                        {new Date(displayLastUpdated).toLocaleDateString()}
+                        {formatRfqDate(displayLastUpdated)}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -495,7 +496,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
               <p><strong>Deposit:</strong> {selectedDepositForExpire.depositNumber || selectedDepositForExpire.depositId}</p>
               <p><strong>Customer:</strong> {selectedDepositForExpire.customerName || selectedDepositForExpire.agreement?.hirer}</p>
               <p><strong>Amount:</strong> RM{selectedDepositForExpire.depositAmount.toLocaleString()}</p>
-              <p><strong>Original Due Date:</strong> {new Date(selectedDepositForExpire.dueDate).toLocaleDateString()}</p>
+              <p><strong>Original Due Date:</strong> {formatRfqDate(selectedDepositForExpire.dueDate)}</p>
             </div>
           )}
           <DialogFooter>

@@ -5,6 +5,7 @@ import {
   PackageCheck, MapPin, Calendar as CalendarIcon, User,
   Warehouse, TrendingRight, MoreVertical, Edit, Loader2
 } from 'lucide-react';
+import { formatRfqDate } from '../../lib/rfqDate';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -756,7 +757,7 @@ export function DeliveryManagement() {
                         <div className="flex items-center gap-2">
                           <CalendarIcon className="size-4 text-gray-400" />
                           <div>
-                            <p className="text-[#231F20]">{new Date(delivery.scheduledDate).toLocaleDateString()}</p>
+                            <p className="text-[#231F20]">{formatRfqDate(delivery.scheduledDate)}</p>
                             {delivery.scheduledTimeSlot && (
                               <p className="text-sm text-gray-500">{delivery.scheduledTimeSlot}</p>
                             )}

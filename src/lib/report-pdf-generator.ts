@@ -8,6 +8,7 @@ import type {
   CustomerPaymentData,
   FinancialSummary,
 } from '@/types/report';
+import { formatRfqDate } from './rfqDate';
 
 const BRAND_COLOR = '#F15929';
 const TEXT_COLOR = '#231F20';
@@ -64,7 +65,7 @@ export class ReportPDFGenerator {
     this.currentY += 5;
 
     if (options.dateRange?.from && options.dateRange?.to) {
-      const rangeText = `Period: ${options.dateRange.from.toLocaleDateString()} - ${options.dateRange.to.toLocaleDateString()}`;
+      const rangeText = `Period: ${formatRfqDate(options.dateRange.from)} - ${formatRfqDate(options.dateRange.to)}`;
       this.doc.text(rangeText, this.pageWidth / 2, this.currentY, { align: 'center' });
       this.currentY += 5;
     }

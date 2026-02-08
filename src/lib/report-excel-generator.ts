@@ -10,6 +10,7 @@ import type {
   CustomerPaymentData,
   FinancialSummary,
 } from '@/types/report';
+import { formatRfqDate } from './rfqDate';
 
 interface ExcelGeneratorOptions {
   title: string;
@@ -39,9 +40,9 @@ export function generateRentalPerformanceExcel(
   const summaryData = [
     ['Power Metal & Steel'],
     [options.title],
-    [`Generated: ${new Date().toLocaleDateString()}`],
+    [`Generated: ${formatRfqDate(new Date())}`],
     options.dateRange?.from && options.dateRange?.to
-      ? [`Period: ${options.dateRange.from.toLocaleDateString()} - ${options.dateRange.to.toLocaleDateString()}`]
+      ? [`Period: ${formatRfqDate(options.dateRange.from)} - ${formatRfqDate(options.dateRange.to)}`]
       : [''],
     [''],
     ['SUMMARY'],
@@ -110,9 +111,9 @@ export function generateInventoryUtilizationExcel(
   const summaryData = [
     ['Power Metal & Steel'],
     [options.title],
-    [`Generated: ${new Date().toLocaleDateString()}`],
+    [`Generated: ${formatRfqDate(new Date())}`],
     options.dateRange?.from && options.dateRange?.to
-      ? [`Period: ${options.dateRange.from.toLocaleDateString()} - ${options.dateRange.to.toLocaleDateString()}`]
+      ? [`Period: ${formatRfqDate(options.dateRange.from)} - ${formatRfqDate(options.dateRange.to)}`]
       : [''],
     [''],
     ['SUMMARY'],
@@ -212,9 +213,9 @@ export function generateFinancialExcel(
   const summarySheetData = [
     ['Power Metal & Steel'],
     [options.title],
-    [`Generated: ${new Date().toLocaleDateString()}`],
+    [`Generated: ${formatRfqDate(new Date())}`],
     options.dateRange?.from && options.dateRange?.to
-      ? [`Period: ${options.dateRange.from.toLocaleDateString()} - ${options.dateRange.to.toLocaleDateString()}`]
+      ? [`Period: ${formatRfqDate(options.dateRange.from)} - ${formatRfqDate(options.dateRange.to)}`]
       : [''],
     [''],
     ['FINANCIAL SUMMARY'],
@@ -295,7 +296,7 @@ export function generateFinancialExcel(
       item.totalPaid,
       item.outstanding,
       item.overdueDays,
-      item.lastPaymentDate ? new Date(item.lastPaymentDate).toLocaleDateString() : '-',
+      item.lastPaymentDate ? formatRfqDate(item.lastPaymentDate) : '-',
       item.numberOfInvoices,
       item.depositsPaid,
       item.depositsOutstanding,

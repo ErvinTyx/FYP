@@ -19,6 +19,7 @@ import {
   Upload,
   Loader2,
 } from "lucide-react";
+import { formatRfqDate } from "../lib/rfqDate";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -720,7 +721,7 @@ export function ContentManagement() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-[#6B7280]">
-                              {new Date(item.lastUpdated).toLocaleDateString()}
+                              {formatRfqDate(item.lastUpdated)}
                             </TableCell>
                             <TableCell className="text-[#6B7280]">
                               {item.updatedBy}
@@ -891,7 +892,7 @@ export function ContentManagement() {
                 <span>
                   Updated on{" "}
                   {currentItem?.lastUpdated &&
-                    new Date(currentItem.lastUpdated).toLocaleDateString()}
+                    formatRfqDate(currentItem.lastUpdated)}
                 </span>
                 <span className="text-[#6B7280]">•</span>
                 <span>by {currentItem?.updatedBy}</span>

@@ -6,6 +6,7 @@ import { CreditNotesTable } from './CreditNotesTable';
 import { format } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import type { DepositRecord, MonthlyBillingRecord, CreditNoteRecord } from '../../types/report';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 type ReportType = 'all' | 'deposit' | 'monthly-billing' | 'credit-note';
 type StatusFilter = 'all' | 'paid' | 'pending' | 'overdue' | 'rejected' | 'pending-approval';
@@ -67,7 +68,7 @@ export function ReportPreview({
                 depositAmount: customer.depositsPaid + customer.depositsOutstanding,
                 status: customer.depositsOutstanding > 0 ? 'Pending Approval' : 'Paid',
                 proofUploaded: customer.depositsPaid > 0,
-                date: customer.lastPaymentDate ? new Date(customer.lastPaymentDate).toLocaleDateString() : '-'
+                date: customer.lastPaymentDate ? formatRfqDate(customer.lastPaymentDate) : '-'
               });
             }
           });
@@ -181,7 +182,7 @@ export function ReportPreview({
             Generated on: {format(new Date(), 'PPP p')}
             {dateFrom && dateTo && (
               <span className="ml-4">
-                Period: {format(dateFrom, 'PP')} - {format(dateTo, 'PP')}
+                Period: {formatRfqDate(dateFrom)} - {formatRfqDate(dateTo)}
               </span>
             )}
             <span className="ml-4 text-green-600">(Real-time data from database)</span>

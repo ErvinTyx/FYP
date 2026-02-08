@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Download, FileText, Upload, CheckCircle, XCircle, AlertCircle, Calendar, FileSignature, CalendarClock, Ban } from "lucide-react";
+import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
@@ -376,7 +377,7 @@ export function DepositDetails({
                   Payment Rejected
                 </p>
                 <p className="text-[14px] text-[#6B7280] mt-1">
-                  Rejected by {deposit.rejectedBy || "Admin"} on {new Date(deposit.rejectedAt || "").toLocaleDateString()}
+                  Rejected by {deposit.rejectedBy || "Admin"} on {formatRfqDate(deposit.rejectedAt)}
                 </p>
                 <div className="mt-3 p-3 bg-white rounded-lg border border-[#FEE2E2]">
                   <p className="text-[14px] text-[#111827]">
@@ -407,7 +408,7 @@ export function DepositDetails({
                       Payment Approved
                     </p>
                     <p className="text-[14px] text-[#6B7280] mt-1">
-                      Approved by {deposit.approvedBy || "Admin"} on {new Date(deposit.approvedAt || "").toLocaleDateString()}
+                      Approved by {deposit.approvedBy || "Admin"} on {formatRfqDate(deposit.approvedAt)}
                     </p>
                   </div>
                 </div>
@@ -513,7 +514,7 @@ export function DepositDetails({
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[#6B7280]" />
                 <p className={isOverdue ? "text-[#DC2626]" : "text-[#111827]"}>
-                  {new Date(deposit.dueDate).toLocaleDateString()}
+                  {formatRfqDate(deposit.dueDate)}
                   {isOverdue && " (Overdue)"}
                 </p>
               </div>
@@ -636,7 +637,7 @@ export function DepositDetails({
                   Cannot Re-Upload After Due Date
                 </p>
                 <p className="text-[14px] text-[#991B1B] mt-2">
-                  This deposit can no longer be re-submitted after the due date ({new Date(deposit.dueDate).toLocaleDateString()}).
+                  This deposit can no longer be re-submitted after the due date ({formatRfqDate(deposit.dueDate)}).
                 </p>
                 <p className="text-[14px] text-[#6B7280] mt-2">
                   Please contact the admin or finance team for assistance.
@@ -805,7 +806,7 @@ export function DepositDetails({
             <p><strong>Deposit:</strong> {displayDepositId}</p>
             <p><strong>Customer:</strong> {displayCustomerName}</p>
             <p><strong>Amount:</strong> RM{deposit.depositAmount.toLocaleString()}</p>
-            <p><strong>Original Due Date:</strong> {new Date(deposit.dueDate).toLocaleDateString()}</p>
+            <p><strong>Original Due Date:</strong> {formatRfqDate(deposit.dueDate)}</p>
           </div>
           <DialogFooter>
             <Button 

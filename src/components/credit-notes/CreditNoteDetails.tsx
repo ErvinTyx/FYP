@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { ArrowLeft, Download, CheckCircle, XCircle, FileText, Image as ImageIcon, Printer } from "lucide-react";
+import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -78,7 +79,7 @@ export function CreditNoteDetails({
               <StatusBadge status={creditNote.status} />
             </div>
             <p className="text-[#374151]">
-              Created on {new Date(creditNote.createdAt).toLocaleDateString()}
+              Created on {formatRfqDate(creditNote.createdAt)}
             </p>
           </div>
         </div>
@@ -148,7 +149,7 @@ export function CreditNoteDetails({
                   Rejected by {creditNote.rejectedBy || "Unknown"}
                 </p>
                 <p className="text-[14px] text-[#6B7280] mt-1">
-                  {new Date(creditNote.rejectedAt || "").toLocaleDateString()}
+                  {formatRfqDate(creditNote.rejectedAt)}
                 </p>
                 <div className="mt-3 p-3 bg-white rounded-lg border border-[#FEE2E2]">
                   <p className="text-[14px] text-[#374151]">
@@ -209,7 +210,7 @@ export function CreditNoteDetails({
             <div>
               <p className="text-[14px] text-[#6B7280]">Date</p>
               <p className="text-[#111827]">
-                {new Date(creditNote.date).toLocaleDateString()}
+                {formatRfqDate(creditNote.date)}
               </p>
             </div>
             <div>

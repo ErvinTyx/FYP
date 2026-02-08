@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Deposit } from '../../types/deposit';
 import { Badge } from '../ui/badge';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 interface DepositReceiptPrintProps {
   deposit: Deposit;
@@ -56,7 +57,7 @@ export function DepositReceiptPrint({ deposit, onBack }: DepositReceiptPrintProp
                 <h2 className="text-[#231F20] mb-4">DEPOSIT RECEIPT</h2>
                 <div className="text-sm space-y-1">
                   <p><strong>Receipt No:</strong> {deposit.depositReceipt?.receiptNumber || 'RCP-' + deposit.depositId}</p>
-                  <p><strong>Receipt Date:</strong> {deposit.depositReceipt?.receiptDate ? new Date(deposit.depositReceipt.receiptDate).toLocaleDateString() : new Date().toLocaleDateString()}</p>
+                  <p><strong>Receipt Date:</strong> {deposit.depositReceipt?.receiptDate ? formatRfqDate(deposit.depositReceipt.receiptDate) : formatRfqDate(new Date())}</p>
                   <p><strong>Invoice No:</strong> {deposit.invoiceNo}</p>
                 </div>
               </div>
@@ -138,7 +139,7 @@ export function DepositReceiptPrint({ deposit, onBack }: DepositReceiptPrintProp
                 <div>
                   <p className="text-sm text-gray-600">Approved On:</p>
                   <p className="text-sm text-[#231F20] mt-1">
-                    {new Date(deposit.approvedAt).toLocaleDateString()}
+                    {formatRfqDate(deposit.approvedAt)}
                   </p>
                 </div>
               )}
@@ -146,7 +147,7 @@ export function DepositReceiptPrint({ deposit, onBack }: DepositReceiptPrintProp
                 <div>
                   <p className="text-sm text-gray-600">Payment Submitted:</p>
                   <p className="text-sm text-[#231F20] mt-1">
-                    {new Date(deposit.paymentSubmittedAt).toLocaleDateString()}
+                    {formatRfqDate(deposit.paymentSubmittedAt)}
                   </p>
                 </div>
               )}

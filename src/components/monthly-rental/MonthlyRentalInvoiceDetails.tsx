@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Upload, Check, X, FileText, AlertCircle, Calendar, Info, ExternalLink, Loader2, Printer, Download } from 'lucide-react';
+import { formatRfqDate } from '../../lib/rfqDate';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -252,7 +253,7 @@ export function MonthlyRentalInvoiceDetails({
               <div className="flex-1">
                 <p className="text-orange-900 font-semibold">Payment Overdue - {monthsLate} {monthsLate === 1 ? 'Month' : 'Months'} Late</p>
                 <p className="text-sm text-orange-700 mt-2">
-                  This invoice was due on <span className="font-medium">{new Date(invoice.dueDate).toLocaleDateString()}</span> and is now <span className="font-semibold">{monthsLate} {monthsLate === 1 ? 'month' : 'months'}</span> overdue.
+                  This invoice was due on <span className="font-medium">{formatRfqDate(invoice.dueDate)}</span> and is now <span className="font-semibold">{monthsLate} {monthsLate === 1 ? 'month' : 'months'}</span> overdue.
                 </p>
                 
                 {/* Overdue Calculation Breakdown */}
@@ -468,14 +469,14 @@ export function MonthlyRentalInvoiceDetails({
             <div>
               <p className="text-sm text-gray-600">Period Dates</p>
               <p className="text-[#231F20]">
-                {new Date(invoice.billingStartDate).toLocaleDateString()} - {new Date(invoice.billingEndDate).toLocaleDateString()}
+                {formatRfqDate(invoice.billingStartDate)} - {formatRfqDate(invoice.billingEndDate)}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-600">Due Date</p>
               <p className="text-[#231F20] flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-gray-400" />
-                {new Date(invoice.dueDate).toLocaleDateString()}
+                {formatRfqDate(invoice.dueDate)}
                 {!isBeforeDueDate && invoice.status !== 'Paid' && (
                   <Badge variant="destructive" className="ml-2">Past Due</Badge>
                 )}
@@ -821,7 +822,7 @@ export function MonthlyRentalInvoiceDetails({
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <p><span className="text-[#6B7280]">Customer:</span> {invoice.customerName}</p>
-              <p><span className="text-[#6B7280]">Due Date:</span> {new Date(invoice.dueDate).toLocaleDateString()}</p>
+              <p><span className="text-[#6B7280]">Due Date:</span> {formatRfqDate(invoice.dueDate)}</p>
               <p><span className="text-[#6B7280]">Status:</span> {invoice.status}</p>
               <p><span className="text-[#6B7280]">Total:</span> RM {invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</p>
             </div>
