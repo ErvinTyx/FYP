@@ -5,16 +5,16 @@
 
 */
 -- DropForeignKey
-ALTER TABLE `returnrequest` DROP FOREIGN KEY `ReturnRequest_rfqId_fkey`;
+ALTER TABLE `ReturnRequest` DROP FOREIGN KEY `ReturnRequest_rfqId_fkey`;
 
 -- DropIndex
-DROP INDEX `ReturnRequest_rfqId_fkey` ON `returnrequest`;
+DROP INDEX `ReturnRequest_rfqId_fkey` ON `ReturnRequest`;
 
 -- AlterTable
-ALTER TABLE `returninspection` ADD COLUMN `externalGoodsPhotos` JSON NULL;
+ALTER TABLE `ReturnInspection` ADD COLUMN `externalGoodsPhotos` JSON NULL;
 
 -- AlterTable
-ALTER TABLE `returnrequest` DROP COLUMN `rfqId`,
+ALTER TABLE `ReturnRequest` DROP COLUMN `rfqId`,
     ADD COLUMN `deliverySetId` VARCHAR(191) NULL;
 
 -- AddForeignKey
