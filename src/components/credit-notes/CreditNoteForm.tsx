@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Plus, Trash2, Save, Send, Search } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { ArrowLeft, Plus, Trash2, Send } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -43,7 +43,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     editingNote
       ? {
           customerName: editingNote.customerName ?? editingNote.customer,
-          customerEmail: editingNote.customerEmail ?? undefined,
+          customerEmail: editingNote.customerEmail ?? null,
           customerId: editingNote.customerId,
         }
       : null
@@ -68,6 +68,10 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
   const [depositAmount, setDepositAmount] = useState(0);
   const [monthlyInvoiceItems, setMonthlyInvoiceItems] = useState<Array<{ id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }>>([]);
   const [additionalChargeItems, setAdditionalChargeItems] = useState<Array<{ id: string; itemName: string; itemType: string; quantity: number; unitPrice: number; amount: number }>>([]);
+  
+  // Track if we're in initial edit loading mode - when true, skip overwriting items and source from API
+  const isInitialEditLoadRef = useRef(!!editingNote && editingNote.items && editingNote.items.length > 0);
+  const skipSourceResetRef = useRef(!!editingNote && !!editingNote.sourceId);
 
   const fetchCustomers = useCallback(async (q: string) => {
     if (q.length < 2) {
@@ -88,15 +92,27 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
   }, []);
 
   useEffect(() => {
+    // Don't search if a customer is already selected and search matches the selected customer
+    if (selectedCustomer && customerSearch === selectedCustomer.customerName) {
+      setCustomerResults([]);
+      return;
+    }
+    // Clear selected customer if user types something different (and it's not just whitespace/editing)
+    if (selectedCustomer && customerSearch !== selectedCustomer.customerName && customerSearch.length >= 2) {
+      setSelectedCustomer(null);
+    }
     const t = setTimeout(() => fetchCustomers(customerSearch), 300);
     return () => clearTimeout(t);
-  }, [customerSearch, fetchCustomers]);
+  }, [customerSearch, fetchCustomers, selectedCustomer]);
 
   useEffect(() => {
     if (!selectedCustomer) {
       setInvoicesList([]);
-      setSourceId("");
-      setOriginalInvoice("");
+      // Only reset sourceId/originalInvoice if not in initial edit load
+      if (!skipSourceResetRef.current) {
+        setSourceId("");
+        setOriginalInvoice("");
+      }
       setMonthlyInvoiceItems([]);
       setAdditionalChargeItems([]);
       setDepositAmount(0);
@@ -107,21 +123,41 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     }
     const name = selectedCustomer.customerName;
     const email = selectedCustomer.customerEmail ?? "";
+    // Capture existing values before they might get reset
+    const existingSourceId = sourceId;
+    const existingOriginalInvoice = originalInvoice;
+    
     if (invoiceType === "deposit") {
       fetch(`/api/deposit?customerName=${encodeURIComponent(name)}`)
         .then((r) => r.json())
         .then((json) => {
           if (json.success && json.deposits) {
-            setInvoicesList(
-              json.deposits.map((d: { id: string; depositNumber: string; depositAmount: number }) => ({
-                id: d.id,
-                label: d.depositNumber,
-                amount: d.depositAmount,
-              }))
-            );
-          } else setInvoicesList([]);
+            const list = json.deposits.map((d: { id: string; depositNumber: string; depositAmount: number }) => ({
+              id: d.id,
+              label: d.depositNumber,
+              amount: d.depositAmount,
+            }));
+            // If editing and existing sourceId is not in the list, add it
+            if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice && !list.find((inv: { id: string }) => inv.id === existingSourceId)) {
+              list.unshift({ id: existingSourceId, label: existingOriginalInvoice, amount: 0 });
+            }
+            setInvoicesList(list);
+          } else {
+            // If editing and we have existing values, add them to empty list
+            if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice) {
+              setInvoicesList([{ id: existingSourceId, label: existingOriginalInvoice, amount: 0 }]);
+            } else {
+              setInvoicesList([]);
+            }
+          }
         })
-        .catch(() => setInvoicesList([]));
+        .catch(() => {
+          if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice) {
+            setInvoicesList([{ id: existingSourceId, label: existingOriginalInvoice, amount: 0 }]);
+          } else {
+            setInvoicesList([]);
+          }
+        });
     } else if (invoiceType === "monthlyRental") {
       let url = `/api/monthly-rental?customerName=${encodeURIComponent(name)}`;
       if (email) url += `&customerEmail=${encodeURIComponent(email)}`;
@@ -129,55 +165,103 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
         .then((r) => r.json())
         .then((json) => {
           if (json.success && json.invoices) {
-            setInvoicesList(
-              json.invoices.map((inv: { id: string; invoiceNumber: string; totalAmount: number }) => ({
-                id: inv.id,
-                label: inv.invoiceNumber,
-                amount: inv.totalAmount,
-              }))
-            );
-          } else setInvoicesList([]);
+            const list = json.invoices.map((inv: { id: string; invoiceNumber: string; totalAmount: number }) => ({
+              id: inv.id,
+              label: inv.invoiceNumber,
+              amount: inv.totalAmount,
+            }));
+            // If editing and existing sourceId is not in the list, add it
+            if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice && !list.find((inv: { id: string }) => inv.id === existingSourceId)) {
+              list.unshift({ id: existingSourceId, label: existingOriginalInvoice, amount: 0 });
+            }
+            setInvoicesList(list);
+          } else {
+            // If editing and we have existing values, add them to empty list
+            if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice) {
+              setInvoicesList([{ id: existingSourceId, label: existingOriginalInvoice, amount: 0 }]);
+            } else {
+              setInvoicesList([]);
+            }
+          }
         })
-        .catch(() => setInvoicesList([]));
+        .catch(() => {
+          if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice) {
+            setInvoicesList([{ id: existingSourceId, label: existingOriginalInvoice, amount: 0 }]);
+          } else {
+            setInvoicesList([]);
+          }
+        });
     } else {
       fetch(`/api/additional-charges?customerName=${encodeURIComponent(name)}`)
         .then((r) => r.json())
         .then((json) => {
           if (json.success && json.data) {
-            setInvoicesList(
-              json.data.map((c: { id: string; invoiceNo: string; totalCharges: number }) => ({
-                id: c.id,
-                label: c.invoiceNo,
-                amount: c.totalCharges,
-              }))
-            );
-          } else setInvoicesList([]);
+            const list = json.data.map((c: { id: string; invoiceNo: string; totalCharges: number }) => ({
+              id: c.id,
+              label: c.invoiceNo,
+              amount: c.totalCharges,
+            }));
+            // If editing and existing sourceId is not in the list, add it
+            if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice && !list.find((inv: { id: string }) => inv.id === existingSourceId)) {
+              list.unshift({ id: existingSourceId, label: existingOriginalInvoice, amount: 0 });
+            }
+            setInvoicesList(list);
+          } else {
+            // If editing and we have existing values, add them to empty list
+            if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice) {
+              setInvoicesList([{ id: existingSourceId, label: existingOriginalInvoice, amount: 0 }]);
+            } else {
+              setInvoicesList([]);
+            }
+          }
         })
-        .catch(() => setInvoicesList([]));
+        .catch(() => {
+          if (skipSourceResetRef.current && existingSourceId && existingOriginalInvoice) {
+            setInvoicesList([{ id: existingSourceId, label: existingOriginalInvoice, amount: 0 }]);
+          } else {
+            setInvoicesList([]);
+          }
+        });
     }
-    setSourceId("");
-    setOriginalInvoice("");
+    // Skip resetting source when loading a saved draft for the first time
+    if (skipSourceResetRef.current) {
+      skipSourceResetRef.current = false;
+    } else {
+      setSourceId("");
+      setOriginalInvoice("");
+    }
   }, [selectedCustomer, invoiceType]);
 
   useEffect(() => {
     if (!sourceId || !invoiceType) return;
+    
+    // Check if we're in initial edit loading mode (editing a saved draft)
+    // If so, skip overwriting items but still fetch metadata, then clear the flag
+    const skipItemsOverwrite = isInitialEditLoadRef.current;
+    if (skipItemsOverwrite) {
+      isInitialEditLoadRef.current = false;
+    }
+    
     if (invoiceType === "deposit") {
       fetch(`/api/deposit?id=${encodeURIComponent(sourceId)}`)
         .then((r) => r.json())
         .then((json) => {
           if (json.success && json.deposit) {
             setDepositAmount(Number(json.deposit.depositAmount) || 0);
-            setItems([
-              {
-                id: "1",
-                description: "Reduction of deposit price",
-                quantity: 1,
-                previousPrice: Number(json.deposit.depositAmount) || 0,
-                currentPrice: 0,
-                unitPrice: 0,
-                amount: 0,
-              },
-            ]);
+            // Only set items if not editing a saved draft
+            if (!skipItemsOverwrite) {
+              setItems([
+                {
+                  id: "1",
+                  description: "Reduction of deposit price",
+                  quantity: 1,
+                  previousPrice: Number(json.deposit.depositAmount) || 0,
+                  currentPrice: 0,
+                  unitPrice: 0,
+                  amount: 0,
+                },
+              ]);
+            }
           }
         })
         .catch(() => {});
@@ -197,18 +281,21 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
               })
             );
             setMonthlyInvoiceItems(invItems);
-            setItems(
-              invItems.map((invItem: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }) => ({
-                id: invItem.id,
-                description: invItem.scaffoldingItemName,
-                quantity: invItem.quantityBilled,
-                previousPrice: invItem.unitPrice,
-                currentPrice: invItem.unitPrice,
-                unitPrice: invItem.unitPrice,
-                amount: invItem.lineTotal ?? invItem.quantityBilled * invItem.unitPrice * (invItem.daysCharged || 1),
-                daysCharged: invItem.daysCharged,
-              }))
-            );
+            // Only set items if not editing a saved draft
+            if (!skipItemsOverwrite) {
+              setItems(
+                invItems.map((invItem: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }) => ({
+                  id: invItem.id,
+                  description: invItem.scaffoldingItemName,
+                  quantity: invItem.quantityBilled,
+                  previousPrice: invItem.unitPrice,
+                  currentPrice: invItem.unitPrice,
+                  unitPrice: invItem.unitPrice,
+                  amount: invItem.lineTotal ?? invItem.quantityBilled * invItem.unitPrice * (invItem.daysCharged || 1),
+                  daysCharged: invItem.daysCharged,
+                }))
+              );
+            }
           }
         })
         .catch(() => {});
@@ -229,17 +316,20 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
               })
             );
             setAdditionalChargeItems(chargeItems);
-            setItems(
-              chargeItems.map((ci: { id: string; itemName: string; quantity: number; unitPrice: number; amount: number }) => ({
-                id: ci.id,
-                description: ci.itemName,
-                quantity: ci.quantity,
-                previousPrice: ci.unitPrice,
-                currentPrice: ci.unitPrice,
-                unitPrice: ci.unitPrice,
-                amount: ci.amount,
-              }))
-            );
+            // Only set items if not editing a saved draft
+            if (!skipItemsOverwrite) {
+              setItems(
+                chargeItems.map((ci: { id: string; itemName: string; quantity: number; unitPrice: number; amount: number }) => ({
+                  id: ci.id,
+                  description: ci.itemName,
+                  quantity: ci.quantity,
+                  previousPrice: ci.unitPrice,
+                  currentPrice: ci.unitPrice,
+                  unitPrice: ci.unitPrice,
+                  amount: ci.amount,
+                }))
+              );
+            }
           }
         })
         .catch(() => {});
@@ -345,7 +435,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     return results;
   };
 
-  const buildPayload = (status: "Draft" | "Pending Approval") => ({
+  const buildPayload = () => ({
     customerName: selectedCustomer?.customerName ?? "",
     customerId: selectedCustomer?.customerId ?? "",
     invoiceType,
@@ -354,7 +444,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     reason,
     reasonDescription: reasonDescription || undefined,
     date,
-    status,
+    status: "Pending Approval",
     items: items.map((i) => ({
       description: i.description,
       quantity: i.quantity,
@@ -387,44 +477,12 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     return true;
   };
 
-  const handleSaveDraft = async () => {
-    if (!validate(false)) return;
-    setSaving(true);
-    try {
-      const attachmentList = await uploadAttachments();
-      const payload = { ...buildPayload("Draft"), attachments: attachmentList };
-      const url = editingNote?.id ? `/api/credit-notes/${editingNote.id}` : "/api/credit-notes";
-      const method = editingNote?.id ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (!json.success) {
-        toast.error(json.message || "Failed to save draft");
-        return;
-      }
-      const data = json.data;
-      const note: Partial<CreditNote> = {
-        ...data,
-        customer: data.customerName ?? data.customer,
-      };
-      toast.success("Draft saved");
-      onSave(note, true);
-    } catch (e) {
-      toast.error("Failed to save draft");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleSubmit = async () => {
     if (!validate(true)) return;
     setSaving(true);
     try {
       const attachmentList = await uploadAttachments();
-      const payload = { ...buildPayload("Pending Approval"), attachments: attachmentList };
+      const payload = { ...buildPayload(), attachments: attachmentList };
       const url = editingNote?.id ? `/api/credit-notes/${editingNote.id}` : "/api/credit-notes";
       const method = editingNote?.id ? "PUT" : "POST";
       const res = await fetch(url, {
@@ -478,12 +536,12 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
               Search customer (name or email) <span className="text-[#DC2626]">*</span>
             </label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
               <Input
                 value={customerSearch}
                 onChange={(e) => setCustomerSearch(e.target.value)}
                 placeholder="Type to search..."
-                className="pl-9 h-10 bg-white border-[#D1D5DB] rounded-md"
+                className="h-10 bg-white border-[#D1D5DB] rounded-md"
+                autoComplete="off"
               />
               {customerResults.length > 0 && (
                 <ul className="absolute z-10 mt-1 w-full bg-white border border-[#E5E7EB] rounded-md shadow-lg max-h-48 overflow-auto">
@@ -699,10 +757,6 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       </Card>
 
       <div className="flex justify-end gap-3 pb-6">
-        <Button variant="outline" onClick={handleSaveDraft} className="h-10 px-6 rounded-lg" disabled={saving}>
-          <Save className="mr-2 h-4 w-4" />
-          Save as draft
-        </Button>
         <Button onClick={handleSubmit} className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg" disabled={saving}>
           <Send className="mr-2 h-4 w-4" />
           Submit for approval

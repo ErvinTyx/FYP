@@ -120,28 +120,10 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
     setCurrentView("details");
   };
 
-  const handleEdit = (id: string) => {
-    setSelectedNoteId(id);
-    setCurrentView("edit");
-  };
-
-  const handleDelete = (id: string) => {
-    const note = creditNotes.find((n) => n.id === id);
-    if (note && note.status === "Draft") {
-      setCreditNotes(creditNotes.filter((n) => n.id !== id));
-      toast.success("Credit note removed from list");
-    }
-  };
-
-  const handleSave = (creditNote: Partial<CreditNote>) => {
+  const handleSave = async (creditNote: Partial<CreditNote>) => {
     const full = mapApiToCreditNote(creditNote as Record<string, unknown>);
-    setCreditNotes((prev) => {
-      const idx = prev.findIndex((n) => n.id === full.id);
-      if (idx >= 0) return prev.map((n) => (n.id === full.id ? full : n));
-      return [full, ...prev];
-    });
     setSelectedNoteId(full.id);
-    fetchCreditNotes();
+    await fetchCreditNotes();
     setCurrentView("list");
   };
 
@@ -229,8 +211,6 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
           onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
           onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
           onView={handleView}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
         />
       )}
 
