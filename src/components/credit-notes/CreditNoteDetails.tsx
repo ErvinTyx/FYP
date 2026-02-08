@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Download, CheckCircle, XCircle, FileText, Image as ImageIcon, Printer } from "lucide-react";
+import { ArrowLeft, Download, CheckCircle, XCircle, FileText, Printer } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -79,27 +79,9 @@ export function CreditNoteDetails({
               <StatusBadge status={creditNote.status} />
             </div>
             <p className="text-[#374151]">
-              Created on {formatRfqDate(creditNote.createdAt)}
+              Last updated: {new Date(creditNote.updatedAt || creditNote.createdAt).toLocaleString()}
             </p>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}
-            className="h-10 px-6 rounded-lg"
-          >
-            <FileText className="mr-2 h-4 w-4" />
-            View Document
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}
-            className="h-10 px-6 rounded-lg"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Download Receipt
-          </Button>
         </div>
       </div>
 
@@ -294,29 +276,48 @@ export function CreditNoteDetails({
             <CardTitle className="text-[18px]">Supporting Documents</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
               {creditNote.attachments.map((attachment) => (
-                <Card key={attachment.id} className="border-[#E5E7EB]">
+                <Card key={attachment.id} className="border-[#E5E7EB] bg-[#F9FAFB]">
                   <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0">
-                        {attachment.fileName.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                          <ImageIcon className="h-8 w-8 text-[#F15929]" />
-                        ) : (
-                          <FileText className="h-8 w-8 text-[#6B7280]" />
-                        )}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-10 w-10 text-[#3B82F6]" />
+                        <div>
+                          <p className="text-[14px] text-[#111827]">
+                            {attachment.fileName}
+                          </p>
+                          <p className="text-[12px] text-[#6B7280]">
+                            {(attachment.fileSize / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[14px] text-[#111827] truncate">
-                          {attachment.fileName}
-                        </p>
-                        <p className="text-[12px] text-[#6B7280]">
-                          {(attachment.fileSize / 1024).toFixed(1)} KB
-                        </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(attachment.fileUrl, '_blank')}
+                          className="h-9 px-4 rounded-lg"
+                        >
+                          View
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 px-4 rounded-lg"
+                          onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = attachment.fileUrl;
+                            link.download = attachment.fileName;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Download
+                        </Button>
                       </div>
-                      <Button variant="ghost" size="sm" className="flex-shrink-0">
-                        <Download className="h-4 w-4" />
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>

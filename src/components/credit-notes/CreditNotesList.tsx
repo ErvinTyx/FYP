@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Eye, Edit2, Trash2, MoreVertical } from "lucide-react";
+import { Search, Eye, MoreVertical } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -49,8 +49,6 @@ interface CreditNotesListProps {
   onPageSizeChange?: (pageSize: number) => void;
   onOrderByChange?: (orderBy: OrderBy) => void;
   onView: (id: string) => void;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
 }
 
 export function CreditNotesList({
@@ -63,8 +61,6 @@ export function CreditNotesList({
   onPageSizeChange,
   onOrderByChange,
   onView,
-  onEdit,
-  onDelete,
 }: CreditNotesListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -85,12 +81,10 @@ export function CreditNotesList({
     .filter((note) => note.status === "Pending Approval")
     .reduce((acc, note) => acc + note.amount, 0);
 
-  const draftCount = creditNotes.filter((note) => note.status === "Draft").length;
-
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-[#E5E7EB]">
           <CardHeader className="pb-2">
             <CardTitle className="text-[14px] text-[#6B7280]">Total Credit Notes</CardTitle>
@@ -118,16 +112,6 @@ export function CreditNotesList({
           <CardContent>
             <p className="text-[#111827]">RM{pendingAmount.toLocaleString()}</p>
             <p className="text-[12px] text-[#F59E0B] mt-1">Awaiting review</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#E5E7EB]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-[14px] text-[#6B7280]">Drafts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-[#111827]">{draftCount}</p>
-            <p className="text-[12px] text-[#6B7280] mt-1">Not submitted</p>
           </CardContent>
         </Card>
       </div>
@@ -252,21 +236,6 @@ export function CreditNotesList({
                             <Eye className="h-4 w-4 mr-2" />
                             View
                           </DropdownMenuItem>
-                          {note.status === "Draft" && (
-                            <>
-                              <DropdownMenuItem onClick={() => onEdit(note.id)}>
-                                <Edit2 className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => onDelete(note.id)}
-                                className="text-[#DC2626] focus:text-[#DC2626]"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </>
-                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
