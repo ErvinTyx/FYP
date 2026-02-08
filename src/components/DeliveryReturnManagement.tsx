@@ -1636,7 +1636,7 @@ export default function DeliveryReturnManagement({
       const allDOGenerated = activeSets.every(s => s.status === 'DO Generated');
       const hasDO = activeSets.some(s => s.doNumber);
       const allAdditionalChargesApproved = activeSets.every(s => 
-        s.additionalChargeStatus === 'approved' || !s.additionalChargeStatus
+        s.additionalChargeStatus === 'paid' || !s.additionalChargeStatus
       );
 
       if (allPending) {
@@ -1740,7 +1740,7 @@ export default function DeliveryReturnManagement({
         };
       case 'Agreed':
         // Self-return has no charge — immediately ready for processing
-        if (request.collectionMethod === 'self-return' || request.additionalChargeStatus === 'approved') {
+        if (request.collectionMethod === 'self-return' || request.additionalChargeStatus === 'paid') {
           return { label: 'Ready for Processing', disabled: true, color: 'green' };
         }
         // Transport with charge not yet approved
