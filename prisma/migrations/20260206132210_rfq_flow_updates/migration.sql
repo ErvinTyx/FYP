@@ -10,10 +10,10 @@
 
 */
 -- AlterTable
-ALTER TABLE `rfq` DROP COLUMN `requiredDate`;
+ALTER TABLE `rFQ` DROP COLUMN `requiredDate`;
 
 -- AlterTable
-ALTER TABLE `rfqitem` DROP COLUMN `deliverDate`,
+ALTER TABLE `rFQItem` DROP COLUMN `deliverDate`,
     DROP COLUMN `durationDays`,
     DROP COLUMN `returnDate`,
     ADD COLUMN `rentalMonths` INTEGER NOT NULL DEFAULT 1,
@@ -24,4 +24,4 @@ CREATE INDEX `rFQItem_scaffoldingItemId_idx` ON `rFQItem`(`scaffoldingItemId`);
 
 -- RedefineIndex
 CREATE INDEX `rFQItem_rfqId_idx` ON `rFQItem`(`rfqId`);
-DROP INDEX `rFQItem_rfqId_fkey` ON `rfqitem`;
+DROP INDEX `rFQItem_rfqId_fkey` ON `rFQItem`;
