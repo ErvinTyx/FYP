@@ -1,4 +1,5 @@
 import { Eye, FileText, Download, MoreVertical } from "lucide-react";
+import { formatRfqDate } from "../../lib/rfqDate";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import {
   Table,
@@ -157,7 +158,7 @@ export function TransactionLedger({
                 transactions.map((transaction, index) => (
                   <TableRow key={transaction.id} className="hover:bg-[#F9FAFB]">
                     <TableCell className="text-[#374151] whitespace-nowrap">
-                      {new Date(transaction.date).toLocaleDateString()}
+                      {formatRfqDate(transaction.date)}
                     </TableCell>
                     <TableCell>
                       <TransactionTypeBadge type={transaction.type} />

@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from '../ui/popover';
 import { NotificationDetails } from './NotificationDetails';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 export function NotificationCenter() {
   const [notifications, setNotifications] = useState<RFQNotification[]>([]);
@@ -89,7 +90,7 @@ export function NotificationCenter() {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+    return formatRfqDate(date);
   };
 
   return (

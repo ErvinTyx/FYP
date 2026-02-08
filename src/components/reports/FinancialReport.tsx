@@ -45,6 +45,7 @@ import {
 import type { FinancialResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateFinancialExcel, downloadExcel } from '@/lib/report-excel-generator';
+import { formatRfqDate } from '@/lib/rfqDate';
 
 interface ReportFilter {
   reportType: string;
@@ -706,7 +707,7 @@ export function FinancialReport({ filters }: { filters: ReportFilter }) {
                         </TableCell>
                         <TableCell className="text-gray-600">
                           {customer.lastPaymentDate
-                            ? new Date(customer.lastPaymentDate).toLocaleDateString()
+                            ? formatRfqDate(customer.lastPaymentDate)
                             : '-'}
                         </TableCell>
                         <TableCell className="text-right text-[#231F20]">

@@ -22,6 +22,7 @@ import {
   Loader2,
   ExternalLink
 } from "lucide-react";
+import { formatRfqDate } from "../lib/rfqDate";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
@@ -226,7 +227,7 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
         status: mapDbStatusToUi(user.status),
         // Role may be undefined for pending internal staff (they need role assignment on approval)
         role: getStaffRole(user.roles || []),
-        lastLogin: user.updatedAt ? new Date(user.updatedAt).toLocaleDateString() : 'Never',
+        lastLogin: user.updatedAt ? formatRfqDate(user.updatedAt) : 'Never',
         tin: user.tin,
         idType: user.idType,
         idNumber: user.idNumber,

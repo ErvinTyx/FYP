@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Printer,
 } from "lucide-react";
+import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import {
@@ -291,14 +292,14 @@ export function AdditionalChargesDetail({
               <p className="text-sm text-[#6B7280]">Returned Date</p>
               <p className="text-[#231F20]">
                 {charge.returnedDate
-                  ? new Date(charge.returnedDate).toLocaleDateString()
+                  ? formatRfqDate(charge.returnedDate)
                   : "—"}
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-sm text-[#6B7280]">Due Date</p>
               <p className={isDueDatePassed() ? "text-[#DC2626]" : "text-[#231F20]"}>
-                {new Date(charge.dueDate).toLocaleDateString()}
+                {formatRfqDate(charge.dueDate)}
                 {isOverdue && " (Overdue)"}
               </p>
             </div>
@@ -448,7 +449,7 @@ export function AdditionalChargesDetail({
                   </p>
                   {charge.approvalDate && (
                     <p className="text-sm text-[#065F46]">
-                      Approved on: {new Date(charge.approvalDate).toLocaleDateString()}
+                      Approved on: {formatRfqDate(charge.approvalDate)}
                     </p>
                   )}
                 </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Search, Eye, Upload, CheckCircle, XCircle, MoreVertical } from "lucide-react";
+import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -381,7 +382,7 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
                           <TableCell>
                             <div className="flex flex-col gap-1">
                               <span className="text-[#374151]">
-                                {new Date(charge.dueDate).toLocaleDateString()}
+                                {formatRfqDate(charge.dueDate)}
                               </span>
                               {isOverdue && (
                                 <span className="text-xs text-[#DC2626]">Overdue</span>

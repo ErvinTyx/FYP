@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Search, Eye, Edit2, Trash2, MoreVertical } from "lucide-react";
+import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -230,7 +231,7 @@ export function CreditNotesList({
                       </Badge>
                     </TableCell>
                     <TableCell className="text-[#374151]">
-                      {new Date(note.date).toLocaleDateString()}
+                      {formatRfqDate(note.date)}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={note.status} />

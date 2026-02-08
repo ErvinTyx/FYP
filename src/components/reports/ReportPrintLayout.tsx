@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { X, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { DepositRecord, MonthlyBillingRecord, CreditNoteRecord } from '../../types/report';
+import { formatRfqDate } from '../../lib/rfqDate';
 
 type ReportType = 'all' | 'deposit' | 'monthly-billing' | 'credit-note';
 type StatusFilter = 'all' | 'paid' | 'pending' | 'overdue' | 'rejected' | 'pending-approval';
@@ -66,7 +67,7 @@ export function ReportPrintLayout({
                 depositAmount: customer.depositsPaid + customer.depositsOutstanding,
                 status: customer.depositsOutstanding > 0 ? 'Pending Approval' : 'Paid',
                 proofUploaded: customer.depositsPaid > 0,
-                date: customer.lastPaymentDate ? new Date(customer.lastPaymentDate).toLocaleDateString() : '-'
+                date: customer.lastPaymentDate ? formatRfqDate(customer.lastPaymentDate) : '-'
               });
             }
           });
@@ -200,7 +201,7 @@ export function ReportPrintLayout({
               </p>
               {dateFrom && dateTo && (
                 <p className="text-sm text-gray-600">
-                  Period: {format(dateFrom, 'PP')} - {format(dateTo, 'PP')}
+                  Period: {formatRfqDate(dateFrom)} - {formatRfqDate(dateTo)}
                 </p>
               )}
               <p className="text-xs text-green-600 mt-1">

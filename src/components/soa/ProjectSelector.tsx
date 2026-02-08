@@ -1,4 +1,5 @@
 import { Search, Calendar, User, Briefcase, Loader2 } from "lucide-react";
+import { formatRfqDate } from "../../lib/rfqDate";
 import { Card, CardContent } from "../ui/card";
 import {
   Select,
@@ -124,11 +125,11 @@ export function ProjectSelector({
                 <div>
                   <p className="text-xs text-[#6B7280]">Project Period</p>
                   <p className="text-[#231F20]">
-                    {new Date(selectedProject.startDate).toLocaleDateString()}
+                    {formatRfqDate(selectedProject.startDate)}
                   </p>
                   <p className="text-xs text-[#6B7280] mt-0.5">
                     {selectedProject.endDate
-                      ? `End: ${new Date(selectedProject.endDate).toLocaleDateString()}`
+                      ? `End: ${formatRfqDate(selectedProject.endDate)}`
                       : "Ongoing"}
                   </p>
                 </div>

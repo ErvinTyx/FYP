@@ -4,6 +4,7 @@ import {
   Phone, Package, Truck, CheckCircle2, Download, Clock,
   FileSignature, Image as ImageIcon, Printer
 } from 'lucide-react';
+import { formatRfqDate } from '../../lib/rfqDate';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -135,7 +136,7 @@ export function DeliveryDetails({ delivery, onProcess, onBack }: DeliveryDetails
                 <div>
                   <p className="text-sm text-gray-500">Scheduled Date</p>
                   <p className="text-[#231F20]">
-                    {new Date(delivery.scheduledDate).toLocaleDateString()}
+                    {formatRfqDate(delivery.scheduledDate)}
                   </p>
                 </div>
               </div>

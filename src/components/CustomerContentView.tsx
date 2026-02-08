@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Search,
 } from "lucide-react";
+import { formatRfqDate } from "../lib/rfqDate";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -292,7 +293,7 @@ export function CustomerContentView() {
                     <p className="text-[#6B7280] text-sm">{announcement.content}</p>
                   </div>
                   <Badge variant="outline" className="shrink-0">
-                    {new Date(announcement.lastUpdated).toLocaleDateString()}
+                    {formatRfqDate(announcement.lastUpdated)}
                   </Badge>
                 </div>
               </div>
@@ -500,7 +501,7 @@ export function CustomerContentView() {
                   <div className="flex items-start justify-between gap-4">
                     <CardTitle className="text-[#111827]">{blog.title}</CardTitle>
                     <Badge variant="outline" className="shrink-0">
-                      {new Date(blog.lastUpdated).toLocaleDateString()}
+                      {formatRfqDate(blog.lastUpdated)}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -526,7 +527,7 @@ export function CustomerContentView() {
               <CardHeader>
                 <CardTitle>{term.title}</CardTitle>
                 <CardDescription>
-                  Last updated: {new Date(term.lastUpdated).toLocaleDateString()}
+                  Last updated: {formatRfqDate(term.lastUpdated)}
                 </CardDescription>
               </CardHeader>
               <CardContent>
