@@ -7,10 +7,10 @@ interface UploadPopModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpload: (file: File) => void;
-  chargeId: string;
+  invoiceNo: string;
 }
 
-export function UploadPopModal({ isOpen, onClose, onUpload, chargeId }: UploadPopModalProps) {
+export function UploadPopModal({ isOpen, onClose, onUpload, invoiceNo }: UploadPopModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -85,7 +85,7 @@ export function UploadPopModal({ isOpen, onClose, onUpload, chargeId }: UploadPo
         {/* Content */}
         <div className="p-6 space-y-4">
           <p className="text-sm text-[#6B7280]">
-            Upload proof of payment for Additional Charge {chargeId}
+            Upload proof of payment for Additional Charge <strong>{invoiceNo}</strong>
           </p>
 
           {/* File Upload Area */}

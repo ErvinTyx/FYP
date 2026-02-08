@@ -18,10 +18,10 @@ export function AdditionalChargeStatusBadge({ status, isOverdue }: AdditionalCha
       text: "text-[#1E40AF]",
       label: "Pending Approval",
     },
-    "Approved": {
+    "Paid": {
       bg: "bg-[#D1FAE5]",
       text: "text-[#065F46]",
-      label: "Approved",
+      label: "Paid",
     },
     "Rejected": {
       bg: "bg-[#FEE2E2]",

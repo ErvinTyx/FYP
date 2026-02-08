@@ -2,7 +2,7 @@
 export type AdditionalChargeStatus =
   | "Pending Payment"
   | "Pending Approval"
-  | "Approved"
+  | "Paid"
   | "Rejected";
 
 export type ItemType = "Missing" | "Damaged" | "Repair" | "Cleaning";
