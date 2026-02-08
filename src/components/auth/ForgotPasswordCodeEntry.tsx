@@ -179,7 +179,7 @@ export function ForgotPasswordCodeEntry({
               {otp.map((digit, index) => (
                 <Input
                   key={index}
-                  ref={(el) => (inputRefs.current[index] = el)}
+                  ref={(el) => { inputRefs.current[index] = el }}
                   type="text"
                   inputMode="numeric"
                   maxLength={1}

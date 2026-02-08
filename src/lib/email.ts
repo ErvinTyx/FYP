@@ -242,7 +242,7 @@ export async function sendPasswordResetEmail(
               </p>
               <div style="background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 16px; margin: 0 0 25px 0;">
                 <p style="color: #92400E; margin: 0; font-size: 14px;">
-                  <strong>⏰ This link expires in 1 hour.</strong><br>
+                  <strong>⏰ This link expires in 15 minutes.</strong><br>
                   If you didn't request a password reset, you can safely ignore this email.
                 </p>
               </div>
@@ -264,7 +264,7 @@ We received a request to reset your password. Visit the link below to create a n
 
 ${resetUrl}
 
-This link expires in 1 hour.
+This link expires in 15 minutes.
 
 If you didn't request a password reset, you can safely ignore this email.
     `.trim(),
