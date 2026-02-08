@@ -150,12 +150,14 @@ export default function App() {
   const prevStatusRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(false);
   const hasInitializedPageRef = useRef(false); // Track if we've set the initial page
+  const hasEverBeenAuthenticatedRef = useRef(false); // Track if user has ever been authenticated (for loading screen)
 
   // Detect session expiry (transition from authenticated to unauthenticated)
   useEffect(() => {
     // If currently authenticated, remember this
     if (status === "authenticated") {
       wasAuthenticatedRef.current = true;
+      hasEverBeenAuthenticatedRef.current = true;
     }
     
     // Detect session expiry: was authenticated before, now unauthenticated
@@ -314,8 +316,10 @@ export default function App() {
     setAuthScreen("portal-selector");
   };
 
-  // Show loading state while checking session
-  if (status === "loading") {
+  // Show loading state while checking session - but ONLY on initial page load
+  // During session refreshes (when user has been authenticated before), keep the dashboard mounted
+  // to prevent losing detail view state
+  if (status === "loading" && !hasEverBeenAuthenticatedRef.current) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#F15929] via-[#F15929] to-[#D14820]">
         <div className="flex flex-col items-center gap-4">
