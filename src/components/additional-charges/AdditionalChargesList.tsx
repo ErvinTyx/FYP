@@ -486,7 +486,7 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
               setSelectedCharge(null);
             }}
             onUpload={(file) => handlePopUploaded(selectedCharge.id, file)}
-            chargeId={selectedCharge.id}
+            invoiceNo={selectedCharge.invoiceNo}
           />
           <ApproveModal
             isOpen={approveModalOpen}
@@ -495,7 +495,7 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
               setSelectedCharge(null);
             }}
             onApprove={handleApproveConfirmed}
-            chargeId={selectedCharge.id}
+            invoiceNo={selectedCharge.invoiceNo}
           />
           <RejectModal
             isOpen={rejectModalOpen}
@@ -504,7 +504,7 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
               setSelectedCharge(null);
             }}
             onReject={handleRejectConfirmed}
-            chargeId={selectedCharge.id}
+            invoiceNo={selectedCharge.invoiceNo}
           />
         </>
       )}

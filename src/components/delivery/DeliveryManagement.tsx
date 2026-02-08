@@ -3,7 +3,7 @@ import {
   Truck, Package, CheckCircle2, Clock, AlertCircle, Plus, 
   Search, Filter, Eye, FileText, Download, ClipboardCheck,
   PackageCheck, MapPin, Calendar as CalendarIcon, User,
-  Warehouse, TrendingRight, MoreVertical, Edit, Loader2
+  Warehouse, MoreVertical, Edit, Loader2
 } from 'lucide-react';
 import { formatRfqDate } from '../../lib/rfqDate';
 import { Button } from '../ui/button';
@@ -597,11 +597,11 @@ export function DeliveryManagement() {
 
   const stats = {
     total: deliveries.length,
-    pending: deliveries.filter(d => d.status === 'pending' || d.status === 'packing_list_issued').length,
+    pending: deliveries.filter(d => d.status === 'Pending' || d.status === 'Packing List Issued').length,
     inProgress: deliveries.filter(d => 
-      d.status === 'stock_checked' || d.status === 'packing_loading' || d.status === 'in_transit' || d.status === 'ready_for_pickup'
+      d.status === 'Stock Checked' || d.status === 'Packing & Loading' || d.status === 'In Transit' || d.status === 'Ready for Pickup'
     ).length,
-    completed: deliveries.filter(d => d.status === 'completed').length,
+    completed: deliveries.filter(d => d.status === 'Completed').length,
   };
 
   if (viewMode === 'workflow') {

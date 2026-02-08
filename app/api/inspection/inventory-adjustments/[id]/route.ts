@@ -14,9 +14,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 /**
@@ -25,7 +25,7 @@ interface RouteParams {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id: adjustmentId } = await Promise.resolve(params);
+    const { id: adjustmentId } = await params;
 
     if (!adjustmentId || adjustmentId.trim() === '') {
       return NextResponse.json(
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id: adjustmentId } = await Promise.resolve(params);
+    const { id: adjustmentId } = await params;
     const body = await request.json();
 
     if (!adjustmentId || adjustmentId.trim() === '') {
@@ -150,7 +150,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id: adjustmentId } = await Promise.resolve(params);
+    const { id: adjustmentId } = await params;
 
     if (!adjustmentId || adjustmentId.trim() === '') {
       return NextResponse.json(

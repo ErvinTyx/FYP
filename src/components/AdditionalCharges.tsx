@@ -13,7 +13,7 @@ interface AdditionalChargesProps {
 const API_STATUS_TO_DISPLAY: Record<string, AdditionalCharge["status"]> = {
   pending_payment: "Pending Payment",
   pending_approval: "Pending Approval",
-  approved: "Approved",
+  paid: "Paid",
   rejected: "Rejected",
 };
 

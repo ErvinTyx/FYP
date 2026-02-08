@@ -18,7 +18,7 @@ const deliverySetItemSchema = z.object({
 
 const deliverySetSchema = z.object({
   setName: z.string().min(1, 'Set name is required'),
-  requiredDate: z.date({ required_error: 'Required date is required' }),
+  requiredDate: z.date(),
   items: z.array(deliverySetItemSchema).min(1, 'At least one item is required'),
 }).refine(
   (data) => data.items.some(item => item.scaffoldingItemId?.trim()),
@@ -27,7 +27,7 @@ const deliverySetSchema = z.object({
 
 const deliveryRequestSchema = z.object({
   agreementId: z.string().min(1, 'Please select a rental agreement'),
-  deliveryType: z.enum(['delivery', 'pickup'], { required_error: 'Please select a delivery type' }),
+  deliveryType: z.enum(['delivery', 'pickup']),
   sets: z.array(deliverySetSchema).min(1, 'At least one delivery set is required'),
 });
 
@@ -43,8 +43,8 @@ const returnRequestSchema = z.object({
   doNumber: z.string().min(1, 'Please select a delivery order'),
   deliverySetId: z.string().min(1, 'Please select a set'),
   setName: z.string().min(1, 'Please select a set to return'),
-  returnType: z.enum(['full', 'partial'], { required_error: 'Please select a return type' }),
-  collectionMethod: z.enum(['transport', 'self-return'], { required_error: 'Please select a collection method' }),
+  returnType: z.enum(['full', 'partial']),
+  collectionMethod: z.enum(['transport', 'self-return']),
   reason: z.string().min(1, 'Please enter a reason for return').max(500, 'Reason must be 500 characters or less'),
   items: z.array(returnItemSchema).min(1, 'At least one item is required'),
 }).refine(
@@ -76,7 +76,7 @@ interface ReturnFormErrors {
   collectionMethod?: string;
   reason?: string;
   items?: string;
-  itemErrors?: { [itemIndex: number]: { scaffoldingItemId?: string; quantity?: string } };
+  itemErrors?: { [key: string]: { scaffoldingItemId?: string; quantity?: string } };
   general?: string;
 }
 
@@ -930,10 +930,12 @@ export default function DeliveryReturnManagement({
     const returnedBySet: Record<string, Record<string, number>> = {};
     returnRequests.forEach(rr => {
       if (rr.deliverySetId) {
-        if (!returnedBySet[rr.deliverySetId]) returnedBySet[rr.deliverySetId] = {};
+        const setId = rr.deliverySetId;
+        if (!returnedBySet[setId]) returnedBySet[setId] = {};
         rr.items.forEach(ri => {
           if (ri.scaffoldingItemId) {
-            returnedBySet[rr.deliverySetId][ri.scaffoldingItemId] = (returnedBySet[rr.deliverySetId][ri.scaffoldingItemId] || 0) + ri.quantity;
+            const itemId = ri.scaffoldingItemId;
+            returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] || 0) + ri.quantity;
           }
         });
       }
@@ -1920,21 +1922,22 @@ export default function DeliveryReturnManagement({
                     
                     // Check if it's the quoted state with agree/disagree options
                     if ('agree' in nextAction && 'disagree' in nextAction) {
+                      const actionWithAgreeDisagree = nextAction as { agree: { label: string; action: () => void }; disagree: { label: string; action: () => void } };
                       return (
                         <>
                           <button
-                          onClick={nextAction.agree.action}
+                          onClick={actionWithAgreeDisagree.agree.action}
                           className="px-4 py-2 rounded-lg text-sm text-white"
                           style={{ backgroundColor: '#10b981' }}
                         >
-                          {nextAction.agree.label}
+                          {actionWithAgreeDisagree.agree.label}
                         </button>
                         <button
-                          onClick={nextAction.disagree.action}
+                          onClick={actionWithAgreeDisagree.disagree.action}
                           className="px-4 py-2 rounded-lg text-sm text-white"
                           style={{ backgroundColor: '#ef4444' }}
                         >
-                          {nextAction.disagree.label}
+                          {actionWithAgreeDisagree.disagree.label}
                         </button>
                       </>
                       );
@@ -2106,21 +2109,22 @@ export default function DeliveryReturnManagement({
                     
                     // Check if it's the quoted state with agree/disagree options
                     if ('agree' in nextAction && 'disagree' in nextAction) {
+                      const actionWithAgreeDisagree = nextAction as { agree: { label: string; action: () => void }; disagree: { label: string; action: () => void } };
                       return (
                         <>
                           <button
-                            onClick={nextAction.agree.action}
+                            onClick={actionWithAgreeDisagree.agree.action}
                             className="px-4 py-2 rounded-lg text-sm text-white"
                             style={{ backgroundColor: '#10b981' }}
                           >
-                            {nextAction.agree.label}
+                            {actionWithAgreeDisagree.agree.label}
                           </button>
                           <button
-                            onClick={nextAction.disagree.action}
+                            onClick={actionWithAgreeDisagree.disagree.action}
                             className="px-4 py-2 rounded-lg text-sm text-white"
                             style={{ backgroundColor: '#ef4444' }}
                           >
-                            {nextAction.disagree.label}
+                            {actionWithAgreeDisagree.disagree.label}
                           </button>
                         </>
                       );
@@ -2796,10 +2800,12 @@ export default function DeliveryReturnManagement({
                 const returnedBySet: Record<string, Record<string, number>> = {};
                 returnRequests.forEach(rr => {
                   if (rr.deliverySetId) {
-                    if (!returnedBySet[rr.deliverySetId]) returnedBySet[rr.deliverySetId] = {};
+                    const setId = rr.deliverySetId;
+                    if (!returnedBySet[setId]) returnedBySet[setId] = {};
                     rr.items.forEach(ri => {
                       if (ri.scaffoldingItemId) {
-                        returnedBySet[rr.deliverySetId][ri.scaffoldingItemId] = (returnedBySet[rr.deliverySetId][ri.scaffoldingItemId] || 0) + ri.quantity;
+                        const itemId = ri.scaffoldingItemId;
+                        returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] || 0) + ri.quantity;
                       }
                     });
                   }

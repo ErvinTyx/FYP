@@ -420,7 +420,7 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
                   outerRadius={90}
                   paddingAngle={5}
                   dataKey="value"
-                  label={({ name, value, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, value, percent }) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
                   labelLine={false}
                 >
                   {usageDistribution.map((entry, index) => (

@@ -6,7 +6,7 @@ const nextConfig = {
     // This helps with path alias resolution
   },
   // Webpack configuration for Prisma compatibility
-  // Note: We're using --webpack flag to force webpack instead of Turbopack
+  // Note: Use --webpack flag to force webpack instead of Turbopack
   // This avoids Prisma client junction point issues on Windows
   webpack: (config, { isServer }) => {
     if (isServer) {
@@ -14,6 +14,10 @@ const nextConfig = {
     }
     return config;
   },
+  // Turbopack configuration for Windows compatibility
+  // Empty config silences the error - Turbopack should handle Prisma on Windows better than webpack
+  // If you encounter issues with Prisma on Windows using Turbopack, switch back to --webpack flag
+  turbopack: {},
 };
 
 export default nextConfig;

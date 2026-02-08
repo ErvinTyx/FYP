@@ -80,8 +80,6 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
         return <Badge className="bg-red-600 hover:bg-red-700 text-white">Rejected</Badge>;
       case 'Overdue':
         return <Badge className="bg-orange-600 hover:bg-orange-700 text-white">Overdue</Badge>;
-      case 'Completed':
-        return <Badge className="bg-gray-600 hover:bg-gray-700 text-white">Completed</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
