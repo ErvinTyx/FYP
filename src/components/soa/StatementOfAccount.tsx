@@ -1,13 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { FileDown, Printer, FileText, Loader2 } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { FileDown, FileText, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { ProjectSelector } from "./ProjectSelector";
 import { FinancialSummaryCards } from "./FinancialSummaryCards";
 import { TransactionLedger } from "./TransactionLedger";
 import { Project, SOAData, Transaction, Customer, SOAEntityType } from "../../types/statementOfAccount";
 import { toast } from "sonner";
-import { generateSOAPdf } from "../../lib/soa-pdf";
-import { downloadPDF } from "../../lib/report-pdf-generator";
 
 const ENTITY_TYPE_TO_PAGE: Record<SOAEntityType, string> = {
   deposit: "manage-deposits",
@@ -36,7 +34,6 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
   const [soaOrderBy, setSoaOrderBy] = useState<OrderBy>("latest");
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingSOA, setLoadingSOA] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
 
   const fetchProjects = useCallback(async (search?: string) => {
     setLoadingProjects(true);
@@ -137,27 +134,68 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
     };
   }, [selectedProject, soaPage, soaPageSize, soaOrderBy]);
 
-  const handleExportPDF = () => {
+  const handleExportCSV = () => {
     if (!soaData) {
       toast.error("Please select a project and wait for data to load");
       return;
     }
     try {
-      const blob = generateSOAPdf(soaData);
-      const name = `Statement-of-Account-${soaData.project.projectName.replace(/[^a-zA-Z0-9]/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
-      downloadPDF(blob, name);
-      toast.success("PDF downloaded");
-    } catch {
-      toast.error("Failed to export PDF");
-    }
-  };
+      // Build CSV header
+      const headers = ["Date", "Transaction Type", "Reference", "Description", "Debit (RM)", "Credit (RM)", "Balance (RM)", "Status"];
+      
+      // Build CSV rows
+      const rows = soaData.transactions.map((tx) => [
+        tx.date,
+        tx.type,
+        tx.reference,
+        `"${tx.description.replace(/"/g, '""')}"`, // Escape quotes in description
+        tx.debit > 0 ? tx.debit.toFixed(2) : "",
+        tx.credit > 0 ? tx.credit.toFixed(2) : "",
+        tx.balance.toFixed(2),
+        tx.status,
+      ]);
 
-  const handlePrint = () => {
-    if (!soaData) {
-      toast.error("Please select a project first");
-      return;
+      // Add summary section
+      const summaryRows = [
+        [],
+        ["Summary"],
+        ["Total Deposit Collected", "", "", "", soaData.summary.totalDepositCollected.toFixed(2)],
+        ["Total Monthly Billing", "", "", "", soaData.summary.totalMonthlyBilling.toFixed(2)],
+        ["Total Penalty", "", "", "", soaData.summary.totalPenalty.toFixed(2)],
+        ["Total Additional Charges", "", "", "", soaData.summary.totalAdditionalCharges.toFixed(2)],
+        ["Total Paid", "", "", "", "", soaData.summary.totalPaid.toFixed(2)],
+        ["Final Balance", "", "", "", "", "", soaData.summary.finalBalance.toFixed(2)],
+      ];
+
+      // Combine all
+      const csvContent = [
+        [`Statement of Account - ${soaData.project.projectName}`],
+        [`Customer: ${soaData.project.customerName}`],
+        [`Period: ${soaData.project.startDate}${soaData.project.endDate ? ` - ${soaData.project.endDate}` : " (Ongoing)"}`],
+        [`Status: ${soaData.project.status}`],
+        [],
+        headers,
+        ...rows,
+        ...summaryRows,
+      ]
+        .map((row) => row.join(","))
+        .join("\n");
+
+      // Create and download the file
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Statement-of-Account-${soaData.project.projectName.replace(/[^a-zA-Z0-9]/g, "-")}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success("CSV downloaded");
+    } catch {
+      toast.error("Failed to export CSV");
     }
-    window.print();
   };
 
   const handleViewTransactionDetails = (transaction: Transaction) => {
@@ -166,8 +204,8 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header - hidden when printing */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 print:hidden">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1>Statement of Account (SOA)</h1>
           <p className="text-[#374151]">
@@ -176,27 +214,18 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={handleExportPDF}
+            onClick={handleExportCSV}
             disabled={!soaData}
             className="bg-[#F15929] hover:bg-[#D14721] text-white h-10 px-4 rounded-md"
           >
             <FileDown className="mr-2 h-4 w-4" />
-            Export as PDF
-          </Button>
-          <Button
-            onClick={handlePrint}
-            disabled={!soaData}
-            variant="outline"
-            className="h-10 px-4 border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB]"
-          >
-            <Printer className="mr-2 h-4 w-4" />
-            Print
+            Export as CSV
           </Button>
         </div>
       </div>
 
-      {/* Customer & Project Selector - hidden when printing */}
-      <div className="print:hidden">
+      {/* Customer & Project Selector */}
+      <div>
         <ProjectSelector
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -217,9 +246,9 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
         </div>
       )}
 
-      {/* Content - Printable SOA (project detail + all transactions) */}
+      {/* Content - SOA (project detail + all transactions) */}
       {soaData && !loadingSOA && (
-        <div ref={printRef} className="space-y-6">
+        <div className="space-y-6">
           {/* Project detail for print and screen */}
           <div className="p-4 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB]">
             <h2 className="text-lg font-semibold text-[#231F20] mb-2">Statement of Account</h2>
