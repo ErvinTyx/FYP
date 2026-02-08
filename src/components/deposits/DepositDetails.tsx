@@ -676,7 +676,7 @@ export function DepositDetails({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handlePreviewDocument(deposit.paymentProof!, "Payment Proof")}
+                      onClick={() => window.open(deposit.paymentProof!.fileUrl, '_blank')}
                       className="h-9 px-4 rounded-lg"
                     >
                       View
@@ -685,6 +685,14 @@ export function DepositDetails({
                       variant="outline"
                       size="sm"
                       className="h-9 px-4 rounded-lg"
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = deposit.paymentProof!.fileUrl;
+                        link.download = deposit.paymentProof!.fileName;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
                     >
                       <Download className="h-4 w-4 mr-2" />
                       Download

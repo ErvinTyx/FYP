@@ -127,9 +127,7 @@ export function TransactionLedger({
               )}
             </div>
           )}
-          <div className="text-xs text-[#6B7280] bg-[#F9FAFB] px-3 py-1.5 rounded-md border border-[#E5E7EB]">
-            <strong>Formula:</strong> Balance = Previous Balance + Debit - Credit
-          </div>
+          
         </div>
       </CardHeader>
       <CardContent>
@@ -199,14 +197,18 @@ export function TransactionLedger({
                             <Eye className="mr-2 h-4 w-4" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleViewDocument(transaction)}>
-                            <FileText className="mr-2 h-4 w-4" />
-                            View Document
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDownload(transaction)}>
-                            <Download className="mr-2 h-4 w-4" />
-                            Download Receipt
-                          </DropdownMenuItem>
+                          {transaction.status !== 'Unpaid' && (
+                            <>
+                              <DropdownMenuItem onClick={() => handleViewDocument(transaction)}>
+                                <FileText className="mr-2 h-4 w-4" />
+                                View Document
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDownload(transaction)}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Download Receipt
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
