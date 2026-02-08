@@ -662,14 +662,23 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     // Generate GRN
     const grnNumber = `GRN-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
     
-    const updatedData = {
-      ...formData,
+    const { damagePhotos: _, externalGoodsPhotos: __, ...formDataWithoutPhotos } = formData;
+    const updatedData: Partial<Return> = {
+      ...formDataWithoutPhotos,
       items: updatedItems,
       productionNotes: inspectionNotes,
       hasExternalGoods,
       externalGoodsNotes: hasExternalGoods ? externalGoodsNotes : undefined,
-      externalGoodsPhotos: hasExternalGoods ? externalGoodsPhotos : undefined,
-      damagePhotos,
+      externalGoodsPhotos: hasExternalGoods ? externalGoodsPhotos.map((url): ReturnPhoto => ({
+        url,
+        uploadedAt: new Date().toISOString(),
+        description: '',
+      })) : undefined,
+      damagePhotos: damagePhotos.map((url): ReturnPhoto => ({
+        url,
+        uploadedAt: new Date().toISOString(),
+        description: '',
+      })),
       grnNumber,
       status: 'Under Inspection' as const,
     };

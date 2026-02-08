@@ -133,9 +133,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
   // Auto-select customer from DO data when customers are loaded
   useEffect(() => {
     if (customers.length > 0 && formData.customerName && !selectedCustomerId) {
+      const customerName = formData.customerName;
       const match = customers.find(c => {
         const fullName = [c.firstName, c.lastName].filter(Boolean).join(' ');
-        return fullName.toLowerCase() === formData.customerName.toLowerCase();
+        return fullName.toLowerCase() === customerName.toLowerCase();
       });
       if (match) {
         setSelectedCustomerId(match.id);
@@ -143,7 +144,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
         setCustomerName(fullName);
       }
     }
-  }, [customers, formData.customerName]);
+  }, [customers, formData.customerName, selectedCustomerId]);
 
   useEffect(() => {
     if (delivery) {
@@ -302,7 +303,14 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
       setCurrentStep(3);
     } catch (error: unknown) {
       // Handle insufficient stock error from backend
-      if (error && typeof error === 'object' && 'name' in error && error.name === 'InsufficientStockError') {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'name' in error &&
+        error.name === 'InsufficientStockError' &&
+        'insufficientItems' in error &&
+        Array.isArray((error as { insufficientItems: unknown }).insufficientItems)
+      ) {
         const stockError = error as { insufficientItems: { name: string; required: number; available: number }[] };
         setInsufficientStockItems(stockError.insufficientItems);
         toast.error('Cannot proceed: Some items have insufficient stock');

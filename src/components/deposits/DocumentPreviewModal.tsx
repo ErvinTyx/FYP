@@ -18,17 +18,17 @@ interface DocumentPreviewModalProps {
 export function DocumentPreviewModal({
   isOpen,
   onClose,
-  document,
+  document: doc,
   title,
 }: DocumentPreviewModalProps) {
-  const isImage = document.fileType.startsWith('image/');
-  const isPDF = document.fileType === 'application/pdf';
+  const isImage = doc.fileType.startsWith('image/');
+  const isPDF = doc.fileType === 'application/pdf';
 
   const handleDownload = () => {
     // In a real app, this would trigger actual download
     const link = document.createElement('a');
-    link.href = document.fileUrl;
-    link.download = document.fileName;
+    link.href = doc.fileUrl;
+    link.download = doc.fileName;
     link.click();
   };
 
@@ -64,8 +64,8 @@ export function DocumentPreviewModal({
           {isImage && (
             <div className="bg-[#F9FAFB] rounded-lg p-4 flex items-center justify-center min-h-[400px]">
               <img
-                src={document.fileUrl}
-                alt={document.fileName}
+                src={doc.fileUrl}
+                alt={doc.fileName}
                 className="max-w-full max-h-[600px] object-contain"
               />
             </div>
@@ -74,16 +74,16 @@ export function DocumentPreviewModal({
           {isPDF && (
             <div className="bg-[#F9FAFB] rounded-lg p-4">
               <iframe
-                src={document.fileUrl}
+                src={doc.fileUrl}
                 className="w-full h-[600px] border-0 rounded"
-                title={document.fileName}
+                title={doc.fileName}
               />
             </div>
           )}
 
           <div className="mt-4 flex items-center justify-between text-[14px] text-[#6B7280]">
-            <span>{document.fileName}</span>
-            <span>{(document.fileSize / 1024).toFixed(1)} KB</span>
+            <span>{doc.fileName}</span>
+            <span>{(doc.fileSize / 1024).toFixed(1)} KB</span>
           </div>
         </div>
       </DialogContent>

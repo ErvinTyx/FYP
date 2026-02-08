@@ -14,9 +14,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 /**
@@ -25,7 +25,7 @@ interface RouteParams {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id: reportId } = await Promise.resolve(params);
+    const { id: reportId } = await params;
 
     // Validate report ID
     if (!reportId || reportId.trim() === '') {
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id: reportId } = await Promise.resolve(params);
+    const { id: reportId } = await params;
     const {
       deliveryOrderNumber,
       customerName,
@@ -218,7 +218,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const { id: reportId } = await Promise.resolve(params);
+    const { id: reportId } = await params;
 
     // Validate report ID
     if (!reportId || reportId.trim() === '') {

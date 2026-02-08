@@ -25,7 +25,7 @@ interface WheelColumnProps {
 function WheelColumn({ items, selectedValue, onSelect, label }: WheelColumnProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isScrollingRef = useRef(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout>();
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Scroll to selected value on mount and when value changes externally
   useEffect(() => {

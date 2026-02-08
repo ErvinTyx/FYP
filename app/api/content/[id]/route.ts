@@ -7,19 +7,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
 /**
  * GET /api/content/[id]
  * Get a specific content item by ID
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await Promise.resolve(params);
+    const { id } = await params;
 
     if (!id) {
       return NextResponse.json(
@@ -60,9 +57,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * PUT /api/content/[id]
  * Update a specific content item
  */
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await Promise.resolve(params);
+    const { id } = await params;
     const body = await request.json();
 
     if (!id) {
@@ -120,9 +120,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
  * DELETE /api/content/[id]
  * Delete a specific content item
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await Promise.resolve(params);
+    const { id } = await params;
 
     if (!id) {
       return NextResponse.json(
