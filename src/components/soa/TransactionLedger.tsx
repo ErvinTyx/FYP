@@ -197,7 +197,9 @@ export function TransactionLedger({
                             <Eye className="mr-2 h-4 w-4" />
                             View Details
                           </DropdownMenuItem>
-                          {transaction.status !== 'Unpaid' && (
+                          {/* Don't show document/receipt options for rejected credit notes or unpaid transactions */}
+                          {transaction.status !== 'Unpaid' && 
+                           !(transaction.type === 'Credit Note' && transaction.status === 'Rejected') && (
                             <>
                               <DropdownMenuItem onClick={() => handleViewDocument(transaction)}>
                                 <FileText className="mr-2 h-4 w-4" />
