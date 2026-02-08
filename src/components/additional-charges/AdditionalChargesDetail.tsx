@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import {
   ArrowLeft,
   Calendar,
@@ -8,7 +8,6 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Printer,
 } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
@@ -28,12 +27,6 @@ import { RejectModal } from "./RejectModal";
 import { AdditionalCharge } from "../../types/additionalCharge";
 import { useCreditNotesForSource } from "../../hooks/useCreditNotesForSource";
 import { toast } from "sonner";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
 
 const API_STATUS_TO_DISPLAY: Record<string, AdditionalCharge["status"]> = {
   pending_payment: "Pending Payment",
@@ -90,30 +83,19 @@ interface AdditionalChargesDetailProps {
   charge: AdditionalCharge;
   onBack: () => void;
   onUpdate: (updatedCharge: AdditionalCharge) => void;
+  onPrintReceipt?: () => void;
 }
 
 export function AdditionalChargesDetail({
   charge: initialCharge,
   onBack,
   onUpdate,
+  onPrintReceipt,
 }: AdditionalChargesDetailProps) {
   const [charge, setCharge] = useState<AdditionalCharge>(initialCharge);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [autoPrint, setAutoPrint] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (showPrintModal && autoPrint) {
-      const t = setTimeout(() => {
-        window.print();
-        setAutoPrint(false);
-      }, 300);
-      return () => clearTimeout(t);
-    }
-  }, [showPrintModal, autoPrint]);
 
   const {
     creditNotes: appliedCreditNotes,
@@ -312,13 +294,15 @@ export function AdditionalChargesDetail({
                     </p>
                   </div>
                 </div>
-                <Button
-                  onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}
-                  className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  View Receipt
-                </Button>
+                {onPrintReceipt && (
+                  <Button
+                    onClick={onPrintReceipt}
+                    className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    View Receipt
+                  </Button>
+                )}
               </div>
               {charge.referenceId && (
                 <div className="bg-white rounded-lg border border-[#BBF7D0] p-4">
@@ -650,59 +634,6 @@ export function AdditionalChargesDetail({
         invoiceNo={charge.invoiceNo}
       />
 
-      <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none">
-          <div className="flex justify-between items-center print:hidden mb-4">
-            <DialogHeader>
-              <DialogTitle>Additional Charge - Print Preview</DialogTitle>
-            </DialogHeader>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => window.print()}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </Button>
-              <Button variant="outline" onClick={() => setShowPrintModal(false)}>Close</Button>
-            </div>
-          </div>
-          <div ref={printRef} className="space-y-4 p-4 border rounded-lg">
-            <div className="border-b-2 border-[#F15929] pb-4">
-              <h2 className="text-xl font-semibold text-[#231F20]">Power Metal & Steel</h2>
-              <p className="text-sm text-[#6B7280]">Additional Charge</p>
-              <p className="text-lg font-medium mt-2">{charge.invoiceNo}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <p><span className="text-[#6B7280]">Customer:</span> {charge.customerName}</p>
-              <p><span className="text-[#6B7280]">DO ID:</span> {charge.doId}</p>
-              <p><span className="text-[#6B7280]">Status:</span> {charge.status}</p>
-              <p><span className="text-[#6B7280]">Total:</span> RM {charge.totalCharges.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</p>
-            </div>
-            {charge.items && charge.items.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {charge.items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.itemName}</TableCell>
-                      <TableCell>{item.itemType}</TableCell>
-                      <TableCell className="text-right">{item.quantity}</TableCell>
-                      <TableCell className="text-right">RM {Number(item.unitPrice).toFixed(2)}</TableCell>
-                      <TableCell className="text-right">RM {Number(item.amount).toFixed(2)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -686,17 +686,17 @@ export function ProjectClosureManagement() {
                         Items Shortage Count: {selectedRequest.shortageItems}
                       </p>
                       {selectedRequest.additionalChargeStatus === "pending_payment" && (
-                        <Badge className="bg-[#EF4444] text-white mt-2">
+                        <Badge className="bg-[#F5A623] hover:bg-[#D88F1C] text-white mt-2">
                           Pending Payment
                         </Badge>
                       )}
                       {selectedRequest.additionalChargeStatus === "pending_approval" && (
-                        <Badge className="bg-[#F59E0B] text-white mt-2">
+                        <Badge className="bg-[#3B82F6] hover:bg-[#2563EB] text-white mt-2">
                           Pending Approval
                         </Badge>
                       )}
                       {selectedRequest.additionalChargeStatus === "approved" && (
-                        <Badge className="bg-[#10B981] text-white mt-2">
+                        <Badge className="bg-[#059669] hover:bg-[#047857] text-white mt-2">
                           Payment Complete
                         </Badge>
                       )}

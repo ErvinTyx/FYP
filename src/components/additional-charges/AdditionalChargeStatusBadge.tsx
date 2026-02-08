@@ -1,3 +1,4 @@
+import { Badge } from "../ui/badge";
 import { AdditionalChargeStatus } from "../../types/additionalCharge";
 
 interface AdditionalChargeStatusBadgeProps {
@@ -7,44 +8,46 @@ interface AdditionalChargeStatusBadgeProps {
 }
 
 export function AdditionalChargeStatusBadge({ status, isOverdue }: AdditionalChargeStatusBadgeProps) {
-  const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-    "Pending Payment": {
-      bg: "bg-[#FEF3C7]",
-      text: "text-[#92400E]",
-      label: "Pending Payment",
-    },
-    "Pending Approval": {
-      bg: "bg-[#DBEAFE]",
-      text: "text-[#1E40AF]",
-      label: "Pending Approval",
-    },
-    "Paid": {
-      bg: "bg-[#D1FAE5]",
-      text: "text-[#065F46]",
-      label: "Paid",
-    },
-    "Rejected": {
-      bg: "bg-[#FEE2E2]",
-      text: "text-[#991B1B]",
-      label: "Rejected",
-    },
-    Overdue: {
-      bg: "bg-[#FEE2E2]",
-      text: "text-[#DC2626]",
-      label: "Overdue",
-    },
-  };
-
   const displayStatus = isOverdue && (status === "Pending Payment" || status === "Pending Approval")
     ? "Overdue"
     : status;
-  const config = statusConfig[displayStatus] ?? statusConfig["Pending Payment"];
 
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${config.bg} ${config.text}`}
-    >
-      {config.label}
-    </span>
-  );
+  switch (displayStatus) {
+    case 'Pending Payment':
+      return (
+        <Badge className="bg-[#F5A623] hover:bg-[#D88F1C] text-white">
+          Pending Payment
+        </Badge>
+      );
+    case 'Pending Approval':
+      return (
+        <Badge className="bg-[#3B82F6] hover:bg-[#2563EB] text-white">
+          Pending Approval
+        </Badge>
+      );
+    case 'Paid':
+      return (
+        <Badge className="bg-[#059669] hover:bg-[#047857] text-white">
+          Paid
+        </Badge>
+      );
+    case 'Rejected':
+      return (
+        <Badge className="bg-[#DC2626] hover:bg-[#B91C1C] text-white">
+          Rejected
+        </Badge>
+      );
+    case 'Overdue':
+      return (
+        <Badge className="bg-[#EA580C] hover:bg-[#C2410C] text-white">
+          Overdue
+        </Badge>
+      );
+    default:
+      return (
+        <Badge className="bg-[#9CA3AF] hover:bg-[#6B7280] text-white">
+          {displayStatus}
+        </Badge>
+      );
+  }
 }
