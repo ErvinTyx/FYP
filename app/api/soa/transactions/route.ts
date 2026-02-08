@@ -202,8 +202,15 @@ export async function GET(request: NextRequest) {
     // --- Additional charges (via return or delivery linked to this agreement's rfq) ---
     let additionalChargeIds: string[] = [];
     if (rfqId) {
+      // ReturnRequest doesn't have rfqId directly - it links through DeliverySet -> DeliveryRequest -> rfqId
       const returnRequests = await prisma.returnRequest.findMany({
-        where: { rfqId },
+        where: {
+          deliverySet: {
+            deliveryRequest: {
+              rfqId: rfqId,
+            },
+          },
+        },
         select: { id: true },
       });
       const returnRequestIds = returnRequests.map((r) => r.id);
