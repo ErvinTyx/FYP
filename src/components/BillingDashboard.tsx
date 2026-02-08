@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { 
-  DollarSign, 
-  Calendar, 
-  CheckCircle, 
   FileText,
-  TrendingUp,
   Plus,
   CreditCard,
   FileOutput,
@@ -38,40 +34,6 @@ import {
   PaginationPrevious,
 } from "./ui/pagination";
 
-interface StatsCardProps {
-  title: string;
-  amount: string;
-  trend?: string;
-  icon: React.ReactNode;
-  subtitle?: string;
-}
-
-function StatsCard({ title, amount, trend, icon, subtitle }: StatsCardProps) {
-  return (
-    <Card className="border-[#E5E7EB]">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-[14px] text-[#6B7280]">{title}</CardTitle>
-        <div className="text-[#6B7280]">{icon}</div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-1">
-          <div className="flex items-baseline gap-2">
-            <span className="text-[#111827]">{amount}</span>
-            {trend && (
-              <span className="text-[12px] text-[#059669] flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" />
-                {trend}
-              </span>
-            )}
-          </div>
-          {subtitle && (
-            <p className="text-[12px] text-[#6B7280]">{subtitle}</p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 export type RecentActivityEntityType = "monthlyRental" | "deposit" | "additionalCharge" | "creditNote" | "refund";
 
@@ -180,35 +142,6 @@ export function BillingDashboard({ onNavigateToCreditNotes, onNavigateToFinancia
       <div className="space-y-2">
         <h1>Billing & Payments</h1>
         <p className="text-[#374151]">Manage invoices, payments, and financial records</p>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatsCard
-          title="Total Outstanding"
-          amount="RM45,230.00"
-          trend="+12%"
-          icon={<DollarSign className="h-5 w-5" />}
-          subtitle="from last month"
-        />
-        <StatsCard
-          title="Payments Due"
-          amount="23 invoices"
-          icon={<Calendar className="h-5 w-5" />}
-          subtitle="RM12,450.00"
-        />
-        <StatsCard
-          title="Recent Payments"
-          amount="15 payments"
-          icon={<CheckCircle className="h-5 w-5" />}
-          subtitle="RM8,720.00"
-        />
-        <StatsCard
-          title="Credit Notes"
-          amount="3 notes"
-          icon={<FileText className="h-5 w-5" />}
-          subtitle="RM1,230.00"
-        />
       </div>
 
       {/* Quick Actions */}
