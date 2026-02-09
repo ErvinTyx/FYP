@@ -89,6 +89,8 @@ interface ClosureRequest {
   returnStatus: "completed" | "pending" | "in-progress";
   returnRequestStatus?: string | null; // ReturnRequest.status (Requested, Quoted, Completed, etc.)
   additionalChargeStatus?: string | null; // AdditionalCharge.status for shortage/payment badge
+  monthlyRentalPaymentStatus?: string | null; // MonthlyRentalInvoice summary: Paid | Pending Payment
+  depositStatus?: string | null; // Deposit.status: Paid | Pending Payment
   shortageItems: number;
   status: ClosureStatus;
   approvedBy?: string;
@@ -117,6 +119,8 @@ interface ProjectClosureRow {
     termOfHire?: string | null;
     rentalStartDate?: string | null;
     additionalChargeStatus?: string | null;
+    monthlyRentalPaymentStatus?: string | null;
+    depositStatus?: string | null;
   };
   closureRequest: {
     id: string;
@@ -159,6 +163,8 @@ function rowToClosureRequest(row: ProjectClosureRow): ClosureRequest {
     returnStatus: returnProcessComplete ? "completed" : "pending",
     returnRequestStatus: returnRequestStatus ?? undefined,
     additionalChargeStatus: agreement.additionalChargeStatus ?? undefined,
+    monthlyRentalPaymentStatus: agreement.monthlyRentalPaymentStatus ?? undefined,
+    depositStatus: agreement.depositStatus ?? undefined,
     shortageItems: 0,
     status,
     approvedBy: closureRequest?.approvedBy ?? undefined,
@@ -327,8 +333,7 @@ export function ProjectClosureManagement() {
       !!request.closureRequestId &&
       request.status === "pending" &&
       request.validationChecks.rentalPeriodMet &&
-      request.validationChecks.returnProcessComplete &&
-      request.additionalChargeStatus === "approved"
+      request.validationChecks.returnProcessComplete
     );
   };
 
@@ -462,12 +467,12 @@ export function ProjectClosureManagement() {
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger>
-                              {request.additionalChargeStatus === "approved" ? (
+                              {request.monthlyRentalPaymentStatus === "Paid" && request.depositStatus === "Paid" ? (
                                 <CheckCircle2 className="h-5 w-5 text-[#10B981]" />
-                              ) : request.additionalChargeStatus === "pending_approval" ? (
-                                <AlertCircle className="h-5 w-5 text-[#F59E0B]" />
-                              ) : request.additionalChargeStatus === "pending_payment" ? (
+                              ) : request.monthlyRentalPaymentStatus === "Pending Payment" || request.depositStatus === "Pending Payment" ? (
                                 <XCircle className="h-5 w-5 text-[#EF4444]" />
+                              ) : request.monthlyRentalPaymentStatus === "Pending Approval" || request.depositStatus === "Pending Approval" ? (
+                                <AlertCircle className="h-5 w-5 text-[#F59E0B]" />
                               ) : (
                                 <AlertCircle className="h-5 w-5 text-[#9CA3AF]" />
                               )}
@@ -670,39 +675,47 @@ export function ProjectClosureManagement() {
                 {/* Shortage Detection Check */}
                 <div className="border rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    {selectedRequest.additionalChargeStatus === "approved" ? (
-                      <CheckCircle2 className="h-5 w-5 text-[#10B981] mt-0.5" />
-                    ) : selectedRequest.additionalChargeStatus === "pending_approval" ? (
-                      <AlertCircle className="h-5 w-5 text-[#F59E0B] mt-0.5" />
-                    ) : (
-                      <AlertCircle className="h-5 w-5 text-[#EF4444] mt-0.5" />
-                    )}
+                    <Package className="h-5 w-5 text-[#6B7280] mt-0.5" />
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4 text-[#6B7280]" />
                         <p className="text-[#231F20]">Scaffolding Shortage Detection</p>
                       </div>
-                      <p className="text-[14px] text-[#6B7280]">
-                        Items Shortage Count: {selectedRequest.shortageItems}
-                      </p>
-                      {selectedRequest.additionalChargeStatus === "pending_payment" && (
-                        <Badge className="bg-[#F5A623] hover:bg-[#D88F1C] text-white mt-2">
-                          Pending Payment
-                        </Badge>
-                      )}
-                      {selectedRequest.additionalChargeStatus === "pending_approval" && (
-                        <Badge className="bg-[#3B82F6] hover:bg-[#2563EB] text-white mt-2">
-                          Pending Approval
-                        </Badge>
-                      )}
-                      {selectedRequest.additionalChargeStatus === "approved" && (
-                        <Badge className="bg-[#059669] hover:bg-[#047857] text-white mt-2">
-                          Payment Complete
-                        </Badge>
-                      )}
-                      {!selectedRequest.additionalChargeStatus && (
-                        <span className="text-[14px] text-[#6B7280] mt-2 inline-block">—</span>
-                      )}
+                      {/* Monthly Rental Invoice status */}
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {selectedRequest.monthlyRentalPaymentStatus === "Paid" && (
+                          <Badge className="bg-[#10B981] text-white">
+                            Monthly Rental Payment Completed
+                          </Badge>
+                        )}
+                        {selectedRequest.monthlyRentalPaymentStatus === "Pending Approval" && (
+                          <Badge className="bg-[#F59E0B] text-white">
+                            Pending Monthly Rental Approval
+                          </Badge>
+                        )}
+                        {selectedRequest.monthlyRentalPaymentStatus === "Pending Payment" && (
+                          <Badge className="bg-[#EF4444] text-white">
+                            Pending Monthly Rental Payment
+                          </Badge>
+                        )}
+                      </div>
+                      {/* Deposit status (below monthly rental) */}
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {selectedRequest.depositStatus === "Paid" && (
+                          <Badge className="bg-[#10B981] text-white">
+                            Deposit Payment Completed
+                          </Badge>
+                        )}
+                        {selectedRequest.depositStatus === "Pending Approval" && (
+                          <Badge className="bg-[#F59E0B] text-white">
+                            Pending Deposit Payment Approval
+                          </Badge>
+                        )}
+                        {selectedRequest.depositStatus === "Pending Payment" && (
+                          <Badge className="bg-[#EF4444] text-white">
+                            Pending Deposit Payment
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

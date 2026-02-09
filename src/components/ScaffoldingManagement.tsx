@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, Search, Edit, Eye, Upload, Package, Loader2, X } from "lucide-react";
+import { Plus, Search, Edit, Eye, Upload, Package, Loader2, X, FileDown, FileSpreadsheet } from "lucide-react";
 import { uploadScaffoldingImage } from "@/lib/upload";
+import {
+  generateScaffoldingPdf,
+  generateScaffoldingExcel,
+  downloadPdf,
+  downloadExcel,
+  type ScaffoldingExportItem,
+} from "@/lib/scaffolding-export";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -34,6 +41,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { toast } from "sonner";
+import { format as formatDate } from "date-fns";
 
 export interface DamageRepairEntry {
   description: string;
@@ -70,6 +78,7 @@ export function ScaffoldingManagement() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputEditRef = useRef<HTMLInputElement>(null);
 
@@ -378,12 +387,100 @@ export function ScaffoldingManagement() {
     );
   }
 
+  const handleExportPdf = async () => {
+    try {
+      setIsExporting(true);
+      const res = await fetch("/api/scaffolding");
+      const json = await res.json();
+      if (!json.success || !Array.isArray(json.data)) {
+        toast.error(json.message || "Failed to load data for export");
+        return;
+      }
+      const exportData: ScaffoldingExportItem[] = json.data.map((item: ScaffoldingItem) => ({
+        itemCode: item.itemCode,
+        name: item.name,
+        category: item.category,
+        available: item.available,
+        price: item.price,
+        originPrice: item.originPrice,
+        status: item.status,
+        itemStatus: item.itemStatus,
+        location: item.location ?? "",
+      }));
+      const doc = generateScaffoldingPdf(exportData);
+      const filename = `Scaffolding_Management_${formatDate(new Date(), "yyyy-MM-dd")}.pdf`;
+      downloadPdf(doc, filename);
+      toast.success("PDF exported successfully");
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to export PDF");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      setIsExporting(true);
+      const res = await fetch("/api/scaffolding");
+      const json = await res.json();
+      if (!json.success || !Array.isArray(json.data)) {
+        toast.error(json.message || "Failed to load data for export");
+        return;
+      }
+      const exportData: ScaffoldingExportItem[] = json.data.map((item: ScaffoldingItem) => ({
+        itemCode: item.itemCode,
+        name: item.name,
+        category: item.category,
+        available: item.available,
+        price: item.price,
+        originPrice: item.originPrice,
+        status: item.status,
+        itemStatus: item.itemStatus,
+        location: item.location ?? "",
+      }));
+      const blob = generateScaffoldingExcel(exportData);
+      const filename = `Scaffolding_Management_${formatDate(new Date(), "yyyy-MM-dd")}.xlsx`;
+      downloadExcel(blob, filename);
+      toast.success("Excel exported successfully");
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to export Excel");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="space-y-2">
-        <h1>Scaffolding Management</h1>
-        <p className="text-[#374151]">Manage inventory, stock levels, and item catalog</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <h1>Scaffolding Management</h1>
+          <p className="text-[#374151]">Manage inventory, stock levels, and item catalog</p>
+        </div>
+        <div className="flex gap-2 flex-shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10"
+            onClick={handleExportPdf}
+            disabled={isExporting}
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileDown className="h-4 w-4 mr-2" />}
+            Export PDF
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10"
+            onClick={handleExportExcel}
+            disabled={isExporting}
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />}
+            Export Excel
+          </Button>
+        </div>
       </div>
 
       {/* Actions & Filters */}
