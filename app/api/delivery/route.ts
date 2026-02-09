@@ -2,74 +2,188 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { createChargeForDelivery } from '@/lib/additional-charge-utils';
+import { calculateUsageDays, calculateDailyRate, enforceMinimumCharge, calculateBillingPeriod, getCycleNumber } from '@/lib/billing-helpers';
 
 // Roles allowed to manage delivery requests
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 
 /**
  * Auto-generate first monthly rental invoice when delivery is completed
+ * Uses agreement-based billing with daily proration
  */
 async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
-  const now = new Date();
-  const billingMonth = now.getMonth() + 1;
-  const billingYear = now.getFullYear();
+  // Get delivery request
+  const delivery = await prisma.deliveryRequest.findUnique({
+    where: { id: deliveryRequestId },
+    include: {
+      sets: {
+        where: { status: 'Completed' },
+        include: {
+          items: true,
+          completion: true,
+        },
+      },
+    },
+  });
 
-  // Check if invoice already exists for this delivery and month
+  if (!delivery) {
+    console.log(`Delivery request ${deliveryRequestId} not found, skipping invoice generation`);
+    return;
+  }
+
+  // Find agreement by agreement number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const agreement = await (prisma.rentalAgreement.findFirst as any)({
+    where: {
+      agreementNumber: delivery.agreementNo,
+    },
+    include: {
+      items: true,
+    },
+  });
+
+  if (!agreement) {
+    console.log(`Agreement ${delivery.agreementNo} not found for delivery ${deliveryRequestId}, skipping invoice generation`);
+    return;
+  }
+
+  // Validate agreement status (must be active)
+  const activeStatuses = ['Active', 'active', 'Signed', 'signed'];
+  if (!activeStatuses.includes(agreement.status)) {
+    console.log(`Agreement ${agreement.id} is not active (status: ${agreement.status}), skipping invoice generation`);
+    return;
+  }
+
+  // Get the earliest requiredDate from RFQ items as billing cycle anchor
+  let anchorDate: Date | null = null;
+  if (agreement.rfqId) {
+    const rfqItems = await prisma.rFQItem.findMany({
+      where: { rfqId: agreement.rfqId },
+      select: { requiredDate: true },
+      orderBy: { requiredDate: 'asc' },
+      take: 1,
+    });
+    if (rfqItems.length > 0) {
+      anchorDate = new Date(rfqItems[0].requiredDate);
+    }
+  }
+
+  if (!anchorDate) {
+    console.log(`No requiredDate found for agreement ${agreement.id}, skipping invoice generation`);
+    return;
+  }
+
+  // Determine billing cycle: find latest existing invoice or start from cycle 1
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const latestExistingInvoice = await (prisma as any).monthlyRentalInvoice.findFirst({
+    where: { agreementId: agreement.id },
+    orderBy: { billingStartDate: 'desc' },
+  });
+
+  let cycleNumber: number;
+  if (latestExistingInvoice) {
+    const lastEnd = new Date(latestExistingInvoice.billingEndDate);
+    const nextStart = new Date(lastEnd);
+    nextStart.setDate(nextStart.getDate() + 1);
+    cycleNumber = getCycleNumber(anchorDate, nextStart);
+  } else {
+    cycleNumber = 1;
+  }
+
+  const { start: billingStartDate, end: billingEndDate, daysInPeriod } = calculateBillingPeriod(anchorDate, cycleNumber);
+  const billingMonth = billingStartDate.getMonth() + 1;
+  const billingYear = billingStartDate.getFullYear();
+
+  // Check if invoice already exists for this agreement and billing period
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const existingInvoice = await (prisma as any).monthlyRentalInvoice.findFirst({
     where: {
-      deliveryRequestId,
+      agreementId: agreement.id,
       billingMonth,
       billingYear,
     },
   });
 
   if (existingInvoice) {
-    console.log(`Invoice already exists for delivery ${deliveryRequestId} for ${billingMonth}/${billingYear}`);
+    console.log(`Invoice already exists for agreement ${agreement.id} for period starting ${billingStartDate.toISOString().slice(0, 10)}`);
     return;
   }
 
-  // Get delivery request with RFQ items
-  const delivery = await prisma.deliveryRequest.findUnique({
-    where: { id: deliveryRequestId },
+  // Get all deliveries for this agreement
+  const allDeliveries = await prisma.deliveryRequest.findMany({
+    where: {
+      agreementNo: agreement.agreementNumber,
+    },
     include: {
       sets: {
         where: { status: 'Completed' },
-        include: { items: true },
-      },
-      rfq: {
-        include: { items: true },
+        include: {
+          items: true,
+          completion: true,
+        },
       },
     },
   });
 
-  if (!delivery || !delivery.rfq) {
-    console.log(`Delivery request ${deliveryRequestId} or linked RFQ not found, skipping invoice generation`);
-    return;
-  }
+  // Get all returns for this agreement
+  const returns = await prisma.returnRequest.findMany({
+    where: {
+      agreementNo: agreement.agreementNumber,
+      status: { in: ['Completed', 'Sorting Complete', 'Customer Notified'] },
+    },
+    include: {
+      items: true,
+      completion: true,
+    },
+  });
 
-  // Calculate delivered quantities per item
-  const deliveredQty: Record<string, number> = {};
-  for (const set of delivery.sets) {
-    for (const item of set.items) {
-      const itemId = item.scaffoldingItemId || item.name;
-      deliveredQty[itemId] = (deliveredQty[itemId] || 0) + item.quantity;
+  // Calculate delivered quantities per item and track delivery dates
+  const deliveredData: Record<string, { qty: number; earliestDelivery: Date | null }> = {};
+  for (const del of allDeliveries) {
+    for (const set of del.sets) {
+      const deliveryDate = set.completion?.deliveredAt 
+        ? new Date(set.completion.deliveredAt)
+        : (set.createdAt ? new Date(set.createdAt) : null);
+      
+      for (const item of set.items) {
+        const itemId = item.scaffoldingItemId || item.name;
+        if (!deliveredData[itemId]) {
+          deliveredData[itemId] = { qty: 0, earliestDelivery: null };
+        }
+        deliveredData[itemId].qty += item.quantity;
+        
+        if (deliveryDate) {
+          if (!deliveredData[itemId].earliestDelivery || deliveryDate < deliveredData[itemId].earliestDelivery) {
+            deliveredData[itemId].earliestDelivery = deliveryDate;
+          }
+        }
+      }
     }
   }
 
-  // Get days in billing month
-  const daysInMonth = new Date(billingYear, billingMonth, 0).getDate();
-
-  // Create RFQ item price map
-  const rfqItemPrices: Record<string, { name: string; unitPrice: number }> = {};
-  for (const rfqItem of delivery.rfq.items) {
-    rfqItemPrices[rfqItem.scaffoldingItemId] = {
-      name: rfqItem.scaffoldingItemName,
-      unitPrice: Number(rfqItem.unitPrice),
-    };
+  // Calculate returned quantities per item and track return dates
+  const returnedData: Record<string, { qty: number; latestReturn: Date | null }> = {};
+  for (const returnReq of returns) {
+    const returnDate = returnReq.completion?.completedAt
+      ? new Date(returnReq.completion.completedAt)
+      : null;
+    
+    for (const item of returnReq.items) {
+      const itemId = item.scaffoldingItemId || item.name;
+      if (!returnedData[itemId]) {
+        returnedData[itemId] = { qty: 0, latestReturn: null };
+      }
+      returnedData[itemId].qty += item.quantityReturned;
+      
+      if (returnDate) {
+        if (!returnedData[itemId].latestReturn || returnDate > returnedData[itemId].latestReturn) {
+          returnedData[itemId].latestReturn = returnDate;
+        }
+      }
+    }
   }
 
-  // Calculate billing items
+  // Calculate billing for each AgreementItem using 30-day period
   let totalAmount = 0;
   const items: Array<{
     scaffoldingItemId: string;
@@ -80,18 +194,44 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     lineTotal: number;
   }> = [];
 
-  for (const itemId in deliveredQty) {
-    const qty = deliveredQty[itemId];
-    const rfqItem = rfqItemPrices[itemId];
-    if (rfqItem && qty > 0) {
-      const lineTotal = qty * rfqItem.unitPrice * daysInMonth;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const agreementItem of (agreement.items as any[])) {
+    const itemId = agreementItem.scaffoldingItemId;
+    const delivered = deliveredData[itemId] || { qty: 0, earliestDelivery: null };
+    const returned = returnedData[itemId] || { qty: 0, latestReturn: null };
+    
+    const netQty = delivered.qty - returned.qty;
+    if (netQty > 0) {
+      // Calculate usage days within the 30-day billing period
+      const usageDays = calculateUsageDays(
+        delivered.earliestDelivery,
+        returned.latestReturn,
+        billingStartDate,
+        billingEndDate
+      );
+
+      // Calculate daily rate (monthly rate / 30)
+      const dailyRate = calculateDailyRate(
+        Number(agreementItem.agreedMonthlyRate)
+      );
+
+      // Enforce minimum rental duration
+      const totalRentalDays = usageDays;
+      const chargeDays = enforceMinimumCharge(
+        totalRentalDays,
+        agreementItem.minimumRentalMonths
+      );
+
+      // Calculate line total: netQty × dailyRate × chargeDays
+      const lineTotal = netQty * dailyRate * chargeDays;
       totalAmount += lineTotal;
+
       items.push({
         scaffoldingItemId: itemId,
-        scaffoldingItemName: rfqItem.name,
-        quantityBilled: qty,
-        unitPrice: rfqItem.unitPrice,
-        daysCharged: daysInMonth,
+        scaffoldingItemName: agreementItem.scaffoldingItemName,
+        quantityBilled: netQty,
+        unitPrice: dailyRate,
+        daysCharged: chargeDays,
         lineTotal,
       });
     }
@@ -126,9 +266,7 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
   }
   const invoiceNumber = `${prefix}${sequence.toString().padStart(3, '0')}`;
 
-  // Calculate dates
-  const billingStartDate = new Date(billingYear, billingMonth - 1, 1);
-  const billingEndDate = new Date(billingYear, billingMonth, 0);
+  // Calculate due date (7 days from now)
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 7);
 
@@ -138,6 +276,7 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     data: {
       invoiceNumber,
       deliveryRequestId,
+      agreementId: agreement.id,
       customerName: delivery.customerName,
       customerEmail: delivery.customerEmail,
       customerPhone: delivery.customerPhone,
@@ -145,7 +284,7 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
       billingYear,
       billingStartDate,
       billingEndDate,
-      daysInPeriod: daysInMonth,
+      daysInPeriod,
       baseAmount: totalAmount,
       overdueCharges: 0,
       totalAmount,
@@ -157,7 +296,7 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     },
   });
 
-  console.log(`Auto-generated monthly invoice ${invoiceNumber} for delivery ${deliveryRequestId}`);
+  console.log(`Auto-generated monthly invoice ${invoiceNumber} for agreement ${agreement.id} (delivery ${deliveryRequestId}), period: ${billingStartDate.toISOString().slice(0, 10)} to ${billingEndDate.toISOString().slice(0, 10)}`);
 }
 
 /**
