@@ -386,6 +386,7 @@ model RentalAgreement {
   deposits           Deposit[]
   monthlyInvoices    MonthlyRentalInvoice[]
   closureRequests    ProjectClosureRequest[]
+  items              AgreementItem[]
 }
 
 // Project closure request (one per agreement when user requests closure; PCR-YYYY-NNN)
@@ -402,6 +403,25 @@ model ProjectClosureRequest {
   updatedAt             DateTime @updatedAt
 
   @@index([agreementId])
+}
+
+// Agreement Item Pricing (snapshot of agreed rates from RFQ)
+model AgreementItem {
+  id                    String   @id @default(cuid())
+  agreementId           String
+  rfqItemId             String?  // Optional reference to original RFQ item
+  scaffoldingItemId     String
+  scaffoldingItemName   String   // Snapshot of item name
+  
+  agreedMonthlyRate     Decimal  @db.Decimal(15, 2)
+  minimumRentalMonths   Int      @default(1)
+  
+  createdAt             DateTime @default(now())
+  
+  agreement             RentalAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  
+  @@index([agreementId])
+  @@index([scaffoldingItemId])
 }
 
 model AgreementVersion {
@@ -884,6 +904,8 @@ model MonthlyRentalInvoice {
   
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
+
+  @@unique([agreementId, billingMonth, billingYear], name: "unique_agreement_month_year")
 }
 
 model MonthlyRentalInvoiceItem {
