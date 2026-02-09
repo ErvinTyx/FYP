@@ -131,6 +131,67 @@ export async function GET() {
       if (status) additionalChargeStatusByAgreementNo.set(agreementNo, status);
     }
 
+    // MonthlyRentalInvoice status per agreement (for View badges: Pending Payment | Pending Approval | Paid)
+    // 1) Invoices linked by agreementId; 2) Invoices linked via deliveryRequest.agreementNo (agreementId often null)
+    const monthlyRentalByAgreementId = new Map<string, 'Paid' | 'Pending Payment' | 'Pending Approval'>();
+    if (agreementIds.length > 0) {
+      const prismaMri = prisma as any;
+      const byAgreementId = await prismaMri.monthlyRentalInvoice.findMany({
+        where: { agreementId: { in: agreementIds } },
+        select: { agreementId: true, status: true },
+      });
+      for (const inv of byAgreementId) {
+        const aid = inv.agreementId;
+        if (!aid) continue;
+        const current = monthlyRentalByAgreementId.get(aid);
+        if (inv.status === 'Pending Payment') {
+          monthlyRentalByAgreementId.set(aid, 'Pending Payment');
+        } else if (inv.status === 'Pending Approval' && current !== 'Pending Payment') {
+          monthlyRentalByAgreementId.set(aid, 'Pending Approval');
+        } else if (inv.status === 'Paid' && current !== 'Pending Payment' && current !== 'Pending Approval') {
+          monthlyRentalByAgreementId.set(aid, 'Paid');
+        }
+      }
+      const agreementIdByNumber = new Map(agreements.map((a) => [a.agreementNumber, a.id]));
+      const byDeliveryAgreementNo = await prismaMri.monthlyRentalInvoice.findMany({
+        where: { deliveryRequest: { agreementNo: { in: agreementNumbers } } },
+        select: { status: true, deliveryRequest: { select: { agreementNo: true } } },
+      } as any);
+      for (const inv of byDeliveryAgreementNo) {
+        const agreementNo = inv.deliveryRequest?.agreementNo;
+        if (!agreementNo) continue;
+        const aid = agreementIdByNumber.get(agreementNo);
+        if (!aid) continue;
+        const current = monthlyRentalByAgreementId.get(aid);
+        if (inv.status === 'Pending Payment') {
+          monthlyRentalByAgreementId.set(aid, 'Pending Payment');
+        } else if (inv.status === 'Pending Approval' && current !== 'Pending Payment') {
+          monthlyRentalByAgreementId.set(aid, 'Pending Approval');
+        } else if (inv.status === 'Paid' && current !== 'Pending Payment' && current !== 'Pending Approval') {
+          monthlyRentalByAgreementId.set(aid, 'Paid');
+        }
+      }
+    }
+
+    // Deposit status per agreement (for View badges: Paid vs Pending Payment)
+    const prismaDep = prisma as unknown as {
+      deposit: {
+        findMany: (args: { where: { agreementId: { in: string[] } }; select: { agreementId: true; status: true } }) => Promise<{ agreementId: string; status: string }[]>;
+      };
+    };
+    const depositStatusByAgreementId = new Map<string, string>();
+    if (agreementIds.length > 0 && 'deposit' in prismaDep) {
+      const deposits = await prismaDep.deposit.findMany({
+        where: { agreementId: { in: agreementIds } },
+        select: { agreementId: true, status: true },
+      });
+      for (const d of deposits) {
+        if (!depositStatusByAgreementId.has(d.agreementId)) {
+          depositStatusByAgreementId.set(d.agreementId, d.status);
+        }
+      }
+    }
+
     // Earliest requiredDate per rfqId (from rFQItem) for Rental Start Date
     const agreementsWithRfq = agreements as Array<(typeof agreements)[0] & { rfqId?: string | null }>;
     const rfqIds = [...new Set(agreementsWithRfq.map((a) => a.rfqId).filter(Boolean))] as string[];
@@ -156,6 +217,8 @@ export async function GET() {
       const ag = agreement as typeof agreement & { rfqId?: string | null };
       const rentalStartDate = ag.rfqId ? minDeliverByRfqId.get(ag.rfqId)?.toISOString() ?? null : null;
       const additionalChargeStatus = additionalChargeStatusByAgreementNo.get(agreement.agreementNumber) ?? null;
+      const monthlyRentalPaymentStatus = monthlyRentalByAgreementId.get(agreement.id) ?? null;
+      const depositStatus = depositStatusByAgreementId.get(agreement.id) ?? null;
       return {
         agreement: {
           id: agreement.id,
@@ -166,6 +229,8 @@ export async function GET() {
           termOfHire: agreement.termOfHire,
           rentalStartDate,
           additionalChargeStatus,
+          monthlyRentalPaymentStatus,
+          depositStatus,
         },
         closureRequest: closureRequest
           ? {

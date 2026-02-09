@@ -134,16 +134,12 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: 'desc',
       },
-      // Include RFQ with items if requested
-      ...(includeRfqItems && {
-        include: {
-          rfq: {
-            include: {
-              items: true,
-            },
-          },
-        },
-      }),
+      // Always include rfq (for totalAmount in list); include items only when requested
+      include: {
+        rfq: includeRfqItems
+          ? { include: { items: true } }
+          : true,
+      },
     });
 
     // Load versions and deposits via separate queries (avoids include when client is stale)

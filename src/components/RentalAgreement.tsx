@@ -1,6 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { FileText, Plus, Eye, Edit, History, Download, FileSignature, Lock, Unlock, Save, X, Calendar as CalendarIcon, Upload, FileCheck } from "lucide-react";
+import { FileText, Plus, Eye, Edit, History, Download, FileSignature, Lock, Unlock, Save, X, Calendar as CalendarIcon, Upload, FileCheck, FileDown, FileSpreadsheet } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { generateRentalAgreementPdf } from "@/lib/rental-agreement-pdf";
+import {
+  generateRentalAgreementListPdf,
+  generateRentalAgreementExcel,
+  downloadRentalAgreementPdf,
+  downloadRentalAgreementExcel,
+  type RentalAgreementExportRow,
+} from "@/lib/rental-agreement-export";
 import { uploadFile } from "@/lib/upload";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
@@ -623,13 +631,110 @@ export function RentalAgreement() {
 
   const [selectedVersion, setSelectedVersion] = useState<AgreementVersion | null>(null);
   const [isViewVersionDialogOpen, setIsViewVersionDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const mapToExportRow = (a: RentalAgreement): RentalAgreementExportRow => ({
+    id: a.id,
+    agreementNumber: a.agreementNumber,
+    poNumber: a.poNumber ?? '',
+    projectName: a.projectName ?? '',
+    owner: a.owner ?? '',
+    ownerPhone: a.ownerPhone ?? '',
+    hirer: a.hirer ?? '',
+    hirerPhone: a.hirerPhone ?? '',
+    location: a.location ?? '',
+    termOfHire: a.termOfHire ?? '',
+    monthlyRental: Number(a.monthlyRental) || 0,
+    totalAmount: a.rfq?.totalAmount != null ? Number(a.rfq.totalAmount) : undefined,
+    securityDeposit: Number(a.securityDeposit) || 0,
+    minimumCharges: Number(a.minimumCharges) || 0,
+    defaultInterest: Number(a.defaultInterest) || 0,
+    ownerSignatoryName: a.ownerSignatoryName ?? '',
+    ownerNRIC: a.ownerNRIC ?? '',
+    hirerSignatoryName: a.hirerSignatoryName ?? '',
+    hirerNRIC: a.hirerNRIC ?? '',
+    status: a.status,
+    signedStatus: a.signedStatus ?? null,
+    currentVersion: a.currentVersion ?? 1,
+    createdAt: a.createdAt ?? '',
+    createdBy: a.createdBy ?? '',
+    depositsCount: Array.isArray(a.deposits) ? a.deposits.length : 0,
+  });
+
+  const handleExportPdf = async () => {
+    try {
+      setIsExporting(true);
+      const res = await fetch('/api/rental-agreement');
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.agreements)) {
+        toast.error(data.message || 'Failed to load agreements for export');
+        return;
+      }
+      const rows: RentalAgreementExportRow[] = data.agreements.map((a: RentalAgreement) => mapToExportRow(a));
+      const doc = generateRentalAgreementListPdf(rows);
+      const filename = `Rental_Agreements_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+      downloadRentalAgreementPdf(doc, filename);
+      toast.success('PDF exported successfully');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to export PDF');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      setIsExporting(true);
+      const res = await fetch('/api/rental-agreement');
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.agreements)) {
+        toast.error(data.message || 'Failed to load agreements for export');
+        return;
+      }
+      const rows: RentalAgreementExportRow[] = data.agreements.map((a: RentalAgreement) => mapToExportRow(a));
+      const blob = generateRentalAgreementExcel(rows);
+      const filename = `Rental_Agreements_${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+      downloadRentalAgreementExcel(blob, filename);
+      toast.success('Excel exported successfully');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to export Excel');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="space-y-2">
-        <h1>Rental Agreement</h1>
-        <p className="text-[#374151]">Manage rental agreements with version control and role-based access</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <h1>Rental Agreement</h1>
+          <p className="text-[#374151]">Manage rental agreements with version control and role-based access</p>
+        </div>
+        <div className="flex gap-2 flex-shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10"
+            onClick={handleExportPdf}
+            disabled={isExporting}
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileDown className="h-4 w-4 mr-2" />}
+            Export PDF
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10"
+            onClick={handleExportExcel}
+            disabled={isExporting}
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSpreadsheet className="h-4 w-4 mr-2" />}
+            Export Excel
+          </Button>
+        </div>
       </div>
 
       {/* Agreements Table */}
@@ -674,7 +779,11 @@ export function RentalAgreement() {
               ) : agreements.map((agreement) => (
                 <TableRow key={agreement.id} className="h-14 hover:bg-[#F3F4F6]">
                   <TableCell className="text-[#374151]">{agreement.projectName}</TableCell>
-                  <TableCell className="text-[#374151]">RM {(Number(agreement.monthlyRental) || 0).toLocaleString()}</TableCell>
+                  <TableCell className="text-[#374151]">
+                    {agreement.rfq?.totalAmount != null
+                      ? `RM ${Number(agreement.rfq.totalAmount).toLocaleString()}`
+                      : '—'}
+                  </TableCell>
                   <TableCell>{getStatusBadge(agreement.status)}</TableCell>
                   <TableCell className="text-[#374151]">v{agreement.currentVersion}</TableCell>
                   <TableCell>
@@ -769,7 +878,7 @@ export function RentalAgreement() {
 
       {/* Create Agreement Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" style={{ maxWidth: 'min(880px, calc(100% - 2rem))' }}>
           <DialogHeader>
             <DialogTitle>Create Rental Agreement</DialogTitle>
             <DialogDescription>
@@ -787,7 +896,7 @@ export function RentalAgreement() {
                     disabled
                     readOnly
                     value={`Auto-generated on save (e.g. RA-${new Date().getFullYear()}-001)`}
-                    className="bg-[#F3F4F6] text-[#6B7280] cursor-not-allowed border-[#E5E7EB]"
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
@@ -796,7 +905,7 @@ export function RentalAgreement() {
                     disabled
                     readOnly
                     value={`Auto-generated on save (e.g. PO-${new Date().getFullYear()}-001)`}
-                    className="bg-[#F3F4F6] text-[#6B7280] cursor-not-allowed border-[#E5E7EB]"
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2 col-span-2">
@@ -849,11 +958,11 @@ export function RentalAgreement() {
                   </Select>
                   {rfqProjectList.length === 0 && !rfqProjectLoading ? (
                     <p className="text-sm text-amber-600">
-                      No approved RFQs available. Please approve an RFQ first, or ensure it is not already linked to a rental agreement.
+                      No approved RFQs available. Please approve an RFQ first.
                     </p>
                   ) : selectedRfqProjectId ? (
                     <p className="text-xs text-[#6B7280]">
-                      Hirer, Hirer telephone, and Location are auto-filled from the selected RFQ. You can edit them below.
+                      Hirer, Location, Term of Hire and Monthly Rental are auto-filled from the selected RFQ (read-only).
                     </p>
                   ) : null}
                 </div>
@@ -867,32 +976,37 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Owner *</Label>
                   <Input
+                    readOnly
+                    disabled
                     value={formData.owner || 'Power Metal & Steel Sdn Bhd'}
-                    onChange={(e) => setFormData({...formData, owner: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Owner Telephone *</Label>
                   <Input
-                    placeholder="+60 X-XXXX XXXX"
+                    readOnly
+                    disabled
                     value={formData.ownerPhone || ''}
-                    onChange={(e) => setFormData({...formData, ownerPhone: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Hirer *</Label>
                   <Input
-                    placeholder="Enter hirer company name"
+                    readOnly
+                    disabled
                     value={formData.hirer || ''}
-                    onChange={(e) => setFormData({...formData, hirer: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Hirer Telephone</Label>
+                  <Label>Hirer Telephone *</Label>
                   <Input
-                    placeholder="+60 X-XXXX XXXX"
+                    readOnly
+                    disabled
                     value={formData.hirerPhone || ''}
-                    onChange={(e) => setFormData({...formData, hirerPhone: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
               </div>
@@ -905,19 +1019,21 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Location & Address of Goods *</Label>
                   <Textarea
-                    placeholder="Enter full address"
+                    readOnly
+                    disabled
                     value={formData.location || ''}
-                    onChange={(e) => setFormData({...formData, location: e.target.value})}
                     rows={2}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB] resize-none"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Term of Hire</Label>
+                    <Label>Term of Hire *</Label>
                     <Input
-                      placeholder="e.g., 180 days (15 Jan 2026 - 14 Jul 2026)"
+                      readOnly
+                      disabled
                       value={formData.termOfHire || ''}
-                      onChange={(e) => setFormData({...formData, termOfHire: e.target.value})}
+                      className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                     />
                   </div>
                 </div>
@@ -929,12 +1045,13 @@ export function RentalAgreement() {
               <h3 className="text-[#231F20]">Financial Details</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Monthly Rental (RM)</Label>
+                  <Label>Monthly Rental (RM) *</Label>
                   <Input
                     type="number"
-                    placeholder="0.00"
-                    value={formData.monthlyRental || ''}
-                    onChange={(e) => setFormData({...formData, monthlyRental: parseFloat(e.target.value)})}
+                    readOnly
+                    disabled
+                    value={formData.monthlyRental ?? ''}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
@@ -947,7 +1064,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Minimum Charges (Month)</Label>
+                  <Label>Minimum Charges (Month) *</Label>
                   <Input
                     type="number"
                     placeholder="0"
@@ -973,7 +1090,7 @@ export function RentalAgreement() {
               <h3 className="text-[#231F20]">Signatory Details</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Owner Signatory Name</Label>
+                  <Label>Owner Signatory Name *</Label>
                   <Input
                     placeholder="Enter owner signatory name"
                     value={formData.ownerSignatoryName || ''}
@@ -997,7 +1114,7 @@ export function RentalAgreement() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Hirer NRIC No.</Label>
+                  <Label>Hirer NRIC No. *</Label>
                   <Input
                     placeholder="XXXXXX-XX-XXXX"
                     value={formData.hirerNRIC || ''}
@@ -1054,7 +1171,7 @@ export function RentalAgreement() {
 
       {/* Edit Agreement Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" style={{ maxWidth: 'min(880px, calc(100% - 2rem))' }}>
           <DialogHeader>
             <DialogTitle>Edit Rental Agreement</DialogTitle>
             <DialogDescription>
@@ -1069,24 +1186,28 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Rental Agreement Number *</Label>
                   <Input
-                    value={formData.agreementNumber || ''}
-                    onChange={(e) => setFormData({...formData, agreementNumber: e.target.value})}
+                    readOnly
                     disabled
+                    value={formData.agreementNumber || ''}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>P/O Number *</Label>
                   <Input
-                    value={formData.poNumber || ''}
-                    onChange={(e) => setFormData({...formData, poNumber: e.target.value})}
+                    readOnly
                     disabled
+                    value={formData.poNumber || ''}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2 col-span-2">
                   <Label>Project Name *</Label>
                   <Input
+                    readOnly
+                    disabled
                     value={formData.projectName || ''}
-                    onChange={(e) => setFormData({...formData, projectName: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
               </div>
@@ -1099,29 +1220,37 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Owner *</Label>
                   <Input
+                    readOnly
+                    disabled
                     value={formData.owner || ''}
-                    onChange={(e) => setFormData({...formData, owner: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Owner Telephone *</Label>
                   <Input
+                    readOnly
+                    disabled
                     value={formData.ownerPhone || ''}
-                    onChange={(e) => setFormData({...formData, ownerPhone: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Hirer *</Label>
                   <Input
+                    readOnly
+                    disabled
                     value={formData.hirer || ''}
-                    onChange={(e) => setFormData({...formData, hirer: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Hirer Telephone</Label>
                   <Input
+                    readOnly
+                    disabled
                     value={formData.hirerPhone || ''}
-                    onChange={(e) => setFormData({...formData, hirerPhone: e.target.value})}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
               </div>
@@ -1134,17 +1263,21 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Location & Address of Goods *</Label>
                   <Textarea
+                    readOnly
+                    disabled
                     value={formData.location || ''}
-                    onChange={(e) => setFormData({...formData, location: e.target.value})}
                     rows={2}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB] resize-none"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Term of Hire</Label>
                     <Input
+                      readOnly
+                      disabled
                       value={formData.termOfHire || ''}
-                      onChange={(e) => setFormData({...formData, termOfHire: e.target.value})}
+                      className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                     />
                   </div>
                 </div>
@@ -1159,8 +1292,10 @@ export function RentalAgreement() {
                   <Label>Monthly Rental (RM)</Label>
                   <Input
                     type="number"
-                    value={formData.monthlyRental || ''}
-                    onChange={(e) => setFormData({...formData, monthlyRental: parseFloat(e.target.value)})}
+                    readOnly
+                    disabled
+                    value={formData.monthlyRental ?? ''}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1275,7 +1410,7 @@ export function RentalAgreement() {
 
       {/* View Agreement Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" style={{ maxWidth: 'min(880px, calc(100% - 2rem))' }}>
           <DialogHeader>
             <DialogTitle>Rental Agreement</DialogTitle>
             <DialogDescription>
@@ -1331,7 +1466,7 @@ export function RentalAgreement() {
               </div>
 
               {/* Financial Details */}
-              <div className="space-y-4 p-4 bg-[#F9FAFB] rounded-lg">
+              <div className="space-y-4 p-4 bg-[#E5E7EB] rounded-lg">
                 <h3 className="text-[#231F20]">Financial Details</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -1558,7 +1693,7 @@ export function RentalAgreement() {
 
       {/* View Specific Version Dialog */}
       <Dialog open={isViewVersionDialogOpen} onOpenChange={setIsViewVersionDialogOpen}>
-        <DialogContent className="max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" style={{ maxWidth: 'min(880px, calc(100% - 2rem))' }}>
           <DialogHeader>
             <DialogTitle>View Agreement Version</DialogTitle>
             <DialogDescription>
