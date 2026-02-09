@@ -452,6 +452,32 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Create AgreementItem records from RFQ items if rfqId is provided
+    if (rfqId) {
+      try {
+        const rfqItems = await prisma.rFQItem.findMany({
+          where: { rfqId },
+        });
+
+        if (rfqItems.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (prisma as any).agreementItem.createMany({
+            data: rfqItems.map(item => ({
+              agreementId: newAgreement.id,
+              rfqItemId: item.id,
+              scaffoldingItemId: item.scaffoldingItemId,
+              scaffoldingItemName: item.scaffoldingItemName,
+              agreedMonthlyRate: item.unitPrice,
+              minimumRentalMonths: item.rentalMonths || 1,
+            })),
+          });
+        }
+      } catch (agreementItemError) {
+        // Log error but don't fail the agreement creation
+        console.error('Failed to create AgreementItem records:', agreementItemError);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Rental agreement created successfully',

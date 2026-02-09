@@ -470,6 +470,9 @@ export function MonthlyRentalInvoiceDetails({
       <Card className="border-[#E5E7EB]">
         <CardHeader>
           <CardTitle className="text-[16px]">Billed Items</CardTitle>
+          <p className="text-sm text-gray-600 mt-1">
+            Billing is calculated using daily proration: Quantity × Daily Rate × Days Charged = Line Total
+          </p>
         </CardHeader>
         <CardContent>
           <Table>
@@ -477,7 +480,7 @@ export function MonthlyRentalInvoiceDetails({
               <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
                 <TableHead>Item Name</TableHead>
                 <TableHead className="text-right">Quantity</TableHead>
-                <TableHead className="text-right">Unit Price (RM)</TableHead>
+                <TableHead className="text-right">Daily Rate (RM)</TableHead>
                 <TableHead className="text-center">Days Charged</TableHead>
                 <TableHead className="text-right">Line Total (RM)</TableHead>
               </TableRow>
@@ -798,7 +801,8 @@ export function MonthlyRentalInvoiceDetails({
                   <TableRow>
                     <TableHead>Item</TableHead>
                     <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Daily Rate</TableHead>
+                    <TableHead className="text-right">Days</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -808,6 +812,7 @@ export function MonthlyRentalInvoiceDetails({
                       <TableCell>{item.scaffoldingItemName}</TableCell>
                       <TableCell className="text-right">{item.quantityBilled}</TableCell>
                       <TableCell className="text-right">RM {Number(item.unitPrice).toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{item.daysCharged}</TableCell>
                       <TableCell className="text-right">RM {Number(item.lineTotal).toFixed(2)}</TableCell>
                     </TableRow>
                   ))}
