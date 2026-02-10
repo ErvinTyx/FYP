@@ -38,15 +38,46 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const now = new Date();
+
     const updated = await prisma.additionalCharge.update({
       where: { id },
       data: {
         referenceId,
         status: 'paid',
-        approvalDate: new Date(),
+        approvalDate: now,
       },
       include: { items: true },
     });
+
+    // If this charge is linked to a delivery set, propagate the paid status
+    // (and referenceId) to all additional charges for sets under the same
+    // DeliveryRequest, so the request-level workflow can continue.
+    if (updated.deliverySetId) {
+      const deliverySet = await prisma.deliverySet.findUnique({
+        where: { id: updated.deliverySetId },
+        select: { deliveryRequestId: true },
+      });
+
+      if (deliverySet?.deliveryRequestId) {
+        const siblingSets = await prisma.deliverySet.findMany({
+          where: { deliveryRequestId: deliverySet.deliveryRequestId },
+          select: { id: true },
+        });
+        const siblingSetIds = siblingSets.map((s) => s.id);
+
+        if (siblingSetIds.length > 0) {
+          await prisma.additionalCharge.updateMany({
+            where: { deliverySetId: { in: siblingSetIds } },
+            data: {
+              referenceId,
+              status: 'paid',
+              approvalDate: now,
+            },
+          });
+        }
+      }
+    }
 
     const serialized = {
       ...updated,
