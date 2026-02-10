@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
             lastName: userData.lastName,
             phone: userData.phone || null,
             password: hashedPassword,
-            status: 'pending',
+            status: 'pending_verification',
             roles: {
               create: {
                 roleId: roleId,

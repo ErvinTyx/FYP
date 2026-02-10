@@ -193,11 +193,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate status
-    const validStatuses = ['pending', 'active', 'inactive'];
-    const userStatus = status || 'pending';
+    const validStatuses = ['pending', 'pending_verification', 'active', 'inactive'];
+    const userStatus = status || 'pending_verification';
     if (!validStatuses.includes(userStatus)) {
       return NextResponse.json(
-        { success: false, message: 'Invalid status. Must be pending, active, or inactive' },
+        { success: false, message: 'Invalid status. Must be pending, pending_verification, active, or inactive' },
         { status: 400 }
       );
     }
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
         lastName,
         phone: phone || null,
         password: hashedPassword,
-        status: 'pending', // Always pending until password is set
+        status: 'pending_verification', // Pending verification until password is set
         roles: {
           create: {
             roleId: roleRecord.id,
@@ -314,7 +314,7 @@ export async function POST(request: NextRequest) {
         firstName: newUser.firstName || '',
         lastName: newUser.lastName || '',
         role: role,
-        status: 'pending',
+        status: 'pending_verification',
       },
       ipAddress
     );

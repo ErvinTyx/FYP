@@ -20,7 +20,8 @@ import {
   Shield,
   ArrowLeft,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  Mail
 } from "lucide-react";
 import { formatRfqDate } from "../lib/rfqDate";
 import { Button } from "./ui/button";
@@ -69,7 +70,7 @@ import { Textarea } from "./ui/textarea";
 type UserType = 'Internal Staff' | 'Individual Customer' | 'Business Customer';
 type UserStatus = 'Active' | 'Inactive' | 'Pending Approval' | 'Pending Verification';
 type StaffRole = 'Admin' | 'Sales' | 'Finance' | 'Support' | 'Operations' | 'Production';
-type DbStatus = 'pending' | 'active' | 'inactive';
+type DbStatus = 'pending' | 'pending_verification' | 'active' | 'inactive';
 
 // Admin roles that can perform administrative actions
 const ADMIN_ROLES = ['super_user', 'admin'];
@@ -110,6 +111,8 @@ function mapDbStatusToUi(dbStatus: string): UserStatus {
       return 'Active';
     case 'inactive':
       return 'Inactive';
+    case 'pending_verification':
+      return 'Pending Verification';
     case 'pending':
     default:
       return 'Pending Approval';
@@ -125,8 +128,9 @@ function mapUiStatusToDb(uiStatus: UserStatus): DbStatus {
       return 'active';
     case 'Inactive':
       return 'inactive';
-    case 'Pending Approval':
     case 'Pending Verification':
+      return 'pending_verification';
+    case 'Pending Approval':
     default:
       return 'pending';
   }
@@ -196,9 +200,10 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
     email: "",
     phone: "",
     role: "",
-    status: "pending" as DbStatus
+    status: "pending_verification" as DbStatus
   });
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [isResendingSetup, setIsResendingSetup] = useState(false);
 
   // Fetch users on mount
   useEffect(() => {
@@ -710,7 +715,7 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
       email: "",
       phone: "",
       role: "",
-      status: "pending"
+      status: "pending_verification"
     });
     setIsAddDialogOpen(true);
   };
@@ -752,7 +757,8 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
 
       // Map API status to UI status
       const statusMap: Record<string, UserStatus> = {
-        'pending': 'Pending Verification',
+        'pending': 'Pending Approval',
+        'pending_verification': 'Pending Verification',
         'active': 'Active',
         'inactive': 'Inactive',
       };
@@ -881,6 +887,31 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
     }
   };
 
+  const handleResendSetupPassword = async (user: User) => {
+    setIsResendingSetup(true);
+    try {
+      const response = await fetch('/api/user-management/resend-setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        toast.error(data.message || 'Failed to resend setup email');
+        return;
+      }
+
+      toast.success(`Password setup email resent to ${user.email}`);
+    } catch (error) {
+      console.error('Resend setup email error:', error);
+      toast.error('An error occurred while resending the setup email');
+    } finally {
+      setIsResendingSetup(false);
+    }
+  };
+
   // Show loading state
   if (isLoading) {
     return (
@@ -913,6 +944,8 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
               <p className="text-[#374151]">
                 {selectedUser.status === 'Pending Approval' 
                   ? 'Review user information and approve or reject the registration' 
+                  : selectedUser.status === 'Pending Verification'
+                  ? 'User is waiting to set up their password. You can resend the setup email.'
                   : 'View detailed user information'}
               </p>
             </div>
@@ -923,7 +956,7 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
             <div className="space-y-6">
               {/* Status Badge */}
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex items-center gap-2">
                   {selectedUser.status === 'Active' ? (
                     <Badge className="bg-[#059669] hover:bg-[#047857]">
                       <CheckCircle className="mr-1 h-3 w-3" />
@@ -934,11 +967,28 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
                       <Clock className="mr-1 h-3 w-3" />
                       Pending Approval
                     </Badge>
+                  ) : selectedUser.status === 'Pending Verification' ? (
+                    <Badge className="bg-[#3B82F6] hover:bg-[#2563EB]">
+                      <Mail className="mr-1 h-3 w-3" />
+                      Pending Verification
+                    </Badge>
                   ) : (
                     <Badge className="bg-[#6B7280] hover:bg-[#4B5563]">
                       <XCircle className="mr-1 h-3 w-3" />
                       Inactive
                     </Badge>
+                  )}
+                  {isAdmin && selectedUser.status === 'Pending Verification' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleResendSetupPassword(selectedUser)}
+                      disabled={isResendingSetup}
+                      className="h-7 text-xs border-[#3B82F6] text-[#3B82F6] hover:bg-[#EFF6FF] hover:text-[#3B82F6]"
+                    >
+                      <Mail className="mr-1 h-3 w-3" />
+                      {isResendingSetup ? 'Sending...' : 'Resend Setup Password'}
+                    </Button>
                   )}
                 </div>
                 <Badge className={getUserTypeBadgeColor(selectedUser.userType)}>
@@ -1238,13 +1288,14 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px] h-10 bg-white border-[#D1D5DB] rounded-md">
+          <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="Active">Active</SelectItem>
             <SelectItem value="Pending Approval">Pending Approval</SelectItem>
+            <SelectItem value="Pending Verification">Pending Verification</SelectItem>
             <SelectItem value="Inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
@@ -1303,6 +1354,11 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
                       <Clock className="mr-1 h-3 w-3" />
                       Pending
                     </Badge>
+                  ) : user.status === 'Pending Verification' ? (
+                    <Badge className="bg-[#3B82F6] hover:bg-[#2563EB]">
+                      <Mail className="mr-1 h-3 w-3" />
+                      Pending Verification
+                    </Badge>
                   ) : (
                     <Badge className="bg-[#6B7280] hover:bg-[#4B5563]">
                       <XCircle className="mr-1 h-3 w-3" />
@@ -1335,10 +1391,19 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
                         <Eye className="mr-2 h-4 w-4" />
                         View Details
                       </DropdownMenuItem>
-                      {isAdmin && user.status !== 'Pending Approval' && (
+                      {isAdmin && user.status !== 'Pending Approval' && user.status !== 'Pending Verification' && (
                         <DropdownMenuItem onClick={() => handleEditUser(user)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Edit
+                        </DropdownMenuItem>
+                      )}
+                      {isAdmin && user.status === 'Pending Verification' && (
+                        <DropdownMenuItem 
+                          onClick={() => handleResendSetupPassword(user)}
+                          disabled={isResendingSetup}
+                        >
+                          <Mail className="mr-2 h-4 w-4" />
+                          {isResendingSetup ? 'Sending...' : 'Resend Setup Password'}
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
@@ -1565,7 +1630,7 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pending">Pending Verification (default)</SelectItem>
+                  <SelectItem value="pending_verification">Pending Verification (default)</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
                 </SelectContent>
               </Select>
