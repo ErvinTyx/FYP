@@ -177,7 +177,21 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/additional-charges
- * Query: openRepairSlipId?, status?
+ * Query: openRepairSlipId?, status?, customerName?, page?, pageSize?, orderBy?
+ *
+ * IMPORTANT:
+ * - Additional charges can be created from:
+ *   - Inspection/Open Repair Slips (openRepairSlipId)
+ *   - Delivery workflow (per DeliverySet via deliverySetId)
+ *   - Return workflow (per ReturnRequest via returnRequestId)
+ *
+ * For the Billing UI we want to show charges at *request* level instead of per-set,
+ * so this handler groups delivery charges by their parent DeliveryRequest and
+ * return charges by ReturnRequest, while leaving repair-slip charges as-is.
+ *
+ * For delivery/return groups we enforce a single-record rule:
+ * - We pick one representative AdditionalCharge per request (earliest created),
+ *   without summing amounts, so the UI never shows two rows for the same request.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -186,7 +200,11 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || undefined;
     const customerName = searchParams.get('customerName') || undefined;
 
-    const where: { openRepairSlipId?: string; status?: string; customerName?: { contains: string } } = {};
+    const where: {
+      openRepairSlipId?: string;
+      status?: string;
+      customerName?: { contains: string };
+    } = {};
     if (openRepairSlipId) where.openRepairSlipId = openRepairSlipId;
     if (status) where.status = status;
     if (customerName) where.customerName = { contains: customerName };
@@ -196,19 +214,85 @@ export async function GET(request: NextRequest) {
     const pageSize = [5, 10, 25, 50].includes(rawPageSize) ? rawPageSize : 10;
     const orderByParam = searchParams.get('orderBy') ?? 'latest';
     const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
-    const skip = (page - 1) * pageSize;
 
-    const total = await prisma.additionalCharge.count({ where });
-
-    const list = await prisma.additionalCharge.findMany({
+    // Fetch all matching charges (unpaged), then group them by logical owner.
+    // Volume of additional charges is expected to be relatively small.
+    const allCharges = await prisma.additionalCharge.findMany({
       where,
       include: { items: true },
       orderBy: { createdAt: orderDir },
-      skip,
-      take: pageSize,
     });
 
-    const serialized = list.map((c) => ({
+    // Build lookup: DeliverySet.id -> DeliveryRequest.id
+    const deliverySetIds = allCharges
+      .map((c) => c.deliverySetId)
+      .filter((id): id is string => !!id);
+
+    const deliverySetToRequestId = new Map<string, string>();
+    if (deliverySetIds.length > 0) {
+      const deliverySets = await prisma.deliverySet.findMany({
+        where: { id: { in: deliverySetIds } },
+        select: { id: true, deliveryRequestId: true },
+      });
+      for (const ds of deliverySets) {
+        deliverySetToRequestId.set(ds.id, ds.deliveryRequestId);
+      }
+    }
+
+    type GroupKey = string;
+    const groups = new Map<GroupKey, typeof allCharges>();
+
+    for (const charge of allCharges) {
+      let key: GroupKey;
+
+      if (charge.deliverySetId) {
+        const requestId = deliverySetToRequestId.get(charge.deliverySetId);
+        key = requestId ? `delivery:${requestId}` : `deliverySet:${charge.deliverySetId}`;
+      } else if (charge.returnRequestId) {
+        key = `return:${charge.returnRequestId}`;
+      } else if (charge.openRepairSlipId) {
+        key = `repairSlip:${charge.openRepairSlipId}`;
+      } else {
+        // Fallback - treat as its own group
+        key = `charge:${charge.id}`;
+      }
+
+      const existing = groups.get(key);
+      if (existing) {
+        existing.push(charge);
+      } else {
+        groups.set(key, [charge]);
+      }
+    }
+
+    // For each group, pick ONE representative charge according to a stable rule
+    const groupedList = Array.from(groups.values()).map((chargesInGroup) => {
+      if (chargesInGroup.length === 1) {
+        return chargesInGroup[0];
+      }
+
+      // Prefer earliest createdAt so invoice selection is deterministic
+      const sorted = [...chargesInGroup].sort((a, b) => {
+        const aTime = a.createdAt.getTime();
+        const bTime = b.createdAt.getTime();
+        return aTime - bTime;
+      });
+
+      return sorted[0];
+    });
+
+    // Apply ordering and pagination at group level
+    groupedList.sort((a, b) => {
+      const aTime = a.createdAt.getTime();
+      const bTime = b.createdAt.getTime();
+      return orderDir === 'asc' ? aTime - bTime : bTime - aTime;
+    });
+
+    const total = groupedList.length;
+    const skip = (page - 1) * pageSize;
+    const paged = groupedList.slice(skip, skip + pageSize);
+
+    const serialized = paged.map((c) => ({
       ...c,
       totalCharges: Number(c.totalCharges),
       dueDate: c.dueDate.toISOString(),
@@ -221,7 +305,14 @@ export async function GET(request: NextRequest) {
       })),
     }));
 
-    return NextResponse.json({ success: true, data: serialized, total, page, pageSize, orderBy: orderByParam });
+    return NextResponse.json({
+      success: true,
+      data: serialized,
+      total,
+      page,
+      pageSize,
+      orderBy: orderByParam,
+    });
   } catch (error) {
     console.error('[Additional Charges API] GET error:', error);
     return NextResponse.json(

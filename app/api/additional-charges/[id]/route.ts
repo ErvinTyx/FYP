@@ -7,6 +7,15 @@ import { prisma } from '@/lib/prisma';
 
 interface RouteParams { params: Promise<{ id: string }> }
 
+/**
+ * GET /api/additional-charges/[id]
+ *
+ * For delivery/return workflows the listing endpoint groups charges per request
+ * but still exposes a single representative AdditionalCharge id to the UI.
+ * Here we simply return that specific charge (plus its items) without further
+ * aggregation so the detail view reflects the same invoice that was selected
+ * in the list.
+ */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
