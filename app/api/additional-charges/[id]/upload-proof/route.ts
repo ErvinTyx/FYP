@@ -86,6 +86,35 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       include: { items: true },
     });
 
+    // If this charge is linked to a delivery set, propagate the proof-of-payment
+    // and pending_approval status to all additional charges for sets under the
+    // same DeliveryRequest so the workflow treats the request as a single payment.
+    if (updated.deliverySetId) {
+      const deliverySet = await prisma.deliverySet.findUnique({
+        where: { id: updated.deliverySetId },
+        select: { deliveryRequestId: true },
+      });
+
+      if (deliverySet?.deliveryRequestId) {
+        const siblingSets = await prisma.deliverySet.findMany({
+          where: { deliveryRequestId: deliverySet.deliveryRequestId },
+          select: { id: true },
+        });
+        const siblingSetIds = siblingSets.map((s) => s.id);
+
+        if (siblingSetIds.length > 0) {
+          await prisma.additionalCharge.updateMany({
+            where: { deliverySetId: { in: siblingSetIds } },
+            data: {
+              proofOfPaymentUrl: fileUrl,
+              status: 'pending_approval',
+              uploadedByEmail: uploadedByEmail || undefined,
+            },
+          });
+        }
+      }
+    }
+
     const serialized = {
       ...updated,
       totalCharges: Number(updated.totalCharges),
