@@ -310,17 +310,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate deposit amount: RFQ.totalAmount × securityDeposit (months)
+    // Calculate deposit amount: monthlyRental × securityDeposit (months)
     let depositAmount = manualAmount;
-    if (!depositAmount && agreement.rfq) {
-      const rfqTotalAmount = Number(agreement.rfq.totalAmount);
+    if (!depositAmount) {
+      const monthlyRental = Number(agreement.monthlyRental);
       const securityDepositMonths = Number(agreement.securityDeposit);
-      depositAmount = rfqTotalAmount * securityDepositMonths;
+      depositAmount = monthlyRental * securityDepositMonths;
     }
 
     if (!depositAmount || depositAmount <= 0) {
       return NextResponse.json(
-        { success: false, message: 'Unable to calculate deposit amount. Please ensure the agreement has a linked RFQ with items or provide a manual amount.' },
+        { success: false, message: 'Unable to calculate deposit amount. Please ensure the agreement has a monthly rental and security deposit value, or provide a manual amount.' },
         { status: 400 }
       );
     }

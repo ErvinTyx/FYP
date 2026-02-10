@@ -655,15 +655,16 @@ export async function PUT(request: NextRequest) {
     }
 
     if (isNewDocumentUpload && rfqToUse && existingDepositCount === 0) {
-      // Calculate deposit amount: RFQ.totalAmount × 30 × securityDeposit (months)
-      const rfqTotalAmount = Number(rfqToUse.totalAmount);
+      // Calculate deposit amount: monthlyRental × securityDeposit (months)
+      const monthlyRental = Number(updatedAgreement.monthlyRental);
       const securityDepositMonths = Number(updatedAgreement.securityDeposit);
-      const depositAmount = rfqTotalAmount * securityDepositMonths;
+      const depositAmount = monthlyRental * securityDepositMonths;
 
       if (depositAmount > 0) {
         const depositNumber = await generateDepositNumber();
         const dueDate = new Date();
-        dueDate.setDate(dueDate.getDate() + 14);
+        const depositDueDateDays = Number(process.env.DEPOSIT_DUE_DATE) || 14;
+        dueDate.setDate(dueDate.getDate() + depositDueDateDays);
         try {
           const prismaAny = prisma as unknown as { deposit: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> } };
           if ('deposit' in prismaAny) {
