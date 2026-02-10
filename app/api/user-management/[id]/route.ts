@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
 import { logUserUpdated, logUserStatusChanged } from '@/lib/audit-log';
+import { validatePhoneNumber } from '@/lib/phone-validation';
 
 // Roles allowed to manage users (full admin access)
 const ADMIN_ROLES = ['super_user', 'admin'];
@@ -205,6 +206,17 @@ export async function PUT(
       if (existingEmail) {
         return NextResponse.json(
           { success: false, message: 'A user with this email already exists' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate phone number format if provided
+    if (phone && phone.trim()) {
+      const phoneValidation = validatePhoneNumber(phone.trim(), 'MY');
+      if (!phoneValidation.isValid) {
+        return NextResponse.json(
+          { success: false, message: phoneValidation.error || 'Invalid phone number format' },
           { status: 400 }
         );
       }

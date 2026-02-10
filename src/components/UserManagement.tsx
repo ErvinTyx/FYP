@@ -30,6 +30,7 @@ import { Badge } from "./ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
 import { Label } from "./ui/label";
 import { toast } from "sonner";
+import { validatePhoneNumber } from "@/lib/phone-validation";
 import {
   Table,
   TableBody,
@@ -655,6 +656,15 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
       return;
     }
 
+    // Validate phone number if provided
+    if (editForm.phone && editForm.phone.trim()) {
+      const phoneValidation = validatePhoneNumber(editForm.phone.trim(), 'MY');
+      if (!phoneValidation.isValid) {
+        toast.error(phoneValidation.error || "Please enter a valid phone number");
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       const response = await fetch(`/api/user-management/${selectedUser.id}`, {
@@ -730,6 +740,15 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
     if (!emailRegex.test(addForm.email)) {
       toast.error("Please enter a valid email address");
       return;
+    }
+
+    // Validate phone number if provided
+    if (addForm.phone && addForm.phone.trim()) {
+      const phoneValidation = validatePhoneNumber(addForm.phone.trim(), 'MY');
+      if (!phoneValidation.isValid) {
+        toast.error(phoneValidation.error || "Please enter a valid phone number");
+        return;
+      }
     }
 
     setIsAddingUser(true);

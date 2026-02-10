@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { logUserCreated } from '@/lib/audit-log';
 import { generatePasswordSetupToken, sendPasswordSetupEmail } from '@/lib/email';
 import bcrypt from 'bcrypt';
+import { validatePhoneNumber } from '@/lib/phone-validation';
 
 // Roles allowed to manage users (full admin access)
 const ADMIN_ROLES = ['super_user', 'admin'];
@@ -190,6 +191,17 @@ export async function POST(request: NextRequest) {
         { success: false, message: 'Invalid email format' },
         { status: 400 }
       );
+    }
+
+    // Validate phone number format if provided
+    if (phone) {
+      const phoneValidation = validatePhoneNumber(phone, 'MY');
+      if (!phoneValidation.isValid) {
+        return NextResponse.json(
+          { success: false, message: phoneValidation.error || 'Invalid phone number format' },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate status

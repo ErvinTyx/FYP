@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { validatePhoneNumber } from '@/lib/phone-validation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,14 +19,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check phone uniqueness
+    // Validate and check phone uniqueness
     if (phone) {
-      const existingPhone = await prisma.user.findFirst({
-        where: { phone },
-        select: { id: true },
-      });
-      if (existingPhone) {
-        errors.phone = 'This phone number is already registered';
+      // Validate phone number format first
+      const phoneValidation = validatePhoneNumber(phone, 'MY');
+      if (!phoneValidation.isValid) {
+        errors.phone = phoneValidation.error || 'Please enter a valid phone number';
+      } else {
+        // Only check uniqueness if format is valid
+        const existingPhone = await prisma.user.findFirst({
+          where: { phone },
+          select: { id: true },
+        });
+        if (existingPhone) {
+          errors.phone = 'This phone number is already registered';
+        }
       }
     }
 
