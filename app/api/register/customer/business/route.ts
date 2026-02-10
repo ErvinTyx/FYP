@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
+import { validatePhoneNumber } from '@/lib/phone-validation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +21,15 @@ export async function POST(request: NextRequest) {
     if (!firstName || !lastName || !email || !phone || !password || !tin || !idNumber) {
       return NextResponse.json(
         { success: false, message: 'All required fields must be provided' },
+        { status: 400 }
+      );
+    }
+
+    // Validate phone number format
+    const phoneValidation = validatePhoneNumber(phone, 'MY');
+    if (!phoneValidation.isValid) {
+      return NextResponse.json(
+        { success: false, message: phoneValidation.error || 'Invalid phone number format' },
         { status: 400 }
       );
     }

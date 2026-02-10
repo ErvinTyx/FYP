@@ -13,6 +13,7 @@ import {
 } from "../ui/select";
 import { Checkbox } from "../ui/checkbox";
 import { Card, CardContent } from "../ui/card";
+import { validatePhoneNumber } from "@/lib/phone-validation";
 
 interface VendorRegistrationProps {
   onBack: () => void;
@@ -21,8 +22,23 @@ interface VendorRegistrationProps {
 
 export function VendorRegistration({ onBack, onComplete }: VendorRegistrationProps) {
   const [step, setStep] = useState(1);
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
 
   const progressPercentage = (step / 4) * 100;
+
+  const handleStep1Next = () => {
+    // Validate phone number if provided
+    if (phone && phone.trim()) {
+      const phoneValidation = validatePhoneNumber(phone.trim(), 'MY');
+      if (!phoneValidation.isValid) {
+        setPhoneError(phoneValidation.error || "Please enter a valid phone number");
+        return;
+      }
+    }
+    setPhoneError("");
+    setStep(2);
+  };
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center p-4">
@@ -112,13 +128,31 @@ export function VendorRegistration({ onBack, onComplete }: VendorRegistrationPro
                 id="phone"
                 type="tel"
                 placeholder="+60 12-345-6789"
-                className="h-10 border-[#D1D5DB]"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  if (phoneError) setPhoneError("");
+                }}
+                onBlur={() => {
+                  if (phone && phone.trim()) {
+                    const phoneValidation = validatePhoneNumber(phone.trim(), 'MY');
+                    if (!phoneValidation.isValid) {
+                      setPhoneError(phoneValidation.error || "Please enter a valid phone number");
+                    } else {
+                      setPhoneError("");
+                    }
+                  }
+                }}
+                className={`h-10 border-[#D1D5DB] ${phoneError ? 'border-red-500' : ''}`}
               />
+              {phoneError && (
+                <p className="text-xs text-red-500">{phoneError}</p>
+              )}
             </div>
 
             <div className="flex justify-end">
               <Button
-                onClick={() => setStep(2)}
+                onClick={handleStep1Next}
                 className="bg-[#F59E0B] hover:bg-[#D97706] h-10 px-6"
               >
                 Next

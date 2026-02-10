@@ -6,6 +6,7 @@ import { Label } from "../ui/label";
 import { Progress } from "../ui/progress";
 import { Checkbox } from "../ui/checkbox";
 import { Card, CardContent } from "../ui/card";
+import { validatePhoneNumber } from "@/lib/phone-validation";
 
 interface InternalRegistrationProps {
   onBack: () => void;
@@ -97,6 +98,11 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
     }
     if (!formData.phone.trim()) {
       errors.phone = "Phone number is required";
+    } else {
+      const phoneValidation = validatePhoneNumber(formData.phone.trim(), 'MY');
+      if (!phoneValidation.isValid) {
+        errors.phone = phoneValidation.error || "Please enter a valid phone number";
+      }
     }
 
     setFormErrors(errors);

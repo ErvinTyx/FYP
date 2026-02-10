@@ -3,6 +3,7 @@ import { ArrowLeft, Building2, UserCircle, Upload, CheckCircle, Clock, Mail, Loc
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { validatePhoneNumber } from "@/lib/phone-validation";
 import {
   Select,
   SelectContent,
@@ -166,6 +167,11 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     }
     if (!businessFormData.phone.trim()) {
       newErrors.phone = 'Phone number is required';
+    } else {
+      const phoneValidation = validatePhoneNumber(businessFormData.phone.trim(), 'MY');
+      if (!phoneValidation.isValid) {
+        newErrors.phone = phoneValidation.error || 'Please enter a valid phone number';
+      }
     }
 
     setBusinessErrors(newErrors);
@@ -378,6 +384,11 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     }
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required';
+    } else {
+      const phoneValidation = validatePhoneNumber(formData.phone.trim(), 'MY');
+      if (!phoneValidation.isValid) {
+        newErrors.phone = phoneValidation.error || 'Please enter a valid phone number';
+      }
     }
 
     setErrors(newErrors);

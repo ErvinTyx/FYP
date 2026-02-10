@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { toast } from "sonner";
+import { validatePhoneNumber } from "@/lib/phone-validation";
 
 interface ProfilePageProps {
   userId?: string;
@@ -81,14 +82,9 @@ export function ProfilePage({
   };
 
   const validatePhone = (phone: string): boolean => {
-    if (!phone.trim()) {
-      setPhoneError("Phone number cannot be empty.");
-      return false;
-    }
-    // Basic phone validation - can be enhanced based on requirements
-    const phoneRegex = /^[+]?[\d\s\-()]+$/;
-    if (!phoneRegex.test(phone)) {
-      setPhoneError("Please enter a valid phone number.");
+    const validation = validatePhoneNumber(phone, 'MY');
+    if (!validation.isValid) {
+      setPhoneError(validation.error || "Please enter a valid phone number.");
       return false;
     }
     setPhoneError("");
