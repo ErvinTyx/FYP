@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
             email: true,
             firstName: true,
             lastName: true,
+            status: true,
           },
         },
       },
@@ -151,13 +152,17 @@ export async function POST(request: NextRequest) {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 12);
 
+    // Determine new status: only transition to active if user is in pending_verification
+    // For users in 'pending' (awaiting approval), keep them as 'pending'
+    const newStatus = setupToken.user.status === 'pending_verification' ? 'active' : setupToken.user.status;
+
     // Update user password and status, mark token as used
     await prisma.$transaction([
       prisma.user.update({
         where: { id: setupToken.user.id },
         data: {
           password: hashedPassword,
-          status: 'active',
+          status: newStatus,
         },
       }),
       prisma.passwordSetupToken.update({
