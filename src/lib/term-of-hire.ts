@@ -47,18 +47,53 @@ export async function computeTermOfHireFromRfqItems(
 }
 
 /**
- * Compute monthly rental from rFQItem (same rfqId): sum of totalPrice for all items.
+ * Compute monthly rental from rFQItem (same rfqId).
+ *
+ * Formula (per set, grouped by setName):
+ *   setTotal = sum(quantity × unitPrice × 30) × rentalMonths
+ * Grand total = sum of all setTotals
+ * Monthly rental = grandTotal / termOfHire (total months across all sets)
  */
 export async function computeMonthlyRentalFromRfqItems(
   prisma: PrismaClient,
   rfqId: string
 ): Promise<number> {
-  type Row = { totalPrice: unknown };
+  type Row = { setName: string; rentalMonths: number; quantity: number; unitPrice: unknown };
   const rows = await prisma.rFQItem.findMany({
     where: { rfqId },
-    select: { totalPrice: true },
+    select: { setName: true, rentalMonths: true, quantity: true, unitPrice: true } as {
+      setName: true; rentalMonths: true; quantity: true; unitPrice: true;
+    },
   });
   const items = rows as unknown as Row[];
-  const sum = items.reduce((acc, item) => acc + (Number(item.totalPrice) || 0), 0);
-  return Math.round(sum * 100) / 100;
+  if (items.length === 0) return 0;
+
+  // Group items by setName
+  const setMap = new Map<string, { rentalMonths: number; itemSum: number }>();
+  for (const item of items) {
+    const name = item.setName ?? 'Set 1';
+    const existing = setMap.get(name);
+    const lineValue = (item.quantity || 0) * (Number(item.unitPrice) || 0) * 30;
+    if (existing) {
+      existing.itemSum += lineValue;
+    } else {
+      setMap.set(name, {
+        rentalMonths: item.rentalMonths ?? 1,
+        itemSum: lineValue,
+      });
+    }
+  }
+
+  // Calculate grand total: each set's (sum of qty × unitPrice × 30) × rentalMonths
+  let grandTotal = 0;
+  let totalMonths = 0;
+  for (const setData of setMap.values()) {
+    grandTotal += setData.itemSum * setData.rentalMonths;
+    totalMonths += setData.rentalMonths;
+  }
+
+  // Divide by term of hire (total months across all sets)
+  if (totalMonths <= 0) return 0;
+  const monthlyRental = grandTotal / totalMonths;
+  return Math.round(monthlyRental * 100) / 100;
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { sendMonthlyRentalRejectionEmail } from '@/lib/email';
-import { calculateUsageDays, calculateDailyRate, enforceMinimumCharge, calculateBillingPeriod, getCycleNumber } from '@/lib/billing-helpers';
+import { calculateBillingPeriod, getCycleNumber } from '@/lib/billing-helpers';
 
 // Roles allowed to manage monthly rental invoices
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
@@ -89,9 +89,11 @@ async function getEarliestRequiredDate(agreementId: string): Promise<Date | null
 }
 
 /**
- * Calculate billing amount based on agreement items, delivery/return dates, and daily proration.
+ * Calculate billing amount using the agreement's flat monthly rental.
  * 
  * Billing periods are 30-day cycles anchored to the earliest requiredDate from RFQ items.
+ * The total amount is the agreement's monthlyRental. Line items show delivered items
+ * with their proportional share of the monthly rental for reference.
  */
 async function calculateBillingAmount(
   agreementId: string,
@@ -110,6 +112,9 @@ async function calculateBillingAmount(
   if (!agreement) {
     throw new Error('Agreement not found');
   }
+
+  // Flat monthly rental from agreement
+  const monthlyRental = Number(agreement.monthlyRental) || 0;
 
   // Get all deliveries for this agreement
   const deliveries = await prisma.deliveryRequest.findMany({
@@ -139,56 +144,27 @@ async function calculateBillingAmount(
     },
   });
 
-  // Calculate delivered quantities per item and track delivery dates
-  const deliveredData: Record<string, { qty: number; earliestDelivery: Date | null }> = {};
+  // Calculate delivered quantities per item
+  const deliveredData: Record<string, number> = {};
   for (const delivery of deliveries) {
     for (const set of delivery.sets) {
-      const deliveryDate = set.completion?.deliveredAt 
-        ? new Date(set.completion.deliveredAt)
-        : (set.createdAt ? new Date(set.createdAt) : null);
-      
       for (const item of set.items) {
         const itemId = item.scaffoldingItemId || item.name;
-        if (!deliveredData[itemId]) {
-          deliveredData[itemId] = { qty: 0, earliestDelivery: null };
-        }
-        deliveredData[itemId].qty += item.quantity;
-        
-        // Track earliest delivery date for this item
-        if (deliveryDate) {
-          if (!deliveredData[itemId].earliestDelivery || deliveryDate < deliveredData[itemId].earliestDelivery) {
-            deliveredData[itemId].earliestDelivery = deliveryDate;
-          }
-        }
+        deliveredData[itemId] = (deliveredData[itemId] || 0) + item.quantity;
       }
     }
   }
 
-  // Calculate returned quantities per item and track return dates
-  const returnedData: Record<string, { qty: number; latestReturn: Date | null }> = {};
+  // Calculate returned quantities per item
+  const returnedData: Record<string, number> = {};
   for (const returnReq of returns) {
-    const returnDate = returnReq.completion?.completedAt
-      ? new Date(returnReq.completion.completedAt)
-      : null;
-    
     for (const item of returnReq.items) {
       const itemId = item.scaffoldingItemId || item.name;
-      if (!returnedData[itemId]) {
-        returnedData[itemId] = { qty: 0, latestReturn: null };
-      }
-      returnedData[itemId].qty += item.quantityReturned;
-      
-      // Track latest return date for this item
-      if (returnDate) {
-        if (!returnedData[itemId].latestReturn || returnDate > returnedData[itemId].latestReturn) {
-          returnedData[itemId].latestReturn = returnDate;
-        }
-      }
+      returnedData[itemId] = (returnedData[itemId] || 0) + item.quantityReturned;
     }
   }
 
-  // Calculate billing for each AgreementItem using 30-day period
-  let totalAmount = 0;
+  // Build line items for reference — each item gets a proportional share of the monthly rental
   const items: Array<{
     scaffoldingItemId: string;
     scaffoldingItemName: string;
@@ -198,50 +174,38 @@ async function calculateBillingAmount(
     lineTotal: number;
   }> = [];
 
+  // Sum of all agreedMonthlyRate across agreement items (for proportion calculation)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const totalRate = (agreement.items as any[]).reduce(
+    (sum: number, ai: any) => sum + (Number(ai.agreedMonthlyRate) || 0), 0
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const agreementItem of (agreement.items as any[])) {
     const itemId = agreementItem.scaffoldingItemId;
-    const delivered = deliveredData[itemId] || { qty: 0, earliestDelivery: null };
-    const returned = returnedData[itemId] || { qty: 0, latestReturn: null };
-    
-    const netQty = delivered.qty - returned.qty;
+    const delivered = deliveredData[itemId] || 0;
+    const returned = returnedData[itemId] || 0;
+    const netQty = delivered - returned;
+
     if (netQty > 0) {
-      // Calculate usage days within this 30-day billing period
-      const usageDays = calculateUsageDays(
-        delivered.earliestDelivery,
-        returned.latestReturn,
-        periodStart,
-        periodEnd
-      );
-
-      // Calculate daily rate (monthly rate / 30)
-      const dailyRate = calculateDailyRate(
-        Number(agreementItem.agreedMonthlyRate)
-      );
-
-      // Enforce minimum rental duration
-      const totalRentalDays = usageDays;
-      const chargeDays = enforceMinimumCharge(
-        totalRentalDays,
-        agreementItem.minimumRentalMonths
-      );
-
-      // Calculate line total: netQty × dailyRate × chargeDays
-      const lineTotal = netQty * dailyRate * chargeDays;
-      totalAmount += lineTotal;
+      const itemRate = Number(agreementItem.agreedMonthlyRate) || 0;
+      // Proportional share of the flat monthly rental
+      const lineTotal = totalRate > 0
+        ? Math.round((itemRate / totalRate) * monthlyRental * 100) / 100
+        : 0;
 
       items.push({
         scaffoldingItemId: itemId,
         scaffoldingItemName: agreementItem.scaffoldingItemName,
         quantityBilled: netQty,
-        unitPrice: dailyRate, // Store daily rate as unitPrice for display
-        daysCharged: chargeDays,
+        unitPrice: itemRate, // agreed monthly rate per item for display
+        daysCharged: 30,
         lineTotal,
       });
     }
   }
 
-  // Get customer info from first delivery (or agreement if no deliveries)
+  // Get customer info from first delivery
   let customerName = '';
   let customerEmail: string | null = null;
   let customerPhone: string | null = null;
@@ -253,7 +217,7 @@ async function calculateBillingAmount(
   }
 
   return {
-    totalAmount,
+    totalAmount: monthlyRental,
     items,
     daysInPeriod: 30,
     customerName,

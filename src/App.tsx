@@ -429,28 +429,9 @@ export default function App() {
 
   // Dashboard menu items based on role and system mode
   const getMenuItems = () => {
-    // CRM Mode - Customer Portal
+    // CRM Mode - Customer Portal (Still in development - no menu items)
     if (systemMode === "CRM" || userRole === "customer") {
-      return [
-        {
-          section: "Shopping",
-          items: [
-            { id: "customer-portal" as Page, label: "Marketplace", icon: ShoppingCart },
-          ],
-        },
-        {
-          section: "My Orders",
-          items: [
-            { id: "billing-dashboard" as Page, label: "Order History", icon: FileText },
-          ],
-        },
-        {
-          section: "Information",
-          items: [
-            { id: "customer-content-view" as Page, label: "Information Center", icon: Info },
-          ],
-        },
-      ];
+      return []; // No menu items for customers - they can only access profile via dropdown
     }
 
     // ERP Mode - Internal Staff
@@ -518,6 +499,27 @@ export default function App() {
   const menuItems = getMenuItems();
 
   const renderPage = () => {
+    // Restrict customers to only profile page and customer-portal (development message)
+    if (userRole === "customer" && currentPage !== "profile" && currentPage !== "customer-portal") {
+      // Redirect to customer-portal which shows development message
+      return (
+        <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+          <div className="text-center space-y-4 max-w-md">
+            <div className="w-24 h-24 mx-auto bg-[#F3F4F6] rounded-full flex items-center justify-center">
+              <ShoppingCart className="h-12 w-12 text-[#6B7280]" />
+            </div>
+            <h1 className="text-2xl font-semibold text-[#111827]">Still in Development</h1>
+            <p className="text-[#6B7280]">
+              The customer portal is currently under development. Please check back soon!
+            </p>
+            <p className="text-sm text-[#9CA3AF]">
+              You can access your profile and logout from the menu above.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     switch (currentPage) {
       case "user-management":
         return <UserManagement userRole={userRole} />;
@@ -588,7 +590,23 @@ export default function App() {
       case "report-generation":
         return <ReportGenerationEnhanced />;
       case "customer-portal":
-        return <CustomerPortal />;
+        // Show "still in development" message for customers
+        return (
+          <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+            <div className="text-center space-y-4 max-w-md">
+              <div className="w-24 h-24 mx-auto bg-[#F3F4F6] rounded-full flex items-center justify-center">
+                <ShoppingCart className="h-12 w-12 text-[#6B7280]" />
+              </div>
+              <h1 className="text-2xl font-semibold text-[#111827]">Still in Development</h1>
+              <p className="text-[#6B7280]">
+                The customer portal is currently under development. Please check back soon!
+              </p>
+              <p className="text-sm text-[#9CA3AF]">
+                You can access your profile and logout from the menu above.
+              </p>
+            </div>
+          </div>
+        );
       case "content-management":
         return <ContentManagement />;
       case "customer-content-view":
@@ -602,10 +620,17 @@ export default function App() {
       case "project-closure":
         return <ProjectClosureManagement />;
       case "profile":
+        // Construct full name from firstName and lastName
+        const firstName = session?.user?.firstName || "";
+        const lastName = session?.user?.lastName || "";
+        const fullName = firstName && lastName 
+          ? `${firstName} ${lastName}`.trim()
+          : firstName || lastName || "";
+        
         return (
           <ProfilePage 
             userId={session?.user?.id}
-            currentUserName={session?.user?.name || getRoleName()}
+            currentUserName={fullName}
             currentUserRole={getRoleName()}
             currentUserEmail={session?.user?.email || ""}
             currentUserPhone={(session?.user as any)?.phone || ""}
@@ -643,6 +668,30 @@ export default function App() {
     }
   };
 
+  const getUserName = () => {
+    const firstName = session?.user?.firstName || "";
+    const lastName = session?.user?.lastName || "";
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`.trim();
+    }
+    return firstName || lastName || getRoleName();
+  };
+
+  const getUserInitials = () => {
+    const firstName = session?.user?.firstName || "";
+    const lastName = session?.user?.lastName || "";
+    if (firstName && lastName) {
+      return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+    }
+    if (firstName) {
+      return firstName.substring(0, 2).toUpperCase();
+    }
+    if (lastName) {
+      return lastName.substring(0, 2).toUpperCase();
+    }
+    return getRoleName().substring(0, 2).toUpperCase();
+  };
+
   const getSystemLabel = () => {
     return systemMode === "ERP" ? "Staff Portal" : "Customer Portal";
   };
@@ -657,14 +706,17 @@ export default function App() {
           {/* Left: Logo */}
           <div className="flex items-center gap-4">
             {/* Mobile Menu Toggle */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-10 w-10"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-            >
-              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
+            {/* Hide sidebar toggle for customers since they have no menu items */}
+            {userRole !== "customer" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-10 w-10"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+              >
+                {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </Button>
+            )}
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${ 
                 systemMode === 'CRM' ? 'bg-[#059669]' : 'bg-[#F15929]'
@@ -682,8 +734,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Center: Search Bar */}
-          <div className="hidden md:block flex-1 max-w-[400px] mx-auto">
+          {/* Center: Search Bar - Hidden */}
+          {/* <div className="hidden md:block flex-1 max-w-[400px] mx-auto">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
               <Input
@@ -691,20 +743,20 @@ export default function App() {
                 className="pl-10 h-10 bg-[#F3F4F6] border-[#E5E7EB] rounded-lg"
               />
             </div>
-          </div>
+          </div> */}
 
           {/* Right: Notifications & User */}
           <div className="flex items-center gap-4">
-            <NotificationCenter />
+            {/* <NotificationCenter /> */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2 h-10">
                   <Avatar className="h-8 w-8">
                     <AvatarFallback className={systemMode === "CRM" ? "bg-[#059669] text-white" : "bg-[#F15929] text-white"}>
-                      {getRoleName().substring(0, 2).toUpperCase()}
+                      {getUserInitials()}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden md:inline text-[#374151]">{getRoleName()}</span>
+                  <span className="hidden md:inline text-[#374151]">{getUserName()}</span>
                   <ChevronDown className="h-4 w-4 text-[#6B7280]" />
                 </Button>
               </DropdownMenuTrigger>
@@ -748,12 +800,13 @@ export default function App() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Sidebar Navigation */}
-      <aside
-        className={`fixed left-0 top-16 bottom-0 w-60 bg-[#F8FAFC] border-r border-[#E5E7EB] z-40 transition-transform duration-300 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
+      {/* Sidebar Navigation - Hidden for customers */}
+      {userRole !== "customer" && (
+        <aside
+          className={`fixed left-0 top-16 bottom-0 w-60 bg-[#F8FAFC] border-r border-[#E5E7EB] z-40 transition-transform duration-300 ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
         <nav className="p-4 space-y-6 overflow-y-auto h-full">
           {menuItems.map((section, idx) => (
             <div key={idx} className="space-y-2">
@@ -786,11 +839,12 @@ export default function App() {
           ))}
         </nav>
       </aside>
+      )}
 
       {/* Main Content Area */}
       <main
         className={`pt-16 transition-all duration-300 ${
-          sidebarOpen ? 'pl-60' : 'pl-0'
+          userRole === "customer" ? 'pl-0' : (sidebarOpen ? 'pl-60' : 'pl-0')
         }`}
       >
         <div className="p-8 min-h-screen">
@@ -799,7 +853,7 @@ export default function App() {
       </main>
 
       {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
+      {userRole !== "customer" && sidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
