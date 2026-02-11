@@ -12,6 +12,17 @@ const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
  * Uses the agreement's flat monthlyRental amount.
  */
 async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
+  // Check if invoice already exists for this delivery request (prevent duplicates when multiple sets complete)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existingInvoiceForDelivery = await (prisma as any).monthlyRentalInvoice.findFirst({
+    where: { deliveryRequestId },
+  });
+
+  if (existingInvoiceForDelivery) {
+    console.log(`Invoice already exists for delivery request ${deliveryRequestId}, skipping invoice generation`);
+    return;
+  }
+
   // Get delivery request
   const delivery = await prisma.deliveryRequest.findUnique({
     where: { id: deliveryRequestId },
