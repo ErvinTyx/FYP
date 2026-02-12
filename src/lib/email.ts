@@ -153,7 +153,7 @@ export async function sendPasswordSetupEmail(
               </p>
               <div style="background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 16px; margin: 0 0 25px 0;">
                 <p style="color: #92400E; margin: 0; font-size: 14px;">
-                  <strong>⏰ This link expires in 24 hours.</strong><br>
+                  <strong>⏰ This link expires in 15 minutes.</strong><br>
                   If you don't set up your password within this time, please contact your administrator.
                 </p>
               </div>
@@ -175,7 +175,7 @@ Your account has been created by an administrator. Please visit the link below t
 
 ${setupUrl}
 
-This link expires in 24 hours. If you don't set up your password within this time, please contact your administrator.
+This link expires in 15 minutes. If you don't set up your password within this time, please contact your administrator.
 
 If you didn't expect this email, please contact your administrator.
     `.trim(),
