@@ -77,9 +77,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Generate new password setup token (expires in 24 hours)
+    // Generate new password setup token (expires in 15 minutes)
     const setupToken = generatePasswordSetupToken();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     await prisma.passwordSetupToken.create({
       data: {
