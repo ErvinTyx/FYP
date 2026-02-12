@@ -109,8 +109,9 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
   const billingYear = billingStartDate.getFullYear();
 
   // Check if invoice already exists for this agreement and billing period
+  // Check by month/year (for unique constraint)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const existingInvoice = await (prisma as any).monthlyRentalInvoice.findFirst({
+  const existingInvoiceByMonth = await (prisma as any).monthlyRentalInvoice.findFirst({
     where: {
       agreementId: agreement.id,
       billingMonth,
@@ -118,8 +119,38 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     },
   });
 
-  if (existingInvoice) {
-    console.log(`Invoice already exists for agreement ${agreement.id} for period starting ${billingStartDate.toISOString().slice(0, 10)}`);
+  if (existingInvoiceByMonth) {
+    console.log(`Invoice already exists for agreement ${agreement.id} for ${billingMonth}/${billingYear}. Invoice: ${existingInvoiceByMonth.invoiceNumber}`);
+    return;
+  }
+
+  // Also check for any overlapping billing periods to prevent duplicates
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const overlappingInvoice = await (prisma as any).monthlyRentalInvoice.findFirst({
+    where: {
+      agreementId: agreement.id,
+      OR: [
+        {
+          // New period starts within existing period
+          billingStartDate: { lte: billingStartDate },
+          billingEndDate: { gte: billingStartDate },
+        },
+        {
+          // New period ends within existing period
+          billingStartDate: { lte: billingEndDate },
+          billingEndDate: { gte: billingEndDate },
+        },
+        {
+          // New period completely contains existing period
+          billingStartDate: { gte: billingStartDate },
+          billingEndDate: { lte: billingEndDate },
+        },
+      ],
+    },
+  });
+
+  if (overlappingInvoice) {
+    console.log(`Invoice already exists for agreement ${agreement.id} with overlapping billing period (${overlappingInvoice.billingStartDate.toISOString().slice(0, 10)} to ${overlappingInvoice.billingEndDate.toISOString().slice(0, 10)}). Invoice: ${overlappingInvoice.invoiceNumber}`);
     return;
   }
 
