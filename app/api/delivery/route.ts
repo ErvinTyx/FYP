@@ -947,11 +947,10 @@ export async function PUT(request: NextRequest) {
             
             const scaffoldingItems = await prisma.scaffoldingItem.findMany({
               where: { id: { in: scaffoldingItemIds } },
-              select: { id: true, available: true, reservedQuantity: true, name: true },
             });
             
             // Build lookup map for stock levels
-            const stockMap = new Map(scaffoldingItems.map(s => [s.id, { available: s.available, reserved: s.reservedQuantity ?? 0, name: s.name }]));
+            const stockMap = new Map(scaffoldingItems.map(s => [s.id, { available: s.available, reserved: (s as any).reservedQuantity ?? 0, name: s.name }]));
             
             // Validate stock availability
             const insufficientItems: { name: string; required: number; available: number }[] = [];
@@ -989,12 +988,11 @@ export async function PUT(request: NextRequest) {
                 if (item.scaffoldingItemId) {
                   const current = await tx.scaffoldingItem.findUnique({
                     where: { id: item.scaffoldingItemId },
-                    select: { available: true, reservedQuantity: true },
                   });
                   
                   if (current) {
                     const newAvailable = current.available - item.quantity;
-                    const currentReserved = Number(current.reservedQuantity || 0);
+                    const currentReserved = Number((current as any).reservedQuantity || 0);
                     const newReserved = Math.max(0, currentReserved - item.quantity);
                     
                     // Calculate new status based on available quantity
@@ -1005,14 +1003,14 @@ export async function PUT(request: NextRequest) {
                       status = 'Low Stock';
                     }
                     
-                    await tx.scaffoldingItem.update({
-                      where: { id: item.scaffoldingItemId },
-                      data: { 
-                        available: newAvailable,
-                        reservedQuantity: newReserved,
-                        status,
-                      }
-                    });
+                      await tx.scaffoldingItem.update({
+                        where: { id: item.scaffoldingItemId },
+                        data: { 
+                          available: newAvailable,
+                          reservedQuantity: newReserved,
+                          status,
+                        } as any
+                      });
                   }
                 }
               }
