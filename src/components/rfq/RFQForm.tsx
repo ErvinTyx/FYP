@@ -35,6 +35,7 @@ interface DatabaseScaffoldingItem {
   category: string;
   quantity: number;
   available: number;
+  reservedQuantity?: number;
   price: number;
   status: string;
   location: string | null;
@@ -304,21 +305,33 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
               if (field === 'scaffoldingItemId') {
                 const scaffoldingItem = getScaffoldingItem(value);
                 if (scaffoldingItem) {
+                  const availableForRfq = Math.max(
+                    0,
+                    Number(scaffoldingItem.available || 0) - Number(scaffoldingItem.reservedQuantity || 0)
+                  );
                   updated.scaffoldingItemName = scaffoldingItem.name;
                   updated.unit = 'piece';
                   updated.unitPrice = scaffoldingItem.price;
-                  if (updated.quantity > scaffoldingItem.available) {
-                    updated.quantity = scaffoldingItem.available;
-                    toast.error(`Quantity exceeds available stock (${scaffoldingItem.available}).`);
+                  if (updated.quantity > availableForRfq) {
+                    updated.quantity = availableForRfq;
+                    toast.error(`Quantity exceeds available stock (${availableForRfq}).`);
                   }
                 }
               }
               if (field === 'quantity') {
                 const nextQuantity = Number(value) || 0;
                 const scaffoldingItem = getScaffoldingItem(updated.scaffoldingItemId);
-                if (scaffoldingItem && nextQuantity > scaffoldingItem.available) {
-                  updated.quantity = scaffoldingItem.available;
-                  toast.error(`Quantity exceeds available stock (${scaffoldingItem.available}).`);
+                if (scaffoldingItem) {
+                  const availableForRfq = Math.max(
+                    0,
+                    Number(scaffoldingItem.available || 0) - Number(scaffoldingItem.reservedQuantity || 0)
+                  );
+                  if (nextQuantity > availableForRfq) {
+                    updated.quantity = availableForRfq;
+                    toast.error(`Quantity exceeds available stock (${availableForRfq}).`);
+                  } else {
+                    updated.quantity = nextQuantity;
+                  }
                 } else {
                   updated.quantity = nextQuantity;
                 }
@@ -411,9 +424,15 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
       }
       for (const item of set.items) {
         const scaffoldingItem = getScaffoldingItem(item.scaffoldingItemId);
-        if (scaffoldingItem && item.quantity > scaffoldingItem.available) {
-          toast.error(`Set "${set.setName}": "${scaffoldingItem.name}" has only ${scaffoldingItem.available} available.`);
-          return;
+        if (scaffoldingItem) {
+          const availableForRfq = Math.max(
+            0,
+            Number(scaffoldingItem.available || 0) - Number(scaffoldingItem.reservedQuantity || 0)
+          );
+          if (item.quantity > availableForRfq) {
+            toast.error(`Set "${set.setName}": "${scaffoldingItem.name}" has only ${availableForRfq} available.`);
+            return;
+          }
         }
       }
     }
@@ -624,7 +643,20 @@ return (
                                     {loadingScaffolding ? (<div className="flex items-center gap-2"><Loader2 className="size-3 animate-spin" /><span className="text-sm">Loading...</span></div>) : (<SelectValue placeholder="Select scaffolding type" />)}
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {scaffoldingTypes.map(type => (<SelectItem key={type.id} value={type.id}>{type.itemCode} - {type.name} - RM {type.price.toFixed(2)}/piece</SelectItem>))}
+                                    {scaffoldingTypes.map(type => {
+                                      const availableForRfq = Math.max(
+                                        0,
+                                        Number(type.available || 0) - Number(type.reservedQuantity || 0)
+                                      );
+                                      const isUnavailable = availableForRfq <= 0;
+                                      return (
+                                        <SelectItem key={type.id} value={type.id} disabled={isUnavailable}>
+                                          {type.itemCode} - {type.name} - RM {type.price.toFixed(2)}/piece
+                                          {` (Available: ${availableForRfq})`}
+                                          {isUnavailable ? ' - Unavailable' : ''}
+                                        </SelectItem>
+                                      );
+                                    })}
                                   </SelectContent>
                                 </Select>
                               </div>

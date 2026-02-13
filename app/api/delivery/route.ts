@@ -946,11 +946,12 @@ export async function PUT(request: NextRequest) {
             const scaffoldingItemIds = itemsWithScaffoldingId.map(item => item.scaffoldingItemId).filter((id): id is string => id !== null);
             
             const scaffoldingItems = await prisma.scaffoldingItem.findMany({
-              where: { id: { in: scaffoldingItemIds } }
+              where: { id: { in: scaffoldingItemIds } },
+              select: { id: true, available: true, reservedQuantity: true, name: true },
             });
             
             // Build lookup map for stock levels
-            const stockMap = new Map(scaffoldingItems.map(s => [s.id, { available: s.available, name: s.name }]));
+            const stockMap = new Map(scaffoldingItems.map(s => [s.id, { available: s.available, reserved: s.reservedQuantity ?? 0, name: s.name }]));
             
             // Validate stock availability
             const insufficientItems: { name: string; required: number; available: number }[] = [];
@@ -987,11 +988,14 @@ export async function PUT(request: NextRequest) {
               for (const item of itemsWithScaffoldingId) {
                 if (item.scaffoldingItemId) {
                   const current = await tx.scaffoldingItem.findUnique({
-                    where: { id: item.scaffoldingItemId }
+                    where: { id: item.scaffoldingItemId },
+                    select: { available: true, reservedQuantity: true },
                   });
                   
                   if (current) {
                     const newAvailable = current.available - item.quantity;
+                    const currentReserved = Number(current.reservedQuantity || 0);
+                    const newReserved = Math.max(0, currentReserved - item.quantity);
                     
                     // Calculate new status based on available quantity
                     let status = 'Available';
@@ -1005,6 +1009,7 @@ export async function PUT(request: NextRequest) {
                       where: { id: item.scaffoldingItemId },
                       data: { 
                         available: newAvailable,
+                        reservedQuantity: newReserved,
                         status,
                       }
                     });

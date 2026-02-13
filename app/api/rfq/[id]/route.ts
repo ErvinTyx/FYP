@@ -111,7 +111,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     // Check if RFQ exists
     const existingRFQ = await prisma.rFQ.findUnique({
       where: { id: rfqId },
-      select: { id: true },
+      include: {
+        items: true,
+      },
     });
 
     if (!existingRFQ) {
@@ -137,6 +139,34 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (status) updateData.status = status;
       if (totalAmount !== undefined) updateData.totalAmount = totalAmount;
       if (notes !== undefined) updateData.notes = notes;
+
+      // If status is changing to rejected, restore reserved quantities once
+      if (status === 'rejected' && existingRFQ.status !== 'rejected') {
+        const quantities = new Map<string, number>();
+        for (const item of existingRFQ.items) {
+          if (!item.scaffoldingItemId) continue;
+          const qty = Number(item.quantity || 0);
+          if (qty > 0) {
+            quantities.set(item.scaffoldingItemId, (quantities.get(item.scaffoldingItemId) || 0) + qty);
+          }
+        }
+        if (quantities.size > 0) {
+          const itemIds = Array.from(quantities.keys());
+          const scaffoldingItems = await (tx.scaffoldingItem as any).findMany({
+            where: { id: { in: itemIds } },
+            select: { id: true, reservedQuantity: true },
+          });
+          for (const scaffoldingItem of scaffoldingItems) {
+            const addBack = quantities.get(scaffoldingItem.id) || 0;
+            const currentReserved = Number(scaffoldingItem.reservedQuantity || 0);
+            const newReserved = Math.max(0, currentReserved - addBack);
+            await (tx.scaffoldingItem as any).update({
+              where: { id: scaffoldingItem.id },
+              data: { reservedQuantity: newReserved },
+            });
+          }
+        }
+      }
 
       // Update RFQ header
       await tx.rFQ.update({
