@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Upload, Check, X, FileText, AlertCircle, Calendar, Info, ExternalLink, Loader2, Printer, Download } from 'lucide-react';
+import { ArrowLeft, Upload, Check, X, FileText, AlertCircle, Calendar, Info, ExternalLink, Loader2, Printer, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatRfqDate } from '../../lib/rfqDate';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { useCreditNotesForSource } from '../../hooks/useCreditNotesForSource';
 
 interface MonthlyRentalInvoiceDetailsProps {
@@ -65,6 +66,7 @@ export function MonthlyRentalInvoiceDetails({
   const [rejectionReasonError, setRejectionReasonError] = useState('');
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [autoPrint, setAutoPrint] = useState(false);
+  const [showCalculation, setShowCalculation] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -497,6 +499,124 @@ export function MonthlyRentalInvoiceDetails({
               ))}
             </TableBody>
           </Table>
+
+          {/* Calculation Breakdown */}
+          <Collapsible open={showCalculation} onOpenChange={setShowCalculation}>
+            <CollapsibleTrigger className="mt-4 w-full">
+              <div className="flex items-center justify-between w-full p-3 bg-[#F9FAFB] rounded-lg hover:bg-[#F3F4F6] transition-colors">
+                <div className="flex items-center gap-2">
+                  <Info className="h-4 w-4 text-[#6B7280]" />
+                  <span className="text-sm font-medium text-[#231F20]">Show Calculation Details</span>
+                </div>
+                {showCalculation ? (
+                  <ChevronUp className="h-4 w-4 text-[#6B7280]" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-[#6B7280]" />
+                )}
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-4 p-4 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB]">
+                <p className="text-xs text-[#6B7280] font-medium mb-3">Line Item Calculation Formula:</p>
+                
+                {/* Calculate total rate from items */}
+                {(() => {
+                  const totalRate = invoice.items.reduce((sum, item) => sum + Number(item.unitPrice), 0);
+                  const monthlyRental = Number(invoice.baseAmount);
+                  const isLastItem = (index: number) => index === invoice.items.length - 1;
+                  
+                  return (
+                    <div className="space-y-3">
+                      <div className="text-xs text-[#374151] space-y-2">
+                        <p className="font-semibold">Step 1: Get Original Agreement Quantities</p>
+                        <p className="ml-4">Quantity = Original quantity from RFQ/Agreement (summed across all sets if item appears in multiple sets)</p>
+                        <p className="ml-4 text-[#6B7280] italic">
+                          Note: This shows the original agreed quantities, not delivered quantities.
+                        </p>
+                      </div>
+                      
+                      <div className="text-xs text-[#374151] space-y-2">
+                        <p className="font-semibold">Step 2: Calculate Total Rate</p>
+                        <p className="ml-4">Total Rate = Sum of all Unit Rates (Agreed Monthly Rates from Agreement)</p>
+                        <p className="ml-4 font-mono bg-white px-2 py-1 rounded border">
+                          Total Rate = {invoice.items.map((item, idx) => 
+                            `RM ${Number(item.unitPrice).toFixed(2)}${idx < invoice.items.length - 1 ? ' + ' : ''}`
+                          ).join('')} = RM {totalRate.toFixed(2)}
+                        </p>
+                      </div>
+                      
+                      <div className="text-xs text-[#374151] space-y-2">
+                        <p className="font-semibold">Step 3: Calculate Line Total (Proportional Share)</p>
+                        <p className="ml-4">For each item (except the last):</p>
+                        <p className="ml-6 font-mono bg-white px-2 py-1 rounded border">
+                          Line Total = (Item Rate ÷ Total Rate) × Monthly Rental
+                        </p>
+                        <p className="ml-6 text-[#6B7280] text-xs mt-1">
+                          Then rounded to 2 decimal places
+                        </p>
+                        <p className="ml-4 mt-2">For the last item:</p>
+                        <p className="ml-6 font-mono bg-white px-2 py-1 rounded border">
+                          Line Total = Monthly Rental - Sum of all previous line totals
+                        </p>
+                        <p className="ml-4 mt-2 text-[#6B7280] italic">
+                          This ensures the sum of all line items equals the Monthly Rental exactly (no rounding errors).
+                        </p>
+                      </div>
+                      
+                      <div className="text-xs text-[#374151] space-y-2 mt-4 pt-3 border-t border-[#E5E7EB]">
+                        <p className="font-semibold">Item-by-Item Calculation:</p>
+                        {invoice.items.map((item, index) => {
+                          const itemRate = Number(item.unitPrice);
+                          const itemProportion = totalRate > 0 ? (itemRate / totalRate) : 0;
+                          const calculatedShare = itemProportion * monthlyRental;
+                          const isLast = isLastItem(index);
+                          const previousTotal = invoice.items.slice(0, index).reduce((sum, i) => sum + Number(i.lineTotal), 0);
+                          
+                          return (
+                            <div key={item.id} className="ml-4 mt-2 p-2 bg-white rounded border border-[#E5E7EB]">
+                              <p className="font-medium text-[#231F20] mb-1">{item.scaffoldingItemName}</p>
+                              <div className="space-y-1 text-[#6B7280]">
+                                <p>• Original Quantity: {item.quantityBilled} units (from agreement/RFQ)</p>
+                                <p>• Unit Rate (Agreed Monthly Rate): RM {itemRate.toFixed(2)}</p>
+                                {!isLast ? (
+                                  <>
+                                    <p>• Proportion: RM {itemRate.toFixed(2)} ÷ RM {totalRate.toFixed(2)} = {(itemProportion * 100).toFixed(2)}%</p>
+                                    <p>• Calculation: {(itemProportion * 100).toFixed(2)}% × RM {monthlyRental.toFixed(2)} = RM {calculatedShare.toFixed(2)}</p>
+                                    <p>• Rounded to 2 decimals: <span className="font-semibold text-[#231F20]">RM {Number(item.lineTotal).toFixed(2)}</span></p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p>• Sum of previous items: RM {previousTotal.toFixed(2)}</p>
+                                    <p>• Last item calculation: RM {monthlyRental.toFixed(2)} - RM {previousTotal.toFixed(2)} = <span className="font-semibold text-[#231F20]">RM {Number(item.lineTotal).toFixed(2)}</span></p>
+                                    <p className="text-xs text-[#6B7280] italic">(Ensures exact match with monthly rental)</p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      
+                      <div className="text-xs text-[#374151] mt-4 pt-3 border-t border-[#E5E7EB]">
+                        <p className="font-semibold">Verification:</p>
+                        <p className="ml-4 mt-1">
+                          Sum of Line Totals = {invoice.items.map((item, idx) => 
+                            `RM ${Number(item.lineTotal).toFixed(2)}${idx < invoice.items.length - 1 ? ' + ' : ''}`
+                          ).join('')} = <span className="font-semibold text-[#F15929]">RM {invoice.items.reduce((sum, item) => sum + Number(item.lineTotal), 0).toFixed(2)}</span>
+                        </p>
+                        <p className="ml-4 mt-1">
+                          Monthly Rental = <span className="font-semibold text-[#F15929]">RM {monthlyRental.toFixed(2)}</span>
+                        </p>
+                        <p className="ml-4 mt-1 text-green-600 font-medium">
+                          ✓ Match: {Math.abs(invoice.items.reduce((sum, item) => sum + Number(item.lineTotal), 0) - monthlyRental) < 0.01 ? 'Yes' : 'No'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
           {/* Totals */}
           <div className="mt-6 border-t pt-4 space-y-2">
