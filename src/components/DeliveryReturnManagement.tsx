@@ -523,10 +523,12 @@ export default function DeliveryReturnManagement({
           isValid = false;
         }
 
-        // Check if quantity exceeds quoted quantity
+        // Check if quantity exceeds quoted quantity (use RFQ item for this set, not first match by item id)
         const rfqForValidation = getRfqForAgreement(selectedAgreementId);
         const rfqItems = rfqForValidation?.items || [];
-        const quotedItem = rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId);
+        const quotedItem = rfqItems.find(
+          ri => ri.scaffoldingItemId === item.scaffoldingItemId && (ri.setName || 'Set 1') === set.setName
+        );
         if (quotedItem && item.quantity > quotedItem.quantity) {
           itemError.quantity = `Quantity cannot exceed quoted amount (${quotedItem.quantity})`;
           isValid = false;
@@ -624,7 +626,19 @@ export default function DeliveryReturnManagement({
     setIsCreating(true);
     try {
       const requestId = generateDeliveryRequestId(agreement.agreementNumber);
-      
+      const payloadSets = validSets.map(set => ({
+        setName: set.setName,
+        scheduledPeriod: set.scheduledPeriod,
+        items: set.items.filter(item => item.scaffoldingItemId?.trim()).map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          scaffoldingItemId: item.scaffoldingItemId,
+        })),
+      }));
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DeliveryReturnManagement.tsx:handleCreateDeliveryRequest',message:'Create delivery request payload',data:{requestId,agreementNo:agreement.agreementNumber,validSetNames:validSets.map(s=>s.setName),selectedSetNames:[...selectedSetNames],deliverySetNames:deliverySets.map(s=>s.setName),deliveryRequestsCount:deliveryRequests.filter(dr=>dr.agreementNo===agreement.agreementNumber).length},timestamp:Date.now(),hypothesisId:'B,C,D'})}).catch(()=>{});
+      // #endregion
+
       const response = await fetch('/api/delivery', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -637,19 +651,14 @@ export default function DeliveryReturnManagement({
           deliveryAddress: rfq.projectLocation || '',
           deliveryType: newDeliveryForm.deliveryType,
           rfqId: rfq.id,
-          sets: validSets.map(set => ({
-            setName: set.setName,
-            scheduledPeriod: set.scheduledPeriod,
-            items: set.items.filter(item => item.scaffoldingItemId?.trim()).map(item => ({
-              name: item.name,
-              quantity: item.quantity,
-              scaffoldingItemId: item.scaffoldingItemId,
-            })),
-          })),
+          sets: payloadSets,
         }),
       });
 
       const data = await response.json();
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DeliveryReturnManagement.tsx:handleCreateDeliveryRequest',message:'Create delivery response',data:{success:data.success,message:data.message,status:response.status},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
+      // #endregion
       if (data.success) {
         await fetchDeliveryRequests();
         setShowCreateDeliveryModal(false);
@@ -1507,9 +1516,13 @@ export default function DeliveryReturnManagement({
         return;
       }
 
-      // Generate one DO number for the entire request
-      const doNumber = `DO-${request.agreementNo}`;
-      
+      // Generate one DO number per delivery request (unique across requests for same agreement)
+      const requestIdPrefix = `DEL-${request.agreementNo}-`;
+      const uniqueSuffix = request.requestId.startsWith(requestIdPrefix)
+        ? request.requestId.slice(requestIdPrefix.length)
+        : request.requestId;
+      const doNumber = `DO-${request.agreementNo}-${uniqueSuffix}`;
+
       // Check if DO already exists for this request
       const existingDO = request.sets.find(s => s.doNumber === doNumber);
       if (existingDO) {
@@ -2708,13 +2721,13 @@ export default function DeliveryReturnManagement({
                         const rfqForItems = getRfqForAgreement(selectedAgreementId);
                         const rfqItems = rfqForItems?.items || [];
                         const itemError = deliveryFormErrors.sets?.[setIndex]?.itemErrors?.[itemIndex];
-                        
+                        const quotedForSet = rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId && (ri.setName || 'Set 1') === set.setName);
                         return (
                           <div key={itemIndex} className="space-y-1">
                             <div className="flex items-center space-x-2">
                               <input
                                 type="text"
-                                value={item.name ? `${item.name} (Quoted: ${rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.quantity ?? ''} ${rfqItems.find(ri => ri.scaffoldingItemId === item.scaffoldingItemId)?.unit ?? ''})` : ''}
+                                value={item.name ? `${item.name} (Quoted: ${quotedForSet?.quantity ?? ''} ${quotedForSet?.unit ?? ''})` : ''}
                                 readOnly
                                 disabled
                                 className={`flex-1 px-3 py-2 border rounded-lg text-sm disabled:bg-gray-100 ${
