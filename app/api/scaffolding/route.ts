@@ -5,6 +5,11 @@ import prisma from '@/lib/prisma';
 // Roles allowed to manage scaffolding items
 const ALLOWED_ROLES = ['super_user', 'admin', 'operations', 'production'];
 
+// Type helper to include reservedQuantity in Prisma query results
+type ScaffoldingItemWithReserved = {
+  reservedQuantity: number;
+} & Record<string, any>;
+
 /** Single non-zero cost per unit: repairChargePerUnit or partsLabourCostPerUnit (or 0 if both 0). */
 function damageRepairCostPerUnit(repair: number, partsLabour: number): number {
   return repair !== 0 ? repair : partsLabour;
@@ -72,7 +77,7 @@ export async function GET(request: NextRequest) {
       name: item.name,
       category: item.category,
       available: item.available,
-      reservedQuantity: item.reservedQuantity ?? 0,
+      reservedQuantity: (item as unknown as ScaffoldingItemWithReserved).reservedQuantity ?? 0,
       price: Number(item.price),
       originPrice: item.originPrice != null ? Number(item.originPrice) : 0,
       status: item.status,
@@ -204,7 +209,7 @@ export async function POST(request: NextRequest) {
         name: scaffoldingItem.name,
         category: scaffoldingItem.category,
         available: scaffoldingItem.available,
-        reservedQuantity: scaffoldingItem.reservedQuantity ?? 0,
+        reservedQuantity: (scaffoldingItem as unknown as ScaffoldingItemWithReserved).reservedQuantity ?? 0,
         price: Number(scaffoldingItem.price),
         originPrice: scaffoldingItem.originPrice != null ? Number(scaffoldingItem.originPrice) : 0,
         status: scaffoldingItem.status,
@@ -337,7 +342,7 @@ export async function PUT(request: NextRequest) {
         name: updatedItem.name,
         category: updatedItem.category,
         available: updatedItem.available,
-        reservedQuantity: updatedItem.reservedQuantity ?? 0,
+        reservedQuantity: (updatedItem as unknown as ScaffoldingItemWithReserved).reservedQuantity ?? 0,
         price: Number(updatedItem.price),
         originPrice: updatedItem.originPrice != null ? Number(updatedItem.originPrice) : 0,
         status: updatedItem.status,
