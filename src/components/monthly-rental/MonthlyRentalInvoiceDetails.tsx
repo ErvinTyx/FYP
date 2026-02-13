@@ -517,7 +517,7 @@ export function MonthlyRentalInvoiceDetails({
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="mt-4 p-4 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB]">
-                <p className="text-xs text-[#6B7280] font-medium mb-3">Line Item Calculation Formula:</p>
+                <p className="text-xs text-[#6B7280] font-medium mb-3">Monthly Rental Calculation:</p>
                 
                 {/* Calculate total rate from items */}
                 {(() => {
@@ -527,89 +527,45 @@ export function MonthlyRentalInvoiceDetails({
                   
                   return (
                     <div className="space-y-3">
-                      <div className="text-xs text-[#374151] space-y-2">
-                        <p className="font-semibold">Step 1: Get Original Agreement Quantities</p>
-                        <p className="ml-4">Quantity = Original quantity from RFQ/Agreement (summed across all sets if item appears in multiple sets)</p>
-                        <p className="ml-4 text-[#6B7280] italic">
-                          Note: This shows the original agreed quantities, not delivered quantities.
-                        </p>
-                      </div>
-                      
-                      <div className="text-xs text-[#374151] space-y-2">
-                        <p className="font-semibold">Step 2: Calculate Total Rate</p>
-                        <p className="ml-4">Total Rate = Sum of all Unit Rates (Agreed Monthly Rates from Agreement)</p>
-                        <p className="ml-4 font-mono bg-white px-2 py-1 rounded border">
-                          Total Rate = {invoice.items.map((item, idx) => 
-                            `RM ${Number(item.unitPrice).toFixed(2)}${idx < invoice.items.length - 1 ? ' + ' : ''}`
-                          ).join('')} = RM {totalRate.toFixed(2)}
-                        </p>
-                      </div>
-                      
-                      <div className="text-xs text-[#374151] space-y-2">
-                        <p className="font-semibold">Step 3: Calculate Line Total (Proportional Share)</p>
-                        <p className="ml-4">For each item (except the last):</p>
-                        <p className="ml-6 font-mono bg-white px-2 py-1 rounded border">
-                          Line Total = (Item Rate ÷ Total Rate) × Monthly Rental
-                        </p>
-                        <p className="ml-6 text-[#6B7280] text-xs mt-1">
-                          Then rounded to 2 decimal places
-                        </p>
-                        <p className="ml-4 mt-2">For the last item:</p>
-                        <p className="ml-6 font-mono bg-white px-2 py-1 rounded border">
-                          Line Total = Monthly Rental - Sum of all previous line totals
-                        </p>
-                        <p className="ml-4 mt-2 text-[#6B7280] italic">
-                          This ensures the sum of all line items equals the Monthly Rental exactly (no rounding errors).
-                        </p>
-                      </div>
-                      
-                      <div className="text-xs text-[#374151] space-y-2 mt-4 pt-3 border-t border-[#E5E7EB]">
-                        <p className="font-semibold">Item-by-Item Calculation:</p>
-                        {invoice.items.map((item, index) => {
-                          const itemRate = Number(item.unitPrice);
-                          const itemProportion = totalRate > 0 ? (itemRate / totalRate) : 0;
-                          const calculatedShare = itemProportion * monthlyRental;
-                          const isLast = isLastItem(index);
-                          const previousTotal = invoice.items.slice(0, index).reduce((sum, i) => sum + Number(i.lineTotal), 0);
-                          
-                          return (
-                            <div key={item.id} className="ml-4 mt-2 p-2 bg-white rounded border border-[#E5E7EB]">
-                              <p className="font-medium text-[#231F20] mb-1">{item.scaffoldingItemName}</p>
-                              <div className="space-y-1 text-[#6B7280]">
-                                <p>• Original Quantity: {item.quantityBilled} units (from agreement/RFQ)</p>
-                                <p>• Unit Rate (Agreed Monthly Rate): RM {itemRate.toFixed(2)}</p>
-                                {!isLast ? (
-                                  <>
-                                    <p>• Proportion: RM {itemRate.toFixed(2)} ÷ RM {totalRate.toFixed(2)} = {(itemProportion * 100).toFixed(2)}%</p>
-                                    <p>• Calculation: {(itemProportion * 100).toFixed(2)}% × RM {monthlyRental.toFixed(2)} = RM {calculatedShare.toFixed(2)}</p>
-                                    <p>• Rounded to 2 decimals: <span className="font-semibold text-[#231F20]">RM {Number(item.lineTotal).toFixed(2)}</span></p>
-                                  </>
-                                ) : (
-                                  <>
-                                    <p>• Sum of previous items: RM {previousTotal.toFixed(2)}</p>
-                                    <p>• Last item calculation: RM {monthlyRental.toFixed(2)} - RM {previousTotal.toFixed(2)} = <span className="font-semibold text-[#231F20]">RM {Number(item.lineTotal).toFixed(2)}</span></p>
-                                    <p className="text-xs text-[#6B7280] italic">(Ensures exact match with monthly rental)</p>
-                                  </>
-                                )}
-                              </div>
+                      {/* Monthly Rental Formula Explanation */}
+                      <div className="p-3 bg-[#EFF6FF] rounded-lg border border-[#BFDBFE]">
+                        <p className="text-xs font-semibold text-[#1E40AF] mb-2">How Monthly Rental Amount Was Calculated:</p>
+                        <div className="text-xs text-[#374151] space-y-2">
+                          <p className="font-semibold mt-2">Formula for each item:</p>
+                          <p className="font-mono bg-white px-2 py-1 rounded border border-[#BFDBFE]">
+                            Item contribution = quantity × unitPrice × 30 × months in that set ÷ total months across all sets
+                          </p>
+                          <p className="font-semibold mt-3">Monthly Rental:</p>
+                          <p className="font-mono bg-white px-2 py-1 rounded border border-[#BFDBFE]">
+                            Monthly Rental = Sum of all item contributions
+                          </p>
+
+                          <div className="mt-3 p-2 bg-white rounded border border-[#BFDBFE]">
+                            <p className="font-medium text-[#1E40AF] mb-2">Example: Set 1 (6 months), Set 2 (3 months) → Total months = 9</p>
+                            <div className="space-y-2 text-[#6B7280]">
+                              <p className="font-medium text-[#374151]">Set 1 items (6 months):</p>
+                              <ul className="ml-4 list-disc space-y-1">
+                                <li>Item A: 5 × RM 0.50 × 30 × 6 ÷ 9 = RM 50.00</li>
+                                <li>Item B: 3 × RM 1.00 × 30 × 6 ÷ 9 = RM 60.00</li>
+                              </ul>
+                              <p className="font-medium text-[#374151] mt-2">Set 2 items (3 months):</p>
+                              <ul className="ml-4 list-disc space-y-1">
+                                <li>Item A: 4 × RM 0.50 × 30 × 3 ÷ 9 = RM 20.00</li>
+                                <li>Item C: 2 × RM 2.00 × 30 × 3 ÷ 9 = RM 40.00</li>
+                              </ul>
+                              <p className="mt-2 text-[#374151] italic text-[11px]">
+                                Note: Item A appears in both sets but is calculated separately per set — not combined.
+                              </p>
+                              <p className="font-medium text-[#1E40AF] mt-2">
+                                Monthly Rental = 50.00 + 60.00 + 20.00 + 40.00 = RM 170.00
+                              </p>
                             </div>
-                          );
-                        })}
-                      </div>
-                      
-                      <div className="text-xs text-[#374151] mt-4 pt-3 border-t border-[#E5E7EB]">
-                        <p className="font-semibold">Verification:</p>
-                        <p className="ml-4 mt-1">
-                          Sum of Line Totals = {invoice.items.map((item, idx) => 
-                            `RM ${Number(item.lineTotal).toFixed(2)}${idx < invoice.items.length - 1 ? ' + ' : ''}`
-                          ).join('')} = <span className="font-semibold text-[#F15929]">RM {invoice.items.reduce((sum, item) => sum + Number(item.lineTotal), 0).toFixed(2)}</span>
-                        </p>
-                        <p className="ml-4 mt-1">
-                          Monthly Rental = <span className="font-semibold text-[#F15929]">RM {monthlyRental.toFixed(2)}</span>
-                        </p>
-                        <p className="ml-4 mt-1 text-green-600 font-medium">
-                          ✓ Match: {Math.abs(invoice.items.reduce((sum, item) => sum + Number(item.lineTotal), 0) - monthlyRental) < 0.01 ? 'Yes' : 'No'}
-                        </p>
+                          </div>
+
+                          <p className="ml-4 mt-2 text-[#1E40AF] italic">
+                            This Monthly Rental (RM {monthlyRental.toFixed(2)}) is the fixed amount charged every month regardless of delivery status.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   );

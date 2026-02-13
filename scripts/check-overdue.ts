@@ -10,7 +10,7 @@
  */
 
 import "dotenv/config";
-import prisma from "@/lib/prisma";
+import prisma from "../src/lib/prisma";
 
 /**
  * Calculate overdue charges based on default interest rate

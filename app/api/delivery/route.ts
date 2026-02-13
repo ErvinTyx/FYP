@@ -65,35 +65,58 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     return;
   }
 
-  // Get original quantities from RFQ items (via rfqItemId in AgreementItem)
-  const rfqItemQuantities = new Map<string, number>();
-  if (agreement.rfqId) {
-    const rfqItems = await prisma.rFQItem.findMany({
-      where: { rfqId: agreement.rfqId },
-      select: { id: true, quantity: true, scaffoldingItemId: true },
-    });
-    for (const rfqItem of rfqItems) {
-      // Map by scaffoldingItemId to get original quantity
-      // If same item appears in multiple sets, we'll use the sum
-      const existing = rfqItemQuantities.get(rfqItem.scaffoldingItemId) || 0;
-      rfqItemQuantities.set(rfqItem.scaffoldingItemId, existing + rfqItem.quantity);
-    }
-  }
-
-  // Also create a map by rfqItemId for direct lookup
-  const rfqItemQuantitiesByRfqId = new Map<string, number>();
-  if (agreement.rfqId) {
-    const rfqItems = await prisma.rFQItem.findMany({
-      where: { rfqId: agreement.rfqId },
-      select: { id: true, quantity: true },
-    });
-    for (const rfqItem of rfqItems) {
-      rfqItemQuantitiesByRfqId.set(rfqItem.id, rfqItem.quantity);
-    }
-  }
-
   // Flat monthly rental from agreement
   const monthlyRental = Number(agreement.monthlyRental) || 0;
+
+  // Get RFQ items to calculate per-item line totals using the correct formula:
+  // lineTotal = quantity × unitPrice × 30 × rentalMonths / totalMonths
+  // Items in different sets are kept separate (not combined by scaffoldingItemId)
+  type RfqItemRow = {
+    id: string;
+    setName: string;
+    rentalMonths: number;
+    quantity: number;
+    unitPrice: unknown;
+    scaffoldingItemId: string;
+    scaffoldingItemName: string;
+  };
+
+  let rfqItems: RfqItemRow[] = [];
+  if (agreement.rfqId) {
+    const rows = await prisma.rFQItem.findMany({
+      where: { rfqId: agreement.rfqId },
+      select: {
+        id: true,
+        setName: true,
+        rentalMonths: true,
+        quantity: true,
+        unitPrice: true,
+        scaffoldingItemId: true,
+        scaffoldingItemName: true,
+      },
+    });
+    rfqItems = rows as unknown as RfqItemRow[];
+  }
+
+  // Calculate totalMonths (sum of unique set months)
+  const monthsBySet = new Map<string, number>();
+  for (const rfqItem of rfqItems) {
+    const setName = rfqItem.setName ?? 'Set 1';
+    if (!monthsBySet.has(setName)) {
+      monthsBySet.set(setName, rfqItem.rentalMonths ?? 1);
+    }
+  }
+  const totalMonths = [...monthsBySet.values()].reduce((a, b) => a + b, 0);
+
+  // Build a map of rfqItemId -> agreedMonthlyRate from AgreementItems
+  // so we can use the agreed rate instead of the RFQ unitPrice if available
+  const agreedRateByRfqItemId = new Map<string, number>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const agreementItem of (agreement.items as any[])) {
+    if (agreementItem.rfqItemId) {
+      agreedRateByRfqItemId.set(agreementItem.rfqItemId, Number(agreementItem.agreedMonthlyRate) || 0);
+    }
+  }
 
   // Get the earliest requiredDate from RFQ items as billing cycle anchor
   let anchorDate: Date | null = null;
@@ -181,53 +204,8 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     return;
   }
 
-  // Get all deliveries for this agreement
-  const allDeliveries = await prisma.deliveryRequest.findMany({
-    where: {
-      agreementNo: agreement.agreementNumber,
-    },
-    include: {
-      sets: {
-        where: { status: 'Completed' },
-        include: {
-          items: true,
-        },
-      },
-    },
-  });
-
-  // Get all returns for this agreement
-  const returns = await prisma.returnRequest.findMany({
-    where: {
-      agreementNo: agreement.agreementNumber,
-      status: { in: ['Completed', 'Sorting Complete', 'Customer Notified'] },
-    },
-    include: {
-      items: true,
-    },
-  });
-
-  // Calculate delivered quantities per item
-  const deliveredData: Record<string, number> = {};
-  for (const del of allDeliveries) {
-    for (const set of del.sets) {
-      for (const item of set.items) {
-        const itemId = item.scaffoldingItemId || item.name;
-        deliveredData[itemId] = (deliveredData[itemId] || 0) + item.quantity;
-      }
-    }
-  }
-
-  // Calculate returned quantities per item
-  const returnedData: Record<string, number> = {};
-  for (const returnReq of returns) {
-    for (const item of returnReq.items) {
-      const itemId = item.scaffoldingItemId || item.name;
-      returnedData[itemId] = (returnedData[itemId] || 0) + item.quantityReturned;
-    }
-  }
-
-  // Build line items — each item gets a proportional share of the flat monthly rental
+  // Build line items — each RFQ item is a separate row (not combined across sets)
+  // Formula per item: lineTotal = quantity × unitPrice × 30 × rentalMonths / totalMonths
   const items: Array<{
     scaffoldingItemId: string;
     scaffoldingItemName: string;
@@ -237,89 +215,40 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     lineTotal: number;
   }> = [];
 
-  // Collect ALL agreement items (not just those with netQty > 0)
-  const allAgreementItems: Array<{
-    agreementItem: any;
-    itemId: string;
-    netQty: number;
-    itemRate: number;
-  }> = [];
-
-  // Group agreement items by scaffoldingItemId to handle duplicates
-  // If same item appears in multiple sets, we'll use the sum of quantities
-  const agreementItemsByItemId = new Map<string, any>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const agreementItem of (agreement.items as any[])) {
-    const itemId = agreementItem.scaffoldingItemId;
-    if (!agreementItemsByItemId.has(itemId)) {
-      agreementItemsByItemId.set(itemId, agreementItem);
-    }
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const agreementItem of (agreement.items as any[])) {
-    const itemId = agreementItem.scaffoldingItemId;
-    const delivered = deliveredData[itemId] || 0;
-    const returned = returnedData[itemId] || 0;
-    
-    // Use original RFQ quantity - sum all quantities for this item across all sets
-    // This handles cases where the same item appears in multiple sets
-    let originalQty = 0;
-    if (rfqItemQuantities.has(itemId)) {
-      // Sum of all quantities for this item across all sets (e.g., Set 1: 3, Set 2: 4 = 7)
-      originalQty = rfqItemQuantities.get(itemId) || 0;
-    } else {
-      // If no RFQ data, use delivered quantity as fallback
-      originalQty = delivered - returned;
-    }
-    
-    const itemRate = Number(agreementItem.agreedMonthlyRate) || 0;
-
-    // Only add each unique item once (grouped by scaffoldingItemId)
-    if (agreementItemsByItemId.get(itemId) === agreementItem) {
-      allAgreementItems.push({
-        agreementItem,
-        itemId,
-        netQty: originalQty, // Use original RFQ quantity (summed across all sets)
-        itemRate,
-      });
-    }
-  }
-
-  // Sum of ALL agreedMonthlyRate across ALL agreement items (for proportion calculation)
-  // This ensures the proportion is calculated from all items in the agreement
-  const totalRate = allAgreementItems.reduce(
-    (sum, item) => sum + item.itemRate, 0
-  );
-
-  // Calculate line totals ensuring sum equals monthlyRental exactly
-  // ALL items get a proportional share based on their agreedMonthlyRate
-  // The quantity shows original RFQ/agreement quantity, but billing is proportional to all items
   let runningTotal = 0;
-  
-  // Calculate proportional shares for ALL items
-  for (let i = 0; i < allAgreementItems.length; i++) {
-    const { agreementItem, itemId, netQty, itemRate } = allAgreementItems[i];
-    let lineTotal: number;
+  for (let i = 0; i < rfqItems.length; i++) {
+    const rfqItem = rfqItems[i];
+    const setName = rfqItem.setName ?? 'Set 1';
+    const rentalMonths = rfqItem.rentalMonths ?? 1;
+    const quantity = rfqItem.quantity || 0;
+    // Use agreed rate from AgreementItem if available, otherwise use RFQ unitPrice
+    const unitPrice = agreedRateByRfqItemId.has(rfqItem.id)
+      ? agreedRateByRfqItemId.get(rfqItem.id)!
+      : Number(rfqItem.unitPrice) || 0;
 
-    if (i === allAgreementItems.length - 1) {
-      // Last item: ensure sum equals monthlyRental exactly
+    let lineTotal: number;
+    if (i === rfqItems.length - 1) {
+      // Last item: ensure sum equals monthlyRental exactly (no rounding drift)
       lineTotal = Math.round((monthlyRental - runningTotal) * 100) / 100;
     } else {
-      // Proportional share of the flat monthly rental (for ALL items, not just delivered ones)
-      lineTotal = totalRate > 0
-        ? Math.round((itemRate / totalRate) * monthlyRental * 100) / 100
+      lineTotal = totalMonths > 0
+        ? Math.round((quantity * unitPrice * 30 * rentalMonths / totalMonths) * 100) / 100
         : 0;
       runningTotal += lineTotal;
     }
 
+    // Append set name to item name to distinguish same item across different sets
+    const displayName = monthsBySet.size > 1
+      ? `${rfqItem.scaffoldingItemName} (${setName})`
+      : rfqItem.scaffoldingItemName;
+
     items.push({
-      scaffoldingItemId: itemId,
-      scaffoldingItemName: agreementItem.scaffoldingItemName,
-      quantityBilled: netQty, // Shows original RFQ/agreement quantity
-      unitPrice: itemRate, // agreed monthly rate per item for display
+      scaffoldingItemId: rfqItem.scaffoldingItemId,
+      scaffoldingItemName: displayName,
+      quantityBilled: quantity,
+      unitPrice,
       daysCharged: 30,
-      lineTotal, // Proportional share for ALL items
+      lineTotal,
     });
   }
 
