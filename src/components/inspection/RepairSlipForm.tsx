@@ -35,6 +35,14 @@ interface ScaffoldingItemWithRepairs {
   damageRepairs?: ScaffoldingDamageRepair[];
 }
 
+interface StaffUserSummary {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  roles: string[];
+}
+
 interface RepairSlipFormProps {
   repairSlip?: OpenRepairSlip | null;
   conditionReport?: ConditionReport | null;
@@ -52,7 +60,7 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     estimatedCost: repairSlip?.estimatedCost || 0,
     actualCost: repairSlip?.actualCost || 0,
     repairNotes: repairSlip?.repairNotes || '',
-    assignedTo: repairSlip?.assignedTo || '',
+    assignedTo: repairSlip?.assignedTo || conditionReport?.inspectedBy || '',
     startDate: repairSlip?.startDate || '',
     createdBy: repairSlip?.createdBy || 'Current User',
   });
@@ -62,6 +70,9 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
   // Scaffolding items with damage repairs from database
   const [scaffoldingItems, setScaffoldingItems] = useState<ScaffoldingItemWithRepairs[]>([]);
   const [loadingScaffoldingItems, setLoadingScaffoldingItems] = useState(true);
+  // Staff users from user-management (same as Condition Report "Inspected By")
+  const [staffUsers, setStaffUsers] = useState<StaffUserSummary[]>([]);
+  const [loadingStaff, setLoadingStaff] = useState(true);
 
   // Fetch scaffolding items with damage repairs from database
   useEffect(() => {
@@ -83,6 +94,32 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
       }
     };
     fetchScaffoldingItems();
+  }, []);
+
+  // Fetch staff users from user-management (same source as Condition Report "Inspected By") for Assigned To
+  useEffect(() => {
+    const fetchStaffUsers = async () => {
+      try {
+        setLoadingStaff(true);
+        const response = await fetch('/api/user-management');
+        const result = await response.json();
+        if (result.success && result.users) {
+          const allowedRoles = new Set(['super_user', 'admin', 'operations', 'production']);
+          const staff = result.users.filter((user: StaffUserSummary) =>
+            user.roles?.some(role => allowedRoles.has(role))
+          );
+          setStaffUsers(staff);
+        } else {
+          toast.error('Failed to load staff users');
+        }
+      } catch (error) {
+        console.error('Error fetching staff users:', error);
+        toast.error('Failed to load staff users');
+      } finally {
+        setLoadingStaff(false);
+      }
+    };
+    fetchStaffUsers();
   }, []);
 
   // Get repair actions from database for a specific scaffolding item
@@ -334,6 +371,16 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     if (invalidItems.length > 0) { toast.error('Please complete all repair item details'); return; }
     const itemsNeedingActions = repairItems.filter(item => item.quantityRepair > 0 && item.repairActionEntries.length === 0);
     if (itemsNeedingActions.length > 0) { toast.error('Please add at least one repair action for items marked for repair'); return; }
+    // Affected items total must equal "For Repair" quantity for each item
+    const affectedMismatch = repairItems.find(item => {
+      if (item.quantityRepair <= 0) return false;
+      const sumAffected = (item.repairActionEntries || []).reduce((s, e) => s + (e.affectedItems || 0), 0);
+      return sumAffected !== item.quantityRepair;
+    });
+    if (affectedMismatch) {
+      toast.error(`"Affected Items" total must equal "For Repair" (${affectedMismatch.quantityRepair}) for ${affectedMismatch.scaffoldingItemName}. Current total: ${(affectedMismatch.repairActionEntries || []).reduce((s, e) => s + (e.affectedItems || 0), 0)}`);
+      return;
+    }
 
     const repairSlipData: OpenRepairSlip = {
       id: repairSlip?.id || `repair-${Date.now()}`,
@@ -360,17 +407,11 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onCancel}><ArrowLeft className="size-5" /></Button>
-          <div>
-            <h1 className="text-[#231F20]">{repairSlip ? 'Edit Repair Slip' : 'Create Repair Slip'}</h1>
-            <p className="text-gray-600">{conditionReport ? `From RCF: ${conditionReport.rcfNumber}` : 'Enter repair details'}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button onClick={handleSubmit} className="bg-[#F15929] hover:bg-[#d94d1f]">{repairSlip ? 'Update' : 'Create'} Repair Slip</Button>
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={onCancel}><ArrowLeft className="size-5" /></Button>
+        <div>
+          <h1 className="text-[#231F20]">{repairSlip ? 'Edit Repair Slip' : 'Create Repair Slip'}</h1>
+          <p className="text-gray-600">{conditionReport ? `From RCF: ${conditionReport.rcfNumber}` : 'Enter repair details'}</p>
         </div>
       </div>
 
@@ -402,7 +443,27 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Assigned To</Label>
-              <Input value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} placeholder="Technician name" />
+              <Select
+                value={formData.assignedTo || ''}
+                onValueChange={(value) => setFormData({ ...formData, assignedTo: value })}
+                disabled={loadingStaff}
+              >
+                <SelectTrigger><SelectValue placeholder={loadingStaff ? 'Loading...' : 'Select user (same as Inspected By)'} /></SelectTrigger>
+                <SelectContent>
+                  {staffUsers.map((user) => {
+                    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+                    const label = fullName || user.email;
+                    return (
+                      <SelectItem key={user.id} value={label}>
+                        {label}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {conditionReport?.inspectedBy && (
+                <p className="text-xs text-gray-500">Defaults to Condition Report inspector when creating from report</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Start Date</Label>
@@ -507,7 +568,18 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
                     )}
                     {item.repairActionEntries.length > 0 && (
                       <div className="space-y-3 p-4 bg-blue-50 rounded-lg">
-                        <span className="text-sm font-medium text-blue-700">Repair Action Details</span>
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <span className="text-sm font-medium text-blue-700">Repair Action Details</span>
+                          {(() => {
+                            const sumAffected = item.repairActionEntries.reduce((s, e) => s + (e.affectedItems || 0), 0);
+                            const valid = sumAffected === item.quantityRepair;
+                            return (
+                              <span className={`text-xs ${valid ? 'text-green-700' : 'text-amber-700'}`}>
+                                Affected items total: {sumAffected} (must equal For Repair: {item.quantityRepair})
+                              </span>
+                            );
+                          })()}
+                        </div>
                         {item.repairActionEntries.map((entry) => {
                           const actionInfo = getRepairActionsFromDB(item.scaffoldingItemId, item.scaffoldingItemName).find(a => a.action === entry.action);
                           const isBendType = actionInfo?.costType === 'per-bend';
@@ -537,19 +609,8 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
-                  <div className="space-y-2">
-                    <Label>Repair Status</Label>
-                    <Select value={item.repairStatus} onValueChange={(value) => handleUpdateItem(item.id, 'repairStatus', value)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="in-progress">In Progress</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
+                <div className="pt-4 border-t">
+                  <div className="space-y-2 max-w-xs">
                     <Label>Total Cost (RM)</Label>
                     <div className="p-3 bg-gray-100 rounded-lg">
                       <div className="flex justify-between text-sm"><span>Repair Cost:</span><span>RM {Number(item.totalRepairCost || 0).toFixed(2)}</span></div>
@@ -566,6 +627,10 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
               <div className="flex justify-between items-center text-lg font-bold"><span className="text-[#231F20]">Estimated Total Cost:</span><span className="text-[#F15929]">RM {Number(formData.estimatedCost || 0).toFixed(2)}</span></div>
             </div>
           )}
+          <div className="flex justify-end gap-2 pt-6 border-t mt-6">
+            <Button variant="outline" onClick={onCancel}>Cancel</Button>
+            <Button onClick={handleSubmit} className="bg-[#F15929] hover:bg-[#d94d1f]">{repairSlip ? 'Update' : 'Create'} Repair Slip</Button>
+          </div>
         </CardContent>
       </Card>
     </div>

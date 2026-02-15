@@ -549,10 +549,13 @@ export async function PUT(request: NextRequest) {
             },
             inspection: true,
             rcf: true,
+            pickupConfirm: true, // Driver name for "Returned By" (not customer name)
           },
         });
 
         if (returnWithItems) {
+          // Returned By = driver name from return management (pickupDriver), not customer name
+          const driverName = returnWithItems.pickupConfirm?.pickupDriver ?? returnWithItems.customerName;
           // Generate RCF number for condition report (use existing or create new)
           const rcfNumber = returnWithItems.rcf?.rcfNumber || 
             `RCF-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`;
@@ -617,7 +620,7 @@ export async function PUT(request: NextRequest) {
               rcfNumber,
               deliveryOrderNumber: returnWithItems.agreementNo,
               customerName: returnWithItems.customerName,
-              returnedBy: returnWithItems.customerName,
+              returnedBy: driverName,
               returnDate: new Date().toISOString().split('T')[0],
               inspectionDate: new Date().toISOString().split('T')[0],
               inspectedBy: session.user.email || 'System',
