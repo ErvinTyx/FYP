@@ -58,6 +58,7 @@ import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Switch } from "./ui/switch";
 import { toast } from "sonner";
+import { RFQNotification } from "../types/rfq";
 
 type ContentType =
   | "about"
@@ -79,6 +80,7 @@ interface ContentItem {
   status: "published" | "draft";
   lastUpdated: string;
   updatedBy: string;
+  imageUrl?: string | null;
   metadata?: {
     imageUrl?: string;
     priority?: number;
@@ -235,11 +237,17 @@ const mockContentItems: ContentItem[] = [
   },
 ];
 
-export function ContentManagement() {
+interface ContentManagementProps {
+  userRole?: string;
+}
+
+export function ContentManagement({ userRole }: ContentManagementProps) {
+  const canCreateOrEdit = userRole === "admin" || userRole === "super_user";
   const [selectedCategory, setSelectedCategory] = useState<ContentType>("about");
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [currentItem, setCurrentItem] = useState<ContentItem | null>(null);
   const [isNewItem, setIsNewItem] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -369,6 +377,32 @@ export function ContentManagement() {
     }
   };
 
+  const pushContentNotification = (
+    type: 'content_created' | 'content_updated',
+    contentId: string,
+    contentTitle: string,
+    updatedBy: string,
+    categoryLabel: string
+  ) => {
+    const notifications: RFQNotification[] = JSON.parse(localStorage.getItem('rfqNotifications') || '[]');
+    const notification: RFQNotification = {
+      id: `notif-content-${Date.now()}`,
+      type,
+      message: type === 'content_created'
+        ? `New ${categoryLabel} has been created`
+        : `${categoryLabel} "${contentTitle}" was updated`,
+      changes: [],
+      createdBy: updatedBy,
+      createdAt: new Date().toISOString(),
+      read: false,
+      contentId,
+      contentTitle,
+      contentCategory: categoryLabel,
+    };
+    notifications.unshift(notification);
+    localStorage.setItem('rfqNotifications', JSON.stringify(notifications));
+  };
+
   const handleSave = async () => {
     if (!formTitle || !formContent) {
       toast.error("Please fill in all required fields");
@@ -398,6 +432,7 @@ export function ContentManagement() {
         if (result.success && result.data) {
           setContentItems([...contentItems, result.data]);
           toast.success("Content created successfully");
+          pushContentNotification('content_created', result.data.id, result.data.title, payload.updatedBy, getCategoryInfo()?.label ?? 'Content');
         } else {
           throw new Error(result.message);
         }
@@ -416,6 +451,7 @@ export function ContentManagement() {
             )
           );
           toast.success("Content updated successfully");
+          pushContentNotification('content_updated', result.data.id, result.data.title, payload.updatedBy, getCategoryInfo()?.label ?? 'Content');
         } else {
           throw new Error(result.message);
         }
@@ -654,13 +690,15 @@ export function ContentManagement() {
                     <h3 className="text-[#111827] mb-1">{category.label}</h3>
                     <p className="text-[#6B7280] text-sm">{category.description}</p>
                   </div>
-                  <Button
-                    onClick={handleCreate}
-                    className="bg-[#1E40AF] hover:bg-[#1E3A8A] text-white"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create New
-                  </Button>
+                  {canCreateOrEdit && (
+                    <Button
+                      onClick={handleCreate}
+                      className="bg-[#1E40AF] hover:bg-[#1E3A8A] text-white"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create New
+                    </Button>
+                  )}
                 </div>
 
                 {/* Content List */}
@@ -671,14 +709,16 @@ export function ContentManagement() {
                       <p className="text-[#6B7280] mb-4">
                         No content available for this category
                       </p>
-                      <Button
-                        onClick={handleCreate}
-                        variant="outline"
-                        className="border-[#1E40AF] text-[#1E40AF]"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create First Item
-                      </Button>
+                      {canCreateOrEdit && (
+                        <Button
+                          onClick={handleCreate}
+                          variant="outline"
+                          className="border-[#1E40AF] text-[#1E40AF]"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create First Item
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 ) : (
@@ -686,6 +726,7 @@ export function ContentManagement() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-[#F9FAFB]">
+                          <TableHead className="w-[80px]">Photo</TableHead>
                           <TableHead>Title</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Last Updated</TableHead>
@@ -696,6 +737,25 @@ export function ContentManagement() {
                       <TableBody>
                         {filteredItems.map((item) => (
                           <TableRow key={item.id}>
+                            <TableCell className="align-middle">
+                              {(item.metadata?.imageUrl || item.imageUrl) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setImagePreviewUrl(item.metadata?.imageUrl || item.imageUrl || '')}
+                                  className="h-12 w-12 rounded border border-gray-200 overflow-hidden block cursor-pointer hover:ring-2 hover:ring-[#1E40AF] hover:ring-offset-1 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#1E40AF] focus:ring-offset-1"
+                                >
+                                  <img
+                                    src={item.metadata?.imageUrl || item.imageUrl || ''}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                  />
+                                </button>
+                              ) : (
+                                <div className="h-12 w-12 rounded bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                  <ImageIcon className="h-5 w-5 text-gray-400" />
+                                </div>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <div className="space-y-1">
                                 <p className="text-[#111827]">{item.title}</p>
@@ -736,22 +796,26 @@ export function ContentManagement() {
                                 >
                                   <Eye className="h-4 w-4 text-[#6B7280]" />
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleEdit(item)}
-                                  className="h-8 w-8"
-                                >
-                                  <Edit className="h-4 w-4 text-[#1E40AF]" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDelete(item.id)}
-                                  className="h-8 w-8"
-                                >
-                                  <Trash2 className="h-4 w-4 text-[#DC2626]" />
-                                </Button>
+                                {canCreateOrEdit && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleEdit(item)}
+                                      className="h-8 w-8"
+                                    >
+                                      <Edit className="h-4 w-4 text-[#1E40AF]" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleDelete(item.id)}
+                                      className="h-8 w-8"
+                                    >
+                                      <Trash2 className="h-4 w-4 text-[#DC2626]" />
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -901,14 +965,22 @@ export function ContentManagement() {
           </DialogHeader>
 
           <div className="py-4 space-y-4">
-            {/* Banner preview */}
-            {currentItem?.type === "banners" && currentItem.metadata?.imageUrl && (
-              <div className="rounded-lg overflow-hidden border">
-                <img
-                  src={currentItem.metadata.imageUrl}
-                  alt={currentItem.title}
-                  className="w-full h-48 object-cover"
-                />
+            {/* Photo / image for any content type */}
+            {(currentItem?.metadata?.imageUrl || currentItem?.imageUrl) && (
+              <div>
+                <Label className="text-[#6B7280]">Photo</Label>
+                <button
+                  type="button"
+                  onClick={() => setImagePreviewUrl(currentItem?.metadata?.imageUrl || currentItem?.imageUrl || '')}
+                  className="mt-2 block rounded-lg overflow-hidden border border-gray-200 hover:ring-2 hover:ring-[#1E40AF] focus:outline-none focus:ring-2 focus:ring-[#1E40AF]"
+                >
+                  <img
+                    src={currentItem?.metadata?.imageUrl || currentItem?.imageUrl || ''}
+                    alt={currentItem?.title}
+                    className="w-full max-h-64 object-contain bg-gray-50"
+                  />
+                </button>
+                <p className="text-xs text-[#6B7280] mt-1">Click image to view full size</p>
               </div>
             )}
 
@@ -963,17 +1035,33 @@ export function ContentManagement() {
             >
               Close
             </Button>
-            <Button
-              onClick={() => {
-                setIsViewerOpen(false);
-                if (currentItem) handleEdit(currentItem);
-              }}
-              className="bg-[#1E40AF] hover:bg-[#1E3A8A] text-white"
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Content
-            </Button>
+            {canCreateOrEdit && (
+              <Button
+                onClick={() => {
+                  setIsViewerOpen(false);
+                  if (currentItem) handleEdit(currentItem);
+                }}
+                className="bg-[#1E40AF] hover:bg-[#1E3A8A] text-white"
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Content
+              </Button>
+            )}
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Image preview lightbox - click photo to view full size */}
+      <Dialog open={!!imagePreviewUrl} onOpenChange={() => setImagePreviewUrl(null)}>
+        <DialogContent className="max-w-4xl p-2">
+          <DialogTitle className="sr-only">Image preview</DialogTitle>
+          {imagePreviewUrl && (
+            <img
+              src={imagePreviewUrl}
+              alt="Content preview"
+              className="w-full max-h-[85vh] object-contain rounded"
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

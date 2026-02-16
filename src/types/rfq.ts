@@ -49,14 +49,18 @@ export interface RFQ {
 
 export interface RFQNotification {
   id: string;
-  rfqId: string;
-  rfqNumber: string;
-  type: 'created' | 'updated' | 'item_added' | 'item_removed' | 'item_modified' | 'status_changed' | 'assigned';
+  rfqId?: string;
+  rfqNumber?: string;
+  type: 'created' | 'updated' | 'item_added' | 'item_removed' | 'item_modified' | 'status_changed' | 'assigned' | 'content_created' | 'content_updated';
   message: string;
   changes: NotificationChange[];
   createdBy: string;
   createdAt: string;
   read: boolean;
+  /** For content notifications */
+  contentId?: string;
+  contentTitle?: string;
+  contentCategory?: string;
 }
 
 export interface NotificationChange {

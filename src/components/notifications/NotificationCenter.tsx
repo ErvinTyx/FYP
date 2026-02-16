@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Bell, X, Check, FileText, Plus, Minus, Edit, RefreshCw } from 'lucide-react';
+import { Bell, X, Check, FileText, Plus, Minus, Edit, RefreshCw, FilePlus, FileEdit } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
@@ -73,6 +73,10 @@ export function NotificationCenter() {
         return <Edit className="size-4 text-amber-600" />;
       case 'status_changed':
         return <RefreshCw className="size-4 text-purple-600" />;
+      case 'content_created':
+        return <FilePlus className="size-4 text-emerald-600" />;
+      case 'content_updated':
+        return <FileEdit className="size-4 text-teal-600" />;
       default:
         return <Bell className="size-4 text-gray-600" />;
     }
@@ -143,7 +147,7 @@ export function NotificationCenter() {
                 <Bell className="size-12 text-gray-300 mb-3" />
                 <p className="text-gray-600">No notifications</p>
                 <p className="text-sm text-gray-500 text-center mt-1">
-                  You'll see notifications here when RFQs are created or modified
+                  You'll see notifications when RFQs or content are created or modified
                 </p>
               </div>
             ) : (
@@ -169,9 +173,11 @@ export function NotificationCenter() {
                             <div className="size-2 rounded-full bg-[#F15929] flex-shrink-0 mt-1.5" />
                           )}
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {notification.changes.length} change{notification.changes.length !== 1 ? 's' : ''}
-                        </p>
+                        {notification.rfqNumber != null && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            {notification.changes.length} change{notification.changes.length !== 1 ? 's' : ''}
+                          </p>
+                        )}
                         <div className="flex items-center gap-2 mt-2">
                           <span className="text-xs text-gray-500">
                             {formatTime(notification.createdAt)}

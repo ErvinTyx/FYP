@@ -472,21 +472,21 @@ export default function App() {
           { id: "report-generation" as Page, label: "Report Generation", icon: BarChart3 },
         ],
       },
+      {
+        section: "Content",
+        items: [
+          { id: "content-management" as Page, label: "Manage Content", icon: Newspaper },
+        ],
+      },
     ];
 
-    // Add user management and content management for admin and super_user
+    // Add user management section only for admin and super_user
     if (userRole === "admin" || userRole === "super_user") {
       return [
         {
           section: "User Management",
           items: [
             { id: "user-management" as Page, label: "Users List", icon: Users },
-          ],
-        },
-        {
-          section: "Content Management",
-          items: [
-            { id: "content-management" as Page, label: "Manage Content", icon: Newspaper },
           ],
         },
         ...erpItems,
@@ -608,7 +608,7 @@ export default function App() {
           </div>
         );
       case "content-management":
-        return <ContentManagement />;
+        return <ContentManagement userRole={userRole} />;
       case "customer-content-view":
         return <CustomerContentView />;
       case "rfq-management":
@@ -747,7 +747,7 @@ export default function App() {
 
           {/* Right: Notifications & User */}
           <div className="flex items-center gap-4">
-            {/* <NotificationCenter /> */}
+            <NotificationCenter />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2 h-10">
