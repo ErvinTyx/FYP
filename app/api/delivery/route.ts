@@ -137,7 +137,36 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     return;
   }
 
-  // Determine billing cycle: find latest existing invoice or start from cycle 1
+  // Determine billing cycle based on when the delivery is completed (today)
+  // This ensures that if multiple sets complete in the same billing period, they share the same invoice
+  const currentDate = new Date();
+  currentDate.setHours(0, 0, 0, 0);
+  const currentCycleNumber = getCycleNumber(anchorDate, currentDate);
+
+  // Check if an invoice already exists for the current billing period
+  const { start: currentBillingStart, end: currentBillingEnd } = calculateBillingPeriod(anchorDate, currentCycleNumber);
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existingInvoiceForCurrentPeriod = await (prisma as any).monthlyRentalInvoice.findFirst({
+    where: {
+      agreementId: agreement.id,
+      OR: [
+        {
+          // Invoice period overlaps with current period
+          billingStartDate: { lte: currentBillingEnd },
+          billingEndDate: { gte: currentBillingStart },
+        },
+      ],
+    },
+  });
+
+  if (existingInvoiceForCurrentPeriod) {
+    console.log(`Invoice already exists for agreement ${agreement.id} for the current billing period (${currentBillingStart.toISOString().slice(0, 10)} to ${currentBillingEnd.toISOString().slice(0, 10)}). Invoice: ${existingInvoiceForCurrentPeriod.invoiceNumber}`);
+    return;
+  }
+
+  // If no invoice exists for current period, check if we should create one for the next period instead
+  // (in case the delivery is late and we've already moved to the next cycle)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const latestExistingInvoice = await (prisma as any).monthlyRentalInvoice.findFirst({
     where: { agreementId: agreement.id },
@@ -149,16 +178,20 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     const lastEnd = new Date(latestExistingInvoice.billingEndDate);
     const nextStart = new Date(lastEnd);
     nextStart.setDate(nextStart.getDate() + 1);
-    cycleNumber = getCycleNumber(anchorDate, nextStart);
+    const nextCycleNumber = getCycleNumber(anchorDate, nextStart);
+    
+    // Use the later of: current cycle or next cycle after last invoice
+    // This handles the case where delivery is late
+    cycleNumber = Math.max(currentCycleNumber, nextCycleNumber);
   } else {
-    cycleNumber = 1;
+    cycleNumber = currentCycleNumber;
   }
 
   const { start: billingStartDate, end: billingEndDate, daysInPeriod } = calculateBillingPeriod(anchorDate, cycleNumber);
   const billingMonth = billingStartDate.getMonth() + 1;
   const billingYear = billingStartDate.getFullYear();
 
-  // Check if invoice already exists for this agreement and billing period
+  // Double-check: Check if invoice already exists for this agreement and billing period
   // Check by month/year (for unique constraint)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const existingInvoiceByMonth = await (prisma as any).monthlyRentalInvoice.findFirst({
