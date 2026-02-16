@@ -38,8 +38,6 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
   const [pageSize, setPageSize] = useState(10);
   const [orderBy, setOrderBy] = useState<'latest' | 'earliest'>('latest');
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
-  const [showGenerateInvoiceDialog, setShowGenerateInvoiceDialog] = useState(false);
-  const [depositToGenerateInvoice, setDepositToGenerateInvoice] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [approvedDepositId, setApprovedDepositId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -330,21 +328,6 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
     }
   };
 
-  const handleGenerateNewInvoice = (depositId: string) => {
-    setDepositToGenerateInvoice(depositId);
-    setShowGenerateInvoiceDialog(true);
-  };
-
-  const confirmGenerateInvoice = async () => {
-    if (!depositToGenerateInvoice) return;
-
-    // In a real implementation, this would call an API to generate a new invoice
-    // For now, we just show a success message
-    toast.success(`New invoice generation requested - feature coming soon`);
-    setShowGenerateInvoiceDialog(false);
-    setDepositToGenerateInvoice(null);
-    setCurrentView("list");
-  };
 
   const handlePrintReceipt = (depositId: string) => {
     setSelectedDepositId(depositId);
@@ -420,7 +403,6 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
           onSubmitPayment={handleSubmitPayment}
           onApprove={handleApprove}
           onReject={handleReject}
-          onGenerateNewInvoice={handleGenerateNewInvoice}
           onPrintReceipt={handlePrintReceipt}
           onResetDueDate={handleResetDueDate}
           onMarkExpired={handleMarkExpired}
@@ -435,27 +417,6 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
           onBack={handleBack}
         />
       )}
-
-      {/* Generate New Invoice Dialog */}
-      <AlertDialog open={showGenerateInvoiceDialog} onOpenChange={setShowGenerateInvoiceDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Generate New Invoice</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will create a new invoice for the overdue deposit. The current deposit record will remain as "Overdue" for historical tracking, and a new deposit record will be created for the customer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmGenerateInvoice}
-              className="bg-[#F15929] hover:bg-[#D14620] text-white"
-            >
-              Generate Invoice
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Success Modal */}
       <AlertDialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>

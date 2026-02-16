@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { ArrowLeft, Download, FileText, Upload, CheckCircle, XCircle, AlertCircle, Calendar, FileSignature, CalendarClock, Ban } from "lucide-react";
+import { ArrowLeft, Download, FileText, Upload, CheckCircle, XCircle, AlertCircle, Calendar as CalendarIcon, CalendarClock, Ban } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Calendar } from "../ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +38,6 @@ interface DepositDetailsProps {
   onSubmitPayment: (depositId: string, file: File) => void;
   onApprove: (depositId: string, referenceId: string) => void;
   onReject: (depositId: string, reason: string) => void;
-  onGenerateNewInvoice: (depositId: string) => void;
   onPrintReceipt?: (depositId: string) => void;
   onResetDueDate?: (depositId: string, newDueDate: string) => void;
   onMarkExpired?: (depositId: string) => void;
@@ -50,7 +51,6 @@ export function DepositDetails({
   onSubmitPayment,
   onApprove,
   onReject,
-  onGenerateNewInvoice,
   onPrintReceipt,
   onResetDueDate,
   onMarkExpired,
@@ -63,6 +63,8 @@ export function DepositDetails({
   const [previewDocument, setPreviewDocument] = useState<{doc: DepositDocument, title: string} | null>(null);
   const [resetDueDateModalOpen, setResetDueDateModalOpen] = useState(false);
   const [newDueDate, setNewDueDate] = useState("");
+  const [newDueDateDisplay, setNewDueDateDisplay] = useState("");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [confirmExpireModalOpen, setConfirmExpireModalOpen] = useState(false);
 
   // DEBUG: Log userRole and deposit status to help troubleshoot
@@ -128,11 +130,97 @@ export function DepositDetails({
     setPreviewDocument({ doc, title });
   };
   
+  // Helper functions to convert between ISO (yyyy-mm-dd) and dd/mm/yyyy
+  const formatDateToDDMMYYYY = (isoDate: string): string => {
+    if (!isoDate) return "";
+    const [year, month, day] = isoDate.split("-");
+    return `${day}/${month}/${year}`;
+  };
+
+  const parseDDMMYYYYToISO = (ddmmyyyy: string): string | null => {
+    if (!ddmmyyyy) return null;
+    // Remove any non-digit characters except /
+    const cleaned = ddmmyyyy.replace(/[^\d/]/g, "");
+    const parts = cleaned.split("/");
+    if (parts.length !== 3) return null;
+    
+    const [day, month, year] = parts;
+    if (day.length !== 2 || month.length !== 2 || year.length !== 4) return null;
+    
+    // Validate date
+    const dayNum = parseInt(day, 10);
+    const monthNum = parseInt(month, 10);
+    const yearNum = parseInt(year, 10);
+    
+    if (isNaN(dayNum) || isNaN(monthNum) || isNaN(yearNum)) return null;
+    if (monthNum < 1 || monthNum > 12) return null;
+    if (dayNum < 1 || dayNum > 31) return null;
+    
+    // Create date to validate
+    const date = new Date(yearNum, monthNum - 1, dayNum);
+    if (date.getDate() !== dayNum || date.getMonth() !== monthNum - 1 || date.getFullYear() !== yearNum) {
+      return null;
+    }
+    
+    // Check if date is not in the past
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date < today) {
+      return null;
+    }
+    
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleDateInputChange = (value: string) => {
+    // Remove all non-digit characters
+    const digitsOnly = value.replace(/\D/g, "");
+    
+    // Auto-format with slashes
+    let formatted = "";
+    if (digitsOnly.length > 0) {
+      formatted = digitsOnly.substring(0, 2);
+      if (digitsOnly.length > 2) {
+        formatted += "/" + digitsOnly.substring(2, 4);
+      }
+      if (digitsOnly.length > 4) {
+        formatted += "/" + digitsOnly.substring(4, 8);
+      }
+    }
+    
+    setNewDueDateDisplay(formatted);
+    const isoDate = parseDDMMYYYYToISO(formatted);
+    if (isoDate) {
+      setNewDueDate(isoDate);
+      // Update selectedDate for calendar
+      const [year, month, day] = isoDate.split("-");
+      setSelectedDate(new Date(parseInt(year), parseInt(month) - 1, parseInt(day)));
+    } else if (formatted === "") {
+      setNewDueDate("");
+      setSelectedDate(undefined);
+    }
+  };
+
+  const handleCalendarSelect = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date);
+      const isoDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      setNewDueDate(isoDate);
+      setNewDueDateDisplay(formatDateToDDMMYYYY(isoDate));
+    } else {
+      setSelectedDate(undefined);
+      setNewDueDate("");
+      setNewDueDateDisplay("");
+    }
+  };
+
   const handleResetDueDate = () => {
     if (onResetDueDate && newDueDate) {
       onResetDueDate(deposit.id, newDueDate);
       setResetDueDateModalOpen(false);
       setNewDueDate("");
+      setNewDueDateDisplay("");
+      setSelectedDate(undefined);
     }
   };
   
@@ -218,21 +306,24 @@ export function DepositDetails({
                     Payment Overdue
                   </p>
                   <p className="text-[14px] text-[#9A3412] mt-1">
-                    Payment period has expired. You can extend the due date, mark as expired, or generate a new invoice.
+                    Payment period has expired. You can extend the due date or mark as expired.
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3 justify-end w-[100px]">
+              <div className="flex flex-wrap gap-3 justify-end ml-auto">
                 {onResetDueDate && (
                   <Button
                     onClick={() => {
                       const defaultDate = new Date();
                       defaultDate.setDate(defaultDate.getDate() + 14);
-                      setNewDueDate(defaultDate.toISOString().split('T')[0]);
+                      const isoDate = defaultDate.toISOString().split('T')[0];
+                      setNewDueDate(isoDate);
+                      setNewDueDateDisplay(formatDateToDDMMYYYY(isoDate));
+                      setSelectedDate(defaultDate);
                       setResetDueDateModalOpen(true);
                     }}
                     variant="outline"
-                    className="h-10 px-4 rounded-lg border-[#F59E0B] text-[#F59E0B] hover:bg-[#FFFBEB]"
+                    className="h-10 px-4 rounded-lg border-[#F59E0B] text-[#F59E0B] hover:bg-[#FFFBEB] w-auto"
                     disabled={isProcessing}
                   >
                     <CalendarClock className="mr-2 h-4 w-4" />
@@ -243,21 +334,13 @@ export function DepositDetails({
                   <Button
                     onClick={() => setConfirmExpireModalOpen(true)}
                     variant="outline"
-                    className="h-10 px-4 rounded-lg border-[#6B7280] text-[#6B7280] hover:bg-[#F9FAFB]"
+                    className="h-10 px-4 rounded-lg border-[#6B7280] text-[#6B7280] hover:bg-[#F9FAFB] w-auto"
                     disabled={isProcessing}
                   >
                     <Ban className="mr-2 h-4 w-4" />
                     Mark as Expired
                   </Button>
                 )}
-                <Button
-                  onClick={() => onGenerateNewInvoice(deposit.id)}
-                  className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
-                  disabled={isProcessing}
-                >
-                  <FileSignature className="mr-2 h-4 w-4" />
-                  Generate New Invoice
-                </Button>
               </div>
             </div>
           </CardContent>
@@ -478,7 +561,7 @@ export function DepositDetails({
             <div>
               <p className="text-[14px] text-[#6B7280]">Due Date</p>
               <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-[#6B7280]" />
+                <CalendarIcon className="h-4 w-4 text-[#6B7280]" />
                 <p className={isOverdue ? "text-[#DC2626]" : "text-[#111827]"}>
                   {formatRfqDate(deposit.dueDate)}
                   {isOverdue && " (Overdue)"}
@@ -720,7 +803,7 @@ export function DepositDetails({
       
       {/* Reset Due Date Modal */}
       <Dialog open={resetDueDateModalOpen} onOpenChange={setResetDueDateModalOpen}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent className="sm:max-w-[250px] mx-20">
           <DialogHeader>
             <DialogTitle>Reset Due Date</DialogTitle>
             <DialogDescription>
@@ -732,14 +815,36 @@ export function DepositDetails({
               <Label htmlFor="new-due-date-detail">
                 New Due Date
               </Label>
-              <Input
-                id="new-due-date-detail"
-                type="date"
-                value={newDueDate}
-                onChange={(e) => setNewDueDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="max-w-[200px]"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="new-due-date-detail"
+                  type="text"
+                  value={newDueDateDisplay}
+                  onChange={(e) => handleDateInputChange(e.target.value)}
+                  placeholder="DD/MM/YYYY"
+                  className="max-w-[200px]"
+                  maxLength={10}
+                />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon" type="button">
+                      <CalendarIcon className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={handleCalendarSelect}
+                      disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              {newDueDateDisplay && !newDueDate && (
+                <p className="text-xs text-red-600">Please enter a valid date in DD/MM/YYYY format (must be today or later)</p>
+              )}
             </div>
             <div className="text-sm text-gray-500 space-y-1 bg-gray-50 p-3 rounded-lg">
               <p><strong>Deposit:</strong> {displayDepositId}</p>
@@ -753,6 +858,8 @@ export function DepositDetails({
               onClick={() => {
                 setResetDueDateModalOpen(false);
                 setNewDueDate("");
+                setNewDueDateDisplay("");
+                setSelectedDate(undefined);
               }}
             >
               Cancel
