@@ -16,7 +16,9 @@ function calculateOverdueCharges(
   const msPerMonth = 30 * 24 * 60 * 60 * 1000;
   const monthsLate = Math.ceil((Date.now() - dueDate.getTime()) / msPerMonth);
   
-  return baseAmount * (defaultInterestRate / 100) * monthsLate;
+  const charges = baseAmount * (defaultInterestRate / 100) * monthsLate;
+  // Round up to 2 decimal places (e.g., 5.112 becomes 5.12)
+  return Math.ceil(charges * 100) / 100;
 }
 
 /**

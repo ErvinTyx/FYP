@@ -314,10 +314,11 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
   }
   const invoiceNumber = `${prefix}${sequence.toString().padStart(3, '0')}`;
 
-  // Calculate due date (7 days from now)
+  // Calculate due date (7 days from now) in UTC
+  // Set to end of day (23:59:59.999) so invoice is due by end of that day
   const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 7);
-  dueDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+  dueDate.setUTCDate(dueDate.getUTCDate() + 7);
+  dueDate.setUTCHours(23, 59, 59, 999); // Set time to end of day UTC
 
   // Create invoice with flat monthly rental as the total
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

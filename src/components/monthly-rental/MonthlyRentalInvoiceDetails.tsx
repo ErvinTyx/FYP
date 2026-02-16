@@ -185,26 +185,35 @@ export function MonthlyRentalInvoiceDetails({
   // Get default interest rate from agreement or use default
   const defaultInterestRate = invoice.agreement?.defaultInterest || 1.5;
 
-  // Calculate months late - show if overdue OR if there are overdue charges (even after payment uploaded)
+  // Calculate months late - always calculate from actual due date to ensure accuracy
+  // This ensures correct calculation even if due date is changed but charges aren't recalculated yet
   const calculateMonthsLate = () => {
-    // If there are overdue charges, calculate the months based on the charges
-    if (invoice.overdueCharges > 0 && invoice.baseAmount > 0) {
-      // Reverse calculate: overdueCharges = baseAmount * (rate/100) * months
-      // months = overdueCharges / (baseAmount * rate/100)
-      const rate = defaultInterestRate / 100;
-      const months = Math.round(invoice.overdueCharges / (invoice.baseAmount * rate));
-      return Math.max(1, months); // At least 1 month if there are charges
+    const now = new Date();
+    const dueDate = new Date(invoice.dueDate);
+    
+    // Only calculate if invoice is overdue (past due date)
+    if (now <= dueDate) {
+      return 0;
     }
-    // If currently overdue, calculate from current date
-    if (invoice.status === 'Overdue') {
-      const now = new Date();
-      const dueDate = new Date(invoice.dueDate);
-      const msPerMonth = 30 * 24 * 60 * 60 * 1000;
-      return Math.max(1, Math.ceil((now.getTime() - dueDate.getTime()) / msPerMonth));
-    }
-    return 0;
+    
+    // Calculate months late from actual due date
+    const msPerMonth = 30 * 24 * 60 * 60 * 1000;
+    const monthsLate = Math.ceil((now.getTime() - dueDate.getTime()) / msPerMonth);
+    return Math.max(1, monthsLate); // At least 1 month if overdue
   };
   const monthsLate = calculateMonthsLate();
+
+  // Calculate raw overdue charges (before rounding) and rounded charges (after rounding)
+  const calculateOverdueChargesBreakdown = () => {
+    if (monthsLate === 0) {
+      return { raw: 0, rounded: 0 };
+    }
+    const rate = defaultInterestRate / 100;
+    const rawCharges = invoice.baseAmount * rate * monthsLate;
+    const roundedCharges = Math.ceil(rawCharges * 100) / 100; // Round up to 2 decimal places
+    return { raw: rawCharges, rounded: roundedCharges };
+  };
+  const { raw: rawOverdueCharges, rounded: roundedOverdueCharges } = calculateOverdueChargesBreakdown();
 
   return (
     <div className="space-y-6">
@@ -275,11 +284,22 @@ export function MonthlyRentalInvoiceDetails({
                       <span>{monthsLate} {monthsLate === 1 ? 'month' : 'months'}</span>
                     </div>
                     <div className="flex justify-between border-t border-orange-300 pt-1 mt-1">
-                      <span className="font-medium">Overdue Charges:</span>
+                      <span className="font-medium">Overdue Charges (Calculated):</span>
+                      <span className="font-semibold">RM {rawOverdueCharges.toFixed(3)}</span>
+                    </div>
+                    {rawOverdueCharges !== roundedOverdueCharges && (
+                      <div className="flex justify-between text-xs text-orange-600">
+                        <span>Rounded Up (3dp → 2dp):</span>
+                        <span>RM {rawOverdueCharges.toFixed(3)} → RM {roundedOverdueCharges.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-orange-300 pt-1 mt-1">
+                      <span className="font-medium">Overdue Charges (Final):</span>
                       <span className="font-semibold">RM {invoice.overdueCharges.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</span>
                     </div>
                     <p className="text-xs text-orange-600 italic mt-1">
-                      Formula: RM {invoice.baseAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })} × {defaultInterestRate.toFixed(1)}% × {monthsLate} = RM {invoice.overdueCharges.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
+                      Formula: RM {invoice.baseAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })} × {defaultInterestRate.toFixed(1)}% × {monthsLate} = RM {rawOverdueCharges.toFixed(3)}
+                      {rawOverdueCharges !== roundedOverdueCharges && ` → RM ${roundedOverdueCharges.toFixed(2)} (rounded up)`}
                     </p>
                   </div>
                 </div>

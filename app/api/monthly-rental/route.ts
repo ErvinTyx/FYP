@@ -41,7 +41,8 @@ async function generateInvoiceNumber(): Promise<string> {
  * Check and update overdue status for an invoice
  */
 function checkOverdueStatus(invoice: { status: string; dueDate: Date }): string {
-  if (invoice.status === 'Pending Payment' && new Date() > invoice.dueDate) {
+  // Check if invoice is Pending Payment or Rejected and past due date
+  if ((invoice.status === 'Pending Payment' || invoice.status === 'Rejected') && new Date() > invoice.dueDate) {
     return 'Overdue';
   }
   return invoice.status;
@@ -62,7 +63,9 @@ function calculateOverdueCharges(
   const msPerMonth = 30 * 24 * 60 * 60 * 1000;
   const monthsLate = Math.ceil((Date.now() - dueDate.getTime()) / msPerMonth);
   
-  return baseAmount * (defaultInterestRate / 100) * monthsLate;
+  const charges = baseAmount * (defaultInterestRate / 100) * monthsLate;
+  // Round up to 2 decimal places (e.g., 5.112 becomes 5.12)
+  return Math.ceil(charges * 100) / 100;
 }
 
 /**
@@ -304,11 +307,15 @@ export async function GET(request: NextRequest) {
 
       // Check and update overdue status
       const currentStatus = checkOverdueStatus(invoice);
-      if (currentStatus !== invoice.status) {
-        // Calculate overdue charges
-        const defaultInterest = invoice.agreement?.defaultInterest 
-          ? Number(invoice.agreement.defaultInterest) 
-          : 1.5;
+      const defaultInterest = invoice.agreement?.defaultInterest 
+        ? Number(invoice.agreement.defaultInterest) 
+        : 1.5;
+      
+      // Always recalculate overdue charges for overdue invoices to ensure accuracy
+      // This handles cases where due date is changed but charges weren't updated
+      const shouldRecalculateCharges = currentStatus === 'Overdue' || invoice.status === 'Overdue';
+      
+      if (currentStatus !== invoice.status || shouldRecalculateCharges) {
         const overdueCharges = calculateOverdueCharges(
           Number(invoice.baseAmount),
           invoice.dueDate,
@@ -324,6 +331,11 @@ export async function GET(request: NextRequest) {
             totalAmount: Number(invoice.baseAmount) + overdueCharges,
           },
         });
+        
+        // Update invoice object with new values for response
+        invoice.status = currentStatus;
+        invoice.overdueCharges = overdueCharges;
+        invoice.totalAmount = Number(invoice.baseAmount) + overdueCharges;
       }
 
       return NextResponse.json({
@@ -390,11 +402,15 @@ export async function GET(request: NextRequest) {
     });
 
     // Check and update overdue statuses
-    const invoicesToUpdate: Array<{ id: string; overdueCharges: number; totalAmount: number }> = [];
+    // Always recalculate overdue charges for overdue invoices to ensure accuracy
+    const invoicesToUpdate: Array<{ id: string; overdueCharges: number; totalAmount: number; status: string }> = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transformedInvoices = invoices.map((invoice: any) => {
       const currentStatus = checkOverdueStatus(invoice);
-      if (currentStatus !== invoice.status && currentStatus === 'Overdue') {
+      const isOverdue = currentStatus === 'Overdue' || invoice.status === 'Overdue';
+      
+      // Recalculate charges if status changed to overdue, or if already overdue (to handle due date changes)
+      if (isOverdue) {
         const defaultInterest = invoice.agreement?.defaultInterest 
           ? Number(invoice.agreement.defaultInterest) 
           : 1.5;
@@ -407,7 +423,12 @@ export async function GET(request: NextRequest) {
           id: invoice.id,
           overdueCharges,
           totalAmount: Number(invoice.baseAmount) + overdueCharges,
+          status: currentStatus,
         });
+        // Update invoice object for response
+        invoice.status = currentStatus;
+        invoice.overdueCharges = overdueCharges;
+        invoice.totalAmount = Number(invoice.baseAmount) + overdueCharges;
       }
       return transformInvoice(invoice, currentStatus);
     });
@@ -418,7 +439,7 @@ export async function GET(request: NextRequest) {
       await (prisma as any).monthlyRentalInvoice.update({
         where: { id: update.id },
         data: {
-          status: 'Overdue',
+          status: update.status,
           overdueCharges: update.overdueCharges,
           totalAmount: update.totalAmount,
         },
@@ -620,10 +641,11 @@ export async function POST(request: NextRequest) {
     // Generate invoice number
     const invoiceNumber = await generateInvoiceNumber();
 
-    // Calculate due date (7 days from now)
+    // Calculate due date (7 days from now) in UTC
+    // Set to end of day (23:59:59.999) so invoice is due by end of that day
     const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 7);
-    dueDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
+    dueDate.setUTCDate(dueDate.getUTCDate() + 7);
+    dueDate.setUTCHours(23, 59, 59, 999); // Set time to end of day UTC
 
     // Create invoice with items
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
