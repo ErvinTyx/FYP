@@ -331,6 +331,7 @@ export async function POST(request: NextRequest) {
     // Calculate due date (14 days from now)
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 14);
+    dueDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
 
     // Create deposit
     const newDeposit = await prisma.deposit.create({
@@ -581,6 +582,7 @@ export async function PUT(request: NextRequest) {
         }
 
         const parsedDueDate = new Date(newDueDate);
+        parsedDueDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
         if (parsedDueDate <= new Date()) {
           return NextResponse.json(
             { success: false, message: 'New due date must be in the future' },

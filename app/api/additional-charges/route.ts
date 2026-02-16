@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
     const totalCharges = itemRows.reduce((sum, r) => sum + r.amount, 0);
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 7);
+    dueDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
 
     const invoiceNo = generateAdditionalChargeInvoiceNo();
     const conditionReport = slip.conditionReport;

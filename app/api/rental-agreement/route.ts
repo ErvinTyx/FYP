@@ -665,6 +665,7 @@ export async function PUT(request: NextRequest) {
         const dueDate = new Date();
         const depositDueDateDays = Number(process.env.DEPOSIT_DUE_DATE) || 14;
         dueDate.setDate(dueDate.getDate() + depositDueDateDays);
+        dueDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
         try {
           const prismaAny = prisma as unknown as { deposit: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> } };
           if ('deposit' in prismaAny) {

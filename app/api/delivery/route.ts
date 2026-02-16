@@ -284,6 +284,7 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
   // Calculate due date (7 days from now)
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 7);
+  dueDate.setHours(0, 0, 0, 0); // Set time to 00:00:00
 
   // Create invoice with flat monthly rental as the total
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
