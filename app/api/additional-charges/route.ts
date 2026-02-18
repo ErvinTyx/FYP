@@ -224,19 +224,88 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: orderDir },
     });
 
-    // Build lookup: DeliverySet.id -> DeliveryRequest.id
+    // Build lookup: DeliverySet.id -> DeliveryRequest.id and DO number
     const deliverySetIds = allCharges
       .map((c) => c.deliverySetId)
       .filter((id): id is string => !!id);
 
     const deliverySetToRequestId = new Map<string, string>();
+    const deliverySetToDoNumber = new Map<string, string>();
     if (deliverySetIds.length > 0) {
       const deliverySets = await prisma.deliverySet.findMany({
         where: { id: { in: deliverySetIds } },
-        select: { id: true, deliveryRequestId: true },
+        select: { 
+          id: true, 
+          deliveryRequestId: true,
+          doIssued: {
+            select: { doNumber: true },
+          },
+          deliveryRequest: {
+            select: {
+              requestId: true,
+              agreementNo: true,
+            },
+          },
+        },
       });
       for (const ds of deliverySets) {
         deliverySetToRequestId.set(ds.id, ds.deliveryRequestId);
+        if (ds.doIssued?.doNumber) {
+          // Use actual DO number if issued
+          deliverySetToDoNumber.set(ds.id, ds.doIssued.doNumber);
+        } else if (ds.deliveryRequest) {
+          // Generate DO number from requestId format: DEL-RA-2026-001-20260218-2 -> DO-RA-2026-001-20260218-2
+          const dr = ds.deliveryRequest;
+          const requestIdPrefix = `DEL-${dr.agreementNo}-`;
+          const uniqueSuffix = dr.requestId.startsWith(requestIdPrefix)
+            ? dr.requestId.slice(requestIdPrefix.length)
+            : dr.requestId;
+          const generatedDoNumber = `DO-${dr.agreementNo}-${uniqueSuffix}`;
+          deliverySetToDoNumber.set(ds.id, generatedDoNumber);
+        }
+      }
+    }
+
+    // Build lookup: ReturnRequest.id -> DO number (via deliverySet)
+    const returnRequestIds = allCharges
+      .map((c) => c.returnRequestId)
+      .filter((id): id is string => !!id);
+
+    const returnRequestToDoNumber = new Map<string, string>();
+    if (returnRequestIds.length > 0) {
+      const returnRequests = await prisma.returnRequest.findMany({
+        where: { id: { in: returnRequestIds } },
+        select: {
+          id: true,
+          deliverySet: {
+            select: {
+              doIssued: {
+                select: { doNumber: true },
+              },
+              deliveryRequest: {
+                select: {
+                  requestId: true,
+                  agreementNo: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      for (const rr of returnRequests) {
+        if (rr.deliverySet?.doIssued?.doNumber) {
+          // Use actual DO number if issued
+          returnRequestToDoNumber.set(rr.id, rr.deliverySet.doIssued.doNumber);
+        } else if (rr.deliverySet?.deliveryRequest) {
+          // Generate DO number from delivery requestId format: DEL-RA-2026-001-20260218-2 -> DO-RA-2026-001-20260218-2
+          const dr = rr.deliverySet.deliveryRequest;
+          const requestIdPrefix = `DEL-${dr.agreementNo}-`;
+          const uniqueSuffix = dr.requestId.startsWith(requestIdPrefix)
+            ? dr.requestId.slice(requestIdPrefix.length)
+            : dr.requestId;
+          const generatedDoNumber = `DO-${dr.agreementNo}-${uniqueSuffix}`;
+          returnRequestToDoNumber.set(rr.id, generatedDoNumber);
+        }
       }
     }
 
@@ -293,18 +362,62 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * pageSize;
     const paged = groupedList.slice(skip, skip + pageSize);
 
-    const serialized = paged.map((c) => ({
-      ...c,
-      totalCharges: Number(c.totalCharges),
-      dueDate: c.dueDate.toISOString(),
-      approvalDate: c.approvalDate?.toISOString() ?? null,
-      rejectionDate: c.rejectionDate?.toISOString() ?? null,
-      items: c.items.map((i) => ({
-        ...i,
-        unitPrice: Number(i.unitPrice),
-        amount: Number(i.amount),
-      })),
-    }));
+    // Build lookup for repair slip charges: conditionReportId -> DO number
+    const conditionReportIds = allCharges
+      .map((c) => c.conditionReportId)
+      .filter((id): id is string => !!id);
+
+    const conditionReportToDoNumber = new Map<string, string>();
+    if (conditionReportIds.length > 0) {
+      const conditionReports = await prisma.conditionReport.findMany({
+        where: { id: { in: conditionReportIds } },
+        select: { id: true, deliveryOrderNumber: true },
+      });
+      for (const cr of conditionReports) {
+        if (cr.deliveryOrderNumber) {
+          conditionReportToDoNumber.set(cr.id, cr.deliveryOrderNumber);
+        }
+      }
+    }
+
+    const serialized = paged.map((c) => {
+      // Only use actual DO numbers from related entities, never fall back to stored doId
+      let correctDoId: string | null = null;
+      
+      if (c.deliverySetId) {
+        // For delivery charges: get DO number from deliverySet.doIssued.doNumber
+        const doNumber = deliverySetToDoNumber.get(c.deliverySetId);
+        if (doNumber) {
+          correctDoId = doNumber;
+        }
+      } else if (c.returnRequestId) {
+        // For return charges: get DO number from returnRequest.deliverySet.doIssued.doNumber
+        const doNumber = returnRequestToDoNumber.get(c.returnRequestId);
+        if (doNumber) {
+          correctDoId = doNumber;
+        }
+      } else if (c.openRepairSlipId && c.conditionReportId) {
+        // For repair slip charges: get DO number from conditionReport.deliveryOrderNumber
+        const doNumber = conditionReportToDoNumber.get(c.conditionReportId);
+        if (doNumber) {
+          correctDoId = doNumber;
+        }
+      }
+
+      return {
+        ...c,
+        doId: correctDoId || '', // Use empty string if no DO number found, never use rental agreement ID
+        totalCharges: Number(c.totalCharges),
+        dueDate: c.dueDate.toISOString(),
+        approvalDate: c.approvalDate?.toISOString() ?? null,
+        rejectionDate: c.rejectionDate?.toISOString() ?? null,
+        items: c.items.map((i) => ({
+          ...i,
+          unitPrice: Number(i.unitPrice),
+          amount: Number(i.amount),
+        })),
+      };
+    });
 
     return NextResponse.json({
       success: true,

@@ -16,7 +16,7 @@ export async function createChargeForReturn(params: {
   returnRequestId: string;
   pickupFee: number;
   customerName: string;
-  agreementNo: string;
+  doNumber: string;
 }) {
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 7);
@@ -27,7 +27,7 @@ export async function createChargeForReturn(params: {
       invoiceNo,
       returnRequestId: params.returnRequestId,
       customerName: params.customerName,
-      doId: params.agreementNo,
+      doId: params.doNumber,
       dueDate,
       status: 'pending_payment',
       totalCharges: params.pickupFee,
@@ -51,7 +51,7 @@ export async function createChargeForDelivery(params: {
   deliverySetId: string;
   deliveryFee: number;
   customerName: string;
-  agreementNo: string;
+  doNumber: string;
 }) {
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 7);
@@ -62,7 +62,7 @@ export async function createChargeForDelivery(params: {
       invoiceNo,
       deliverySetId: params.deliverySetId,
       customerName: params.customerName,
-      doId: params.agreementNo,
+      doId: params.doNumber,
       dueDate,
       status: 'pending_payment',
       totalCharges: params.deliveryFee,

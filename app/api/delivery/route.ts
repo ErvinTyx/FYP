@@ -864,11 +864,24 @@ export async function PUT(request: NextRequest) {
           where: { deliverySetId: setId },
         });
         if (!existingCharge) {
+          // Get DO number: use actual DO if issued, otherwise generate from requestId format
+          let doNumber: string;
+          if (existingSet.doIssued?.doNumber) {
+            // Use actual DO number if already issued
+            doNumber = existingSet.doIssued.doNumber;
+          } else {
+            // Generate DO number from requestId format: DEL-RA-2026-001-20260218-2 -> DO-RA-2026-001-20260218-2
+            const requestIdPrefix = `DEL-${dr.agreementNo}-`;
+            const uniqueSuffix = dr.requestId.startsWith(requestIdPrefix)
+              ? dr.requestId.slice(requestIdPrefix.length)
+              : dr.requestId;
+            doNumber = `DO-${dr.agreementNo}-${uniqueSuffix}`;
+          }
           await createChargeForDelivery({
             deliverySetId: setId,
             deliveryFee: deliveryFeeNum,
             customerName: dr.customerName,
-            agreementNo: dr.agreementNo,
+            doNumber: doNumber,
           });
         }
       } else if (updateData.status === 'Pending' && updateData.deliveryFee === null) {

@@ -329,6 +329,17 @@ export async function PUT(request: NextRequest) {
         rcf: true,
         notification: true,
         completion: true,
+        deliverySet: {
+          include: {
+            doIssued: true,
+            deliveryRequest: {
+              select: {
+                requestId: true,
+                agreementNo: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -361,11 +372,29 @@ export async function PUT(request: NextRequest) {
         where: { returnRequestId: id },
       });
       if (!existingCharge) {
+        // Get DO number: use actual DO if issued, otherwise generate from delivery requestId format
+        let doNumber: string;
+        const deliverySet = existingRequest.deliverySet;
+        if (deliverySet?.doIssued?.doNumber) {
+          // Use actual DO number if already issued
+          doNumber = deliverySet.doIssued.doNumber;
+        } else if (deliverySet?.deliveryRequest) {
+          // Generate DO number from delivery requestId format: DEL-RA-2026-001-20260218-2 -> DO-RA-2026-001-20260218-2
+          const dr = deliverySet.deliveryRequest;
+          const requestIdPrefix = `DEL-${dr.agreementNo}-`;
+          const uniqueSuffix = dr.requestId.startsWith(requestIdPrefix)
+            ? dr.requestId.slice(requestIdPrefix.length)
+            : dr.requestId;
+          doNumber = `DO-${dr.agreementNo}-${uniqueSuffix}`;
+        } else {
+          // Fallback: should not happen, but use agreement number as last resort
+          doNumber = existingRequest.agreementNo;
+        }
         await createChargeForReturn({
           returnRequestId: id,
           pickupFee: pickupFeeNum,
           customerName: existingRequest.customerName,
-          agreementNo: existingRequest.agreementNo,
+          doNumber: doNumber,
         });
       }
     } else if (updateData.status === 'Requested' && updateData.pickupFee === null) {
