@@ -1,6 +1,8 @@
-# Cron Job Setup for Overdue Checks
+# Cron Job Setup
 
-This document explains how to set up automated overdue checks for deposits, additional charges, and monthly rental invoices.
+This document explains how to set up automated cron jobs for:
+- **Overdue Checks**: Checking and updating overdue items (deposits, additional charges, monthly rental invoices)
+- **Subsequent Month Billing**: Automatically generating subsequent monthly rental invoices after billing periods end
 
 ## Overview
 
@@ -195,17 +197,148 @@ The cron job will automatically be set up.
 - Rounds up to the nearest month (e.g., 31 days = 2 months)
 - Formula: `baseAmount × (interestRate / 100) × monthsLate`
 
+## Subsequent Month Billing
+
+The system can automatically generate subsequent monthly rental invoices after the `billingEndDate` of the latest invoice has passed. This ensures continuous billing for active rental agreements without manual intervention.
+
+### How It Works
+
+1. **Finds Active Agreements**: Queries all rental agreements with status 'Active', 'active', 'Signed', or 'signed'
+2. **Checks Latest Invoice**: For each agreement, finds the most recent invoice (ordered by `billingEndDate`)
+3. **Validates Billing Period**: Checks if the latest invoice's `billingEndDate` has passed
+4. **Calculates Next Cycle**: Determines the next billing cycle number based on the anchor date (earliest requiredDate from RFQ items)
+5. **Respects Term of Hire**: Only generates invoices up to the `termOfHire` limit (e.g., if termOfHire is "9 months", generates up to 9 billing cycles)
+6. **Prevents Duplicates**: Checks for existing invoices before generating to avoid duplicates
+7. **Generates Invoice**: Creates a new invoice with:
+   - Status: "Pending Payment"
+   - Due date: 7 days from generation date
+   - Billing period: Next 30-day cycle
+   - Amount: Agreement's monthly rental amount
+
+### Setup Options
+
+#### Option 1: Local Crontab (Recommended for Self-Hosted)
+
+**Step 1: Make the script executable**
+```bash
+chmod +x scripts/generate-subsequent-billing.ts
+```
+
+**Step 2: Test the script manually**
+```bash
+cd /path/to/project
+npx tsx scripts/generate-subsequent-billing.ts
+```
+
+**Step 3: Set up crontab**
+Edit your crontab:
+```bash
+crontab -e
+```
+
+Add one of the following entries:
+
+**Run daily at midnight:**
+```cron
+0 0 * * * cd /home/ervin/Documents/Power\ Metal\ \&\ Steel && npx tsx scripts/generate-subsequent-billing.ts >> logs/subsequent-billing.log 2>&1
+```
+
+**Run every 6 hours:**
+```cron
+0 */6 * * * cd /home/ervin/Documents/Power\ Metal\ \&\ Steel && npx tsx scripts/generate-subsequent-billing.ts >> logs/subsequent-billing.log 2>&1
+```
+
+**Note:** Adjust the path `/home/ervin/Documents/Power\ Metal\ \&\ Steel` to match your actual project path.
+
+**Step 4: Verify crontab is set**
+```bash
+crontab -l
+```
+
+**Step 5: Check logs**
+```bash
+tail -f logs/subsequent-billing.log
+```
+
+#### Option 2: API Endpoint (For Cloud Deployments)
+
+**URL:** `https://your-domain.com/api/cron/generate-subsequent-billing`
+
+**Method:** POST
+
+**Headers (choose one method):**
+- Option 1: `Authorization: Bearer <CRON_SECRET>`
+- Option 2: `X-Cron-Secret: <CRON_SECRET>`
+
+**Schedule:** Daily at midnight (or your preferred schedule)
+
+**Example curl command:**
+```bash
+curl -X POST https://your-domain.com/api/cron/generate-subsequent-billing \
+  -H "Authorization: Bearer your-secure-random-token-here"
+```
+
+Or using the header method:
+```bash
+curl -X POST https://your-domain.com/api/cron/generate-subsequent-billing \
+  -H "X-Cron-Secret: your-secure-random-token-here"
+```
+
+#### Option 3: Vercel Cron (If Deployed on Vercel)
+
+If you're using Vercel, you can use their built-in cron job feature.
+
+**Update `vercel.json` in project root:**
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/check-overdue",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/generate-subsequent-billing",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}
+```
+
+### Important Notes
+
+- **First Invoice**: The script will skip agreements that have no invoices yet. The first invoice should be generated manually or through the delivery process.
+- **Term of Hire Limit**: The script respects the `termOfHire` field. If an agreement has a term of "9 months", it will only generate invoices for up to 9 billing cycles (approximately 9 months).
+- **One Invoice Per Run**: The script generates only the next missing invoice per agreement. If multiple invoices are missing, run the script multiple times or schedule it more frequently.
+- **Active Agreements Only**: Only processes agreements with status 'Active', 'active', 'Signed', or 'signed'.
+- **Billing Period Check**: Only generates invoices if the current date is past the latest invoice's `billingEndDate`.
+
+### Troubleshooting
+
+**No invoices being generated:**
+1. Verify agreements are active (status: Active, Signed, etc.)
+2. Check that latest invoice's `billingEndDate` has passed
+3. Verify `termOfHire` is set and can be parsed (format: "X months (Y days)")
+4. Check that next cycle doesn't exceed `termOfHire` limit
+5. Verify no duplicate invoices exist for the billing period
+6. Run the script manually with verbose output
+
+**Term of Hire parsing issues:**
+- Ensure `termOfHire` is in format: "X months (Y days)" or "X months"
+- The script extracts the number before "months" using regex
+- If `termOfHire` is null or empty, the agreement will be skipped
+
 ## Logging
 
-The script logs all activities:
+The scripts log all activities:
 - Timestamp of execution
-- Number of items updated per category
-- Summary of total updates
+- Number of items processed per category
+- Summary of total updates/generations
 - Any errors encountered
 
 Logs are written to:
 - Console output (if run manually)
-- `logs/overdue-check.log` (if using crontab with redirection)
+- `logs/overdue-check.log` (for overdue checks)
+- `logs/subsequent-billing.log` (for subsequent billing generation)
 
 ## Troubleshooting
 
@@ -254,8 +387,9 @@ Logs are written to:
 
 ## Manual Execution
 
-You can always run the check manually:
+You can always run the cron jobs manually:
 
+**Overdue Checks:**
 ```bash
 # Using the script (recommended for local testing)
 npx tsx scripts/check-overdue.ts
@@ -266,6 +400,20 @@ curl -X POST http://localhost:3000/api/cron/check-overdue \
 
 # Or using the header method
 curl -X POST http://localhost:3000/api/cron/check-overdue \
+  -H "X-Cron-Secret: your-CRON_SECRET-here"
+```
+
+**Subsequent Billing Generation:**
+```bash
+# Using the script (recommended for local testing)
+npx tsx scripts/generate-subsequent-billing.ts
+
+# Using the API endpoint (requires authentication)
+curl -X POST http://localhost:3000/api/cron/generate-subsequent-billing \
+  -H "Authorization: Bearer your-CRON_SECRET-here"
+
+# Or using the header method
+curl -X POST http://localhost:3000/api/cron/generate-subsequent-billing \
   -H "X-Cron-Secret: your-CRON_SECRET-here"
 ```
 
@@ -311,8 +459,16 @@ Optional:
 
 ## Recommended Schedule
 
+### Overdue Checks
 - **Daily at midnight**: Good for most use cases, checks once per day
 - **Every 6 hours**: More frequent checks, useful for time-sensitive operations
 - **Every hour**: Very frequent, only if you need near-real-time updates
+
+### Subsequent Billing Generation
+- **Daily at midnight**: Recommended - generates invoices once per day after billing periods end
+- **Every 6 hours**: More frequent, useful if you want invoices generated sooner after billing periods end
+- **Weekly**: Less frequent, but may delay invoice generation
+
+**Note:** Since the script generates only one invoice per agreement per run, if you have agreements with multiple missing invoices, you may need to run it multiple times or schedule it more frequently until all invoices are caught up.
 
 Choose based on your business needs and server resources.

@@ -185,8 +185,11 @@ export async function GET(request: NextRequest) {
         });
       }
       if (overdue > 0) {
+        // Late payment interest starts accruing from the day AFTER the due date
+        const lateInterestDate = new Date(inv.dueDate);
+        lateInterestDate.setDate(lateInterestDate.getDate() + 1);
         rawTxs.push({
-          date: inv.dueDate,
+          date: lateInterestDate,
           type: 'Default Interest',
           reference: inv.invoiceNumber,
           description: 'Late payment interest',

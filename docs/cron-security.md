@@ -2,11 +2,15 @@
 
 ## Overview
 
-The `/api/cron/check-overdue` endpoint is **protected by authentication** to prevent unauthorized access. This document explains the security measures and how to configure them.
+The cron endpoints are **protected by authentication** to prevent unauthorized access. This document explains the security measures and how to configure them.
+
+**Protected Endpoints:**
+- `/api/cron/check-overdue` - Checks and updates overdue items
+- `/api/cron/generate-subsequent-billing` - Generates subsequent monthly rental invoices
 
 ## Security Status
 
-✅ **SECURED** - The endpoint requires authentication and cannot be called by anyone without proper credentials.
+✅ **SECURED** - Both endpoints require authentication and cannot be called by anyone without proper credentials.
 
 ## Authentication Methods
 
@@ -22,6 +26,9 @@ Authorization: Bearer <CRON_SECRET>
 ```bash
 curl -X POST https://your-domain.com/api/cron/check-overdue \
   -H "Authorization: Bearer your-secret-token-here"
+
+curl -X POST https://your-domain.com/api/cron/generate-subsequent-billing \
+  -H "Authorization: Bearer your-secret-token-here"
 ```
 
 ### 2. Custom Header
@@ -33,6 +40,9 @@ X-Cron-Secret: <CRON_SECRET>
 **Example:**
 ```bash
 curl -X POST https://your-domain.com/api/cron/check-overdue \
+  -H "X-Cron-Secret: your-secret-token-here"
+
+curl -X POST https://your-domain.com/api/cron/generate-subsequent-billing \
   -H "X-Cron-Secret: your-secret-token-here"
 ```
 
@@ -96,8 +106,14 @@ CRON_ALLOW_NO_SECRET=true  # Development only!
 curl -X POST http://localhost:3000/api/cron/check-overdue \
   -H "Authorization: Bearer your-CRON_SECRET-here"
 
+curl -X POST http://localhost:3000/api/cron/generate-subsequent-billing \
+  -H "Authorization: Bearer your-CRON_SECRET-here"
+
 # Should fail (401 Unauthorized)
 curl -X POST http://localhost:3000/api/cron/check-overdue \
+  -H "Authorization: Bearer wrong-secret"
+
+curl -X POST http://localhost:3000/api/cron/generate-subsequent-billing \
   -H "Authorization: Bearer wrong-secret"
 ```
 
@@ -107,15 +123,22 @@ curl -X POST http://localhost:3000/api/cron/check-overdue \
 curl -X POST http://localhost:3000/api/cron/check-overdue \
   -H "X-Cron-Secret: your-CRON_SECRET-here"
 
+curl -X POST http://localhost:3000/api/cron/generate-subsequent-billing \
+  -H "X-Cron-Secret: your-CRON_SECRET-here"
+
 # Should fail (401 Unauthorized)
 curl -X POST http://localhost:3000/api/cron/check-overdue \
+  -H "X-Cron-Secret: wrong-secret"
+
+curl -X POST http://localhost:3000/api/cron/generate-subsequent-billing \
   -H "X-Cron-Secret: wrong-secret"
 ```
 
 ### Test Health Check (No Auth Required)
 ```bash
-# GET endpoint doesn't require auth, shows configuration status
+# GET endpoints don't require auth, show configuration status
 curl http://localhost:3000/api/cron/check-overdue
+curl http://localhost:3000/api/cron/generate-subsequent-billing
 ```
 
 ## Error Responses
@@ -148,6 +171,14 @@ const response = await fetch('http://localhost:3000/api/cron/check-overdue', {
     'Authorization': `Bearer ${process.env.CRON_SECRET}`,
   },
 });
+
+// Or for subsequent billing generation
+const response2 = await fetch('http://localhost:3000/api/cron/generate-subsequent-billing', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+  },
+});
 ```
 
 ### Option 2: Enable Localhost Access
@@ -163,6 +194,12 @@ const response = await fetch('http://localhost:3000/api/cron/check-overdue', {
   method: 'POST',
   // No auth header needed
 });
+
+// Or for subsequent billing generation
+const response2 = await fetch('http://localhost:3000/api/cron/generate-subsequent-billing', {
+  method: 'POST',
+  // No auth header needed
+});
 ```
 
 **⚠️ Security Note:** Only use Option 2 if:
@@ -172,9 +209,10 @@ const response = await fetch('http://localhost:3000/api/cron/check-overdue', {
 
 ## Summary
 
-✅ **The endpoint is secure** - It cannot be called without proper authentication
+✅ **Both endpoints are secure** - They cannot be called without proper authentication
 ✅ **Multiple auth methods** - Supports Bearer token, custom header, and optional localhost access
 ✅ **Configurable** - Easy to set up with environment variables
 ✅ **Flexible** - Works with external cron services and internal systems
+✅ **Same security model** - Both `/api/cron/check-overdue` and `/api/cron/generate-subsequent-billing` use identical authentication
 
 For setup instructions, see [cron-setup.md](./cron-setup.md).
