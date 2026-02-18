@@ -96,23 +96,26 @@ model ContentItem {
 // ============================================
 
 model rFQ {
-  id                String            @id @default(cuid())
-  rfqNumber         String            @unique
-  customerName      String            // For display purposes (denormalized)
-  customerEmail     String            // For display purposes (denormalized)
-  customerPhone     String            // For display purposes (denormalized)
-  projectName       String
-  projectLocation   String
-  requestedDate     DateTime          // Always today's date (not editable)
-  status            String            @default("draft")
-  totalAmount       Decimal           @default(0) @db.Decimal(15, 2)
-  notes             String?           @db.LongText
-  createdBy         String
-  items             rFQItem[]
-  deliveryRequests  DeliveryRequest[]
-  rentalAgreements  RentalAgreement[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                   String            @id @default(cuid())
+  rfqNumber            String            @unique
+  customerName         String            // For display purposes (denormalized)
+  customerEmail        String            // For display purposes (denormalized)
+  customerPhone        String            // For display purposes (denormalized)
+  projectName          String
+  projectLocation      String
+  requestedDate        DateTime          // Always today's date (not editable)
+  status               String            @default("draft")
+  totalAmount          Decimal           @default(0) @db.Decimal(15, 2)
+  notes                String?           @db.LongText
+  createdBy            String
+  extendedFromRfqId    String?
+  extendedFromRfq      rFQ?              @relation("RfqExtension", fields: [extendedFromRfqId], references: [id])
+  extendedRfqs         rFQ[]             @relation("RfqExtension")
+  items                rFQItem[]
+  deliveryRequests     DeliveryRequest[]
+  rentalAgreements     RentalAgreement[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 }
 
 model rFQItem {
@@ -356,6 +359,7 @@ model RentalAgreement {
   hirerPhone               String?
   location                 String?
   termOfHire               String?
+  totalRentalMonth         Int?      // Considered months: remainder >= 15 days → round up to next month
   monthlyRental            Decimal   @default(0)
   securityDeposit          Decimal   @default(0)
   minimumCharges           Decimal   @default(0)
@@ -381,6 +385,11 @@ model RentalAgreement {
   // Link to quotation
   rfqId    String?
   rfq      rFQ?    @relation(fields: [rfqId], references: [id])
+
+  // Extended from another agreement (when this agreement was created from an extended RFQ)
+  extendedFromAgreementId    String?
+  extendedFromAgreement      RentalAgreement?  @relation("AgreementExtension", fields: [extendedFromAgreementId], references: [id])
+  extendedAgreements        RentalAgreement[]  @relation("AgreementExtension")
 
   versions           AgreementVersion[]
   deposits           Deposit[]

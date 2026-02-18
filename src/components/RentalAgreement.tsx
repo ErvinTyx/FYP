@@ -9,6 +9,7 @@ import {
   downloadRentalAgreementExcel,
   type RentalAgreementExportRow,
 } from "@/lib/rental-agreement-export";
+import { parseDaysFromTermOfHireString, getTotalRentalMonthFromDays } from "@/lib/term-of-hire";
 import { uploadFile } from "@/lib/upload";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
@@ -68,6 +69,8 @@ interface RFQOption {
   projectName: string;
   projectLocation?: string;
   totalAmount?: number;
+  /** When this RFQ was extended from another, for dropdown label "(Extended from RFQ-xxx)" */
+  extendedFromRfq?: { id: string; rfqNumber: string; projectName: string } | null;
 }
 
 interface DepositInfo {
@@ -89,6 +92,7 @@ interface RentalAgreement {
   hirerPhone: string;
   location: string;
   termOfHire: string;
+  totalRentalMonth?: number | null;
   monthlyRental: number;
   securityDeposit: number;
   minimumCharges: number;
@@ -116,20 +120,6 @@ interface RentalAgreement {
 }
 
 const userRoles = ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff'];
-
-/** Parse number of months from termOfHire string (e.g. "9 months (270 days)" → 9). Returns 0 if not found. */
-function parseMonthsFromTermOfHire(termOfHire: string): number {
-  if (!termOfHire?.trim()) return 0;
-  const match = termOfHire.match(/(\d+)\s*months?/i);
-  return match ? Math.max(0, parseInt(match[1], 10)) : 0;
-}
-
-/** Compute monthly rental as totalAmount / months(termOfHire). Returns null if cannot compute. */
-function computeMonthlyRentalFromTotalAndTerm(totalAmount: number, termOfHire: string): number | null {
-  const months = parseMonthsFromTermOfHire(termOfHire);
-  if (months <= 0 || totalAmount == null || Number.isNaN(totalAmount)) return null;
-  return Math.round((totalAmount / months) * 100) / 100;
-}
 
 export function RentalAgreement() {
   const [agreements, setAgreements] = useState<RentalAgreement[]>([]);
@@ -191,7 +181,7 @@ export function RentalAgreement() {
         );
         const list = data.data
           .filter((r: { id: string }) => !linkedRfqIds.has(r.id))
-          .map((r: { id: string; projectName: string; customerName: string; customerPhone?: string; projectLocation?: string; rfqNumber?: string; totalAmount?: number }) => ({
+          .map((r: { id: string; projectName: string; customerName: string; customerPhone?: string; projectLocation?: string; rfqNumber?: string; totalAmount?: number; extendedFromRfq?: { id: string; rfqNumber: string; projectName: string } | null }) => ({
             id: r.id,
             projectName: r.projectName,
             customerName: r.customerName,
@@ -199,6 +189,7 @@ export function RentalAgreement() {
             projectLocation: r.projectLocation ?? '',
             rfqNumber: r.rfqNumber,
             totalAmount: r.totalAmount != null ? Number(r.totalAmount) : undefined,
+            extendedFromRfq: r.extendedFromRfq ?? undefined,
           }));
         setRfqProjectList(list);
       } else {
@@ -385,6 +376,7 @@ export function RentalAgreement() {
     hirerPhone: '',
     location: '',
     termOfHire: '',
+    totalRentalMonth: undefined,
     monthlyRental: undefined,
     securityDeposit: undefined,
     minimumCharges: undefined,
@@ -419,9 +411,9 @@ export function RentalAgreement() {
   const handleEditClick = (agreement: RentalAgreement) => {
     setSelectedAgreement(agreement);
     const totalAmount = agreement.rfq?.totalAmount != null ? Number(agreement.rfq.totalAmount) : undefined;
-    const termOfHire = agreement.termOfHire ?? '';
-    const computedMonthlyRental = totalAmount != null && termOfHire
-      ? computeMonthlyRentalFromTotalAndTerm(totalAmount, termOfHire)
+    const totalRentalMonth = agreement.totalRentalMonth != null ? agreement.totalRentalMonth : undefined;
+    const computedMonthlyRental = totalAmount != null && totalRentalMonth != null && totalRentalMonth > 0
+      ? Math.round((totalAmount / totalRentalMonth) * 100) / 100
       : null;
     const initialFormData = {
       ...agreement,
@@ -498,6 +490,8 @@ export function RentalAgreement() {
         hirerPhone: agreement.hirerPhone ?? undefined,
         location: agreement.location ?? undefined,
         termOfHire: agreement.termOfHire ?? undefined,
+        totalRentalMonth: agreement.totalRentalMonth ?? undefined,
+        totalRental: agreement.rfq?.totalAmount != null ? Number(agreement.rfq.totalAmount) : undefined,
         monthlyRental: Number(agreement.monthlyRental),
         securityDeposit: Number(agreement.securityDeposit),
         minimumCharges: Number(agreement.minimumCharges),
@@ -520,6 +514,10 @@ export function RentalAgreement() {
   const handleUploadSignedDocument = async () => {
     if (!uploadedFile || !selectedAgreement) {
       toast.error("Please select a file to upload");
+      return;
+    }
+    if (selectedAgreement.status === 'Draft') {
+      toast.error('You cannot upload a signed document while the agreement is in Draft status.');
       return;
     }
 
@@ -611,22 +609,14 @@ export function RentalAgreement() {
     }
   };
 
-  // Calculate total rental from monthly rental and term of hire
+  // Calculate total rental from monthly rental and term of hire (uses total days from format e.g. "2 months 16 days (76 days)" or "16 days")
   const calculateTotalRental = (monthlyRental: number, termOfHire: string): number => {
-    // Extract days from term string (e.g., "180 days (15 Jan 2026 - 14 Jul 2026)")
-    const daysMatch = termOfHire.match(/(\d+)\s*days?/i);
-    if (daysMatch) {
-      const days = parseInt(daysMatch[1], 10);
+    const days = parseDaysFromTermOfHireString(termOfHire);
+    if (days != null && days > 0) {
       const monthsEquivalent = days / 30;
       return Math.round(monthlyRental * monthsEquivalent * 100) / 100;
     }
-    // Fallback: extract months (legacy format)
-    const monthsMatch = termOfHire.match(/(\d+)\s*months?/i);
-    if (monthsMatch) {
-      const months = parseInt(monthsMatch[1], 10);
-      return monthlyRental * months;
-    }
-    return monthlyRental; // Default to monthly if can't parse
+    return monthlyRental;
   };
 
   const [selectedVersion, setSelectedVersion] = useState<AgreementVersion | null>(null);
@@ -757,7 +747,9 @@ export function RentalAgreement() {
             <TableHeader>
               <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
                 <TableHead>Project Name</TableHead>
+                <TableHead>Hirer Name</TableHead>
                 <TableHead>Total Rental</TableHead>
+                <TableHead>Monthly Rental</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Version</TableHead>
                 <TableHead>Actions</TableHead>
@@ -766,22 +758,28 @@ export function RentalAgreement() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-[#6B7280]">
+                  <TableCell colSpan={7} className="text-center py-8 text-[#6B7280]">
                     Loading agreements...
                   </TableCell>
                 </TableRow>
               ) : agreements.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-[#6B7280]">
+                  <TableCell colSpan={7} className="text-center py-8 text-[#6B7280]">
                     No rental agreements found. Create your first agreement.
                   </TableCell>
                 </TableRow>
               ) : agreements.map((agreement) => (
                 <TableRow key={agreement.id} className="h-14 hover:bg-[#F3F4F6]">
                   <TableCell className="text-[#374151]">{agreement.projectName}</TableCell>
+                  <TableCell className="text-[#374151]">{agreement.hirer ?? '—'}</TableCell>
                   <TableCell className="text-[#374151]">
                     {agreement.rfq?.totalAmount != null
                       ? `RM ${Number(agreement.rfq.totalAmount).toLocaleString()}`
+                      : '—'}
+                  </TableCell>
+                  <TableCell className="text-[#374151]">
+                    {agreement.monthlyRental != null
+                      ? `RM ${Number(agreement.monthlyRental).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       : '—'}
                   </TableCell>
                   <TableCell>{getStatusBadge(agreement.status)}</TableCell>
@@ -836,10 +834,16 @@ export function RentalAgreement() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              disabled={agreement.status === 'Draft'}
                               onClick={() => {
+                                if (agreement.status === 'Draft') {
+                                  toast.error('You cannot upload a signed document while the agreement is in Draft status.');
+                                  return;
+                                }
                                 setSelectedAgreement(agreement);
                                 setIsUploadDialogOpen(true);
                               }}
+                              className={agreement.status === 'Draft' ? 'opacity-50 cursor-not-allowed' : ''}
                             >
                               {agreement.signedDocumentUrl ? (
                                 <FileCheck className="h-4 w-4 text-[#059669]" />
@@ -849,7 +853,13 @@ export function RentalAgreement() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>{agreement.signedDocumentUrl ? "Signed Document Uploaded" : "Upload Signed Agreement"}</p>
+                            <p>
+                              {agreement.status === 'Draft'
+                                ? 'Upload is only available when the agreement is not in Draft status'
+                                : agreement.signedDocumentUrl
+                                  ? 'Signed Document Uploaded'
+                                  : 'Upload Signed Agreement'}
+                            </p>
                           </TooltipContent>
                         </Tooltip>
                         <Tooltip>
@@ -923,18 +933,24 @@ export function RentalAgreement() {
                           hirerPhone: rfq.customerPhone ?? '',
                           location: rfq.projectLocation ?? '',
                           rfqId: rfq.id,
+                          rfq: { id: rfq.id, rfqNumber: rfq.rfqNumber, customerName: rfq.customerName, customerPhone: rfq.customerPhone, projectName: rfq.projectName, projectLocation: rfq.projectLocation, totalAmount: rfq.totalAmount },
                         }));
-                        // Fetch term of hire from RFQ items; monthly rental = RFQ totalAmount / months(termOfHire)
+                        // Fetch term of hire; monthly rental = Total Rental (RM) / Total Rental Month
                         fetch(`/api/rfq/${rfq.id}/term-of-hire`)
                           .then((res) => res.json())
                           .then((data) => {
                             if (data?.success && data.termOfHire != null) {
                               const termOfHire = data.termOfHire;
                               const totalAmount = Number(rfq.totalAmount) || 0;
-                              const monthlyRental = computeMonthlyRentalFromTotalAndTerm(totalAmount, termOfHire);
+                              const days = parseDaysFromTermOfHireString(termOfHire);
+                              const totalRentalMonth = days != null ? getTotalRentalMonthFromDays(days) : undefined;
+                              const monthlyRental = totalRentalMonth != null && totalRentalMonth > 0 && totalAmount > 0
+                                ? Math.round((totalAmount / totalRentalMonth) * 100) / 100
+                                : undefined;
                               setFormData((prev) => ({
                                 ...prev,
                                 termOfHire,
+                                ...(totalRentalMonth != null && { totalRentalMonth }),
                                 ...(monthlyRental != null && { monthlyRental }),
                               }));
                             }
@@ -952,6 +968,7 @@ export function RentalAgreement() {
                         <SelectItem key={rfq.id} value={rfq.id}>
                           {rfq.projectName}
                           {rfq.rfqNumber ? ` (${rfq.rfqNumber})` : ''}
+                          {rfq.extendedFromRfq ? ` (Extended from ${rfq.extendedFromRfq.rfqNumber})` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1080,6 +1097,28 @@ export function RentalAgreement() {
                     placeholder="0.0"
                     value={formData.defaultInterest || ''}
                     onChange={(e) => setFormData({...formData, defaultInterest: parseFloat(e.target.value)})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Total Rental Month</Label>
+                  <Input
+                    type="text"
+                    readOnly
+                    disabled
+                    value={formData.totalRentalMonth != null ? String(formData.totalRentalMonth) : '—'}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Total Rental (RM)</Label>
+                  <Input
+                    type="text"
+                    readOnly
+                    disabled
+                    value={formData.rfq?.totalAmount != null
+                      ? `RM ${Number(formData.rfq.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : '—'}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
               </div>
@@ -1323,6 +1362,28 @@ export function RentalAgreement() {
                     onChange={(e) => setFormData({...formData, defaultInterest: parseFloat(e.target.value)})}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>Total Rental Month</Label>
+                  <Input
+                    type="text"
+                    readOnly
+                    disabled
+                    value={formData.totalRentalMonth != null ? String(formData.totalRentalMonth) : '—'}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Total Rental (RM)</Label>
+                  <Input
+                    type="text"
+                    readOnly
+                    disabled
+                    value={formData.rfq?.totalAmount != null
+                      ? `RM ${Number(formData.rfq.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : '—'}
+                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1484,6 +1545,18 @@ export function RentalAgreement() {
                   <div className="space-y-2">
                     <Label className="text-[#6B7280]">Default Interest</Label>
                     <p className="text-[#111827]">{selectedAgreement.defaultInterest}% per month</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[#6B7280]">Total Rental Month</Label>
+                    <p className="text-[#111827]">{selectedAgreement.totalRentalMonth != null ? selectedAgreement.totalRentalMonth : '—'}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[#6B7280]">Total Rental (RM)</Label>
+                    <p className="text-[#111827]">
+                      {selectedAgreement.rfq?.totalAmount != null
+                        ? `RM ${Number(selectedAgreement.rfq.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '—'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1799,6 +1872,35 @@ export function RentalAgreement() {
                 </div>
               </div>
 
+              {/* Signatory Details */}
+              <div className="space-y-4">
+                <h3 className="text-[#231F20]">Signatory Details</h3>
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-4 p-4 border border-[#E5E7EB] rounded-lg">
+                    <h4 className="text-[#111827]">Owner</h4>
+                    <div className="space-y-2">
+                      <Label className="text-[#6B7280]">Name</Label>
+                      <p className="text-[#111827]">{v('ownerSignatoryName') || '—'}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[#6B7280]">NRIC No.</Label>
+                      <p className="text-[#111827]">{v('ownerNRIC') || '—'}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4 p-4 border border-[#E5E7EB] rounded-lg">
+                    <h4 className="text-[#111827]">Hirer</h4>
+                    <div className="space-y-2">
+                      <Label className="text-[#6B7280]">Name</Label>
+                      <p className="text-[#111827]">{v('hirerSignatoryName') || '—'}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[#6B7280]">NRIC No.</Label>
+                      <p className="text-[#111827]">{v('hirerNRIC') || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Actions */}
               <div className="flex gap-3 pt-4 border-t">
                 <Button
@@ -1831,6 +1933,8 @@ export function RentalAgreement() {
                         hirerPhone: getStr('hirerPhone') ?? undefined,
                         location: getStr('location') ?? undefined,
                         termOfHire: getStr('termOfHire') ?? undefined,
+                        totalRentalMonth: display.totalRentalMonth != null ? Number(display.totalRentalMonth) : selectedAgreement.totalRentalMonth ?? undefined,
+                        totalRental: display.totalRental != null ? Number(display.totalRental) : (selectedAgreement.rfq?.totalAmount != null ? Number(selectedAgreement.rfq.totalAmount) : undefined),
                         monthlyRental: getNum('monthlyRental'),
                         securityDeposit: getNum('securityDeposit'),
                         minimumCharges: getNum('minimumCharges'),

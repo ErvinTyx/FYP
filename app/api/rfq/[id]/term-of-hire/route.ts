@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { computeTermOfHireFromRfqItems, computeMonthlyRentalFromRfqItems } from '@/lib/term-of-hire';
+import { computeTermOfHireFromRfqItems } from '@/lib/term-of-hire';
 
 /**
  * GET /api/rfq/[id]/term-of-hire
- * Returns computed term of hire and monthly rental (total from RFQ items) for the given RFQ.
+ * Returns computed term of hire for the given RFQ.
+ * Monthly rental is computed on the client as Total Rental (RM) / Total Rental Month.
  */
 export async function GET(
   request: NextRequest,
@@ -18,11 +19,8 @@ export async function GET(
         { status: 400 }
       );
     }
-    const [termOfHire, monthlyRental] = await Promise.all([
-      computeTermOfHireFromRfqItems(prisma, rfqId),
-      computeMonthlyRentalFromRfqItems(prisma, rfqId),
-    ]);
-    return NextResponse.json({ success: true, termOfHire, monthlyRental });
+    const termOfHire = await computeTermOfHireFromRfqItems(prisma, rfqId);
+    return NextResponse.json({ success: true, termOfHire });
   } catch (error) {
     console.error('[RFQ term-of-hire] error:', error);
     return NextResponse.json(

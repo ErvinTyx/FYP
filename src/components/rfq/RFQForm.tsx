@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, Save, Send, Loader2, Calendar } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Send, Loader2, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -13,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+import { Calendar } from '../ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
 import { useSession } from 'next-auth/react';
@@ -46,6 +48,8 @@ interface RFQFormProps {
   rfq: RFQ | null;
   onSave: (rfq: RFQ) => void;
   onCancel: () => void;
+  /** When extending from another RFQ, show "Extend RFQ" title */
+  mode?: 'create' | 'edit' | 'extend';
 }
 
 interface UISet {
@@ -56,7 +60,20 @@ interface UISet {
   items: RFQItem[];
 }
 
-export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
+/** Format YYYY-MM-DD or Date to dd/mm/yyyy */
+function formatDateToDDMMYYYY(isoOrDate: string | Date): string {
+  if (!isoOrDate) return '';
+  const d = typeof isoOrDate === 'string'
+    ? new Date(isoOrDate.includes('T') ? isoOrDate : isoOrDate + 'T12:00:00')
+    : isoOrDate;
+  if (isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
   const { data: session } = useSession();
   const [formData, setFormData] = useState<Omit<RFQ, 'id' | 'rfqNumber' | 'createdAt' | 'updatedAt'>>({
     customerName: '',
@@ -82,6 +99,8 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
   const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
   /** While user is typing rental duration, hold the raw string; on blur we commit a number (min 1). */
   const [rentalDurationEditing, setRentalDurationEditing] = useState<{ setId: string; value: string } | null>(null);
+  /** Which set's Required Date popover is open (null = none). */
+  const [requiredDatePopoverSetId, setRequiredDatePopoverSetId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchScaffoldingItems = async () => {
@@ -264,7 +283,19 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
   };
 
   const updateSet = (setId: string, field: keyof UISet, value: any) => {
-    setUiSets(uiSets.map(set => set.id === setId ? { ...set, [field]: value } : set));
+    setUiSets(uiSets.map(set => {
+      if (set.id !== setId) return set;
+      const updatedSet = { ...set, [field]: value };
+      if (field === 'rentalMonths') {
+        const months = Number(updatedSet.rentalMonths) || 1;
+        const durationInDays = months * 30;
+        updatedSet.items = updatedSet.items.map(item => ({
+          ...item,
+          totalPrice: item.quantity * item.unitPrice * durationInDays,
+        }));
+      }
+      return updatedSet;
+    }));
   };
 
   const addItemToSet = (setId: string) => {
@@ -414,6 +445,15 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
         toast.error(`Set "${set.setName}": Please set the required date`);
         return;
       }
+      if (mode === 'extend') {
+        const reqDate = new Date(set.requiredDate + 'T12:00:00');
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        if (reqDate < todayStart) {
+          toast.error(`Set "${set.setName}": Required date must be today or later for Extend RFQ.`);
+          return;
+        }
+      }
       if (!set.rentalMonths || set.rentalMonths <= 0) {
         toast.error(`Set "${set.setName}": Please set a valid rental duration`);
         return;
@@ -470,26 +510,44 @@ export function RFQForm({ rfq, onSave, onCancel }: RFQFormProps) {
     });
   };
 
-return (
+  // For Extend RFQ, Required Date must be today or later (past dates disabled; today is selectable)
+  const requiredDateDisabled =
+    mode === 'extend'
+      ? (date: Date) => {
+          const d = new Date(date);
+          d.setHours(0, 0, 0, 0);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          return d.getTime() < today.getTime(); // disable only strictly before today
+        }
+      : formData.requestedDate
+        ? { before: new Date(formData.requestedDate + 'T12:00:00') }
+        : undefined;
+
+  return (
   <div className="p-6 space-y-6">
     <div className="flex items-center gap-4">
         <Button variant="outline" onClick={onCancel}>
           <ArrowLeft className="size-4" />
         </Button>
         <div>
-          <h1 className="text-[#231F20]">{rfq ? 'Edit RFQ' : 'New RFQ'}</h1>
-          <p className="text-gray-600">{rfq ? `Editing ${rfq.rfqNumber}` : 'Create a new request for quotation'}</p>
+          <h1 className="text-[#231F20]">
+            {mode === 'extend' ? 'Extend RFQ' : rfq ? 'Edit RFQ' : 'New RFQ'}
+          </h1>
+          <p className="text-gray-600">
+            {mode === 'extend' ? 'Create a new RFQ with customer and project from the selected RFQ' : rfq ? `Editing ${rfq.rfqNumber}` : 'Create a new request for quotation'}
+          </p>
         </div>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle>Customer Information</CardTitle></CardHeader>
+      <Card className={mode === 'extend' ? 'bg-gray-50/80 opacity-95 pointer-events-none' : ''}>
+        <CardHeader><CardTitle className={mode === 'extend' ? 'text-gray-500' : ''}>Customer Information</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="customerSelect">Select Customer *</Label>
-              <Select value={selectedCustomerId} onValueChange={handleCustomerChange} disabled={loadingCustomers}>
-                <SelectTrigger>
+              <Label htmlFor="customerSelect" className={mode === 'extend' ? 'text-gray-500' : ''}>Select Customer *</Label>
+              <Select value={selectedCustomerId} onValueChange={handleCustomerChange} disabled={loadingCustomers || mode === 'extend'}>
+                <SelectTrigger className={mode === 'extend' ? 'bg-gray-100' : ''}>
                   {loadingCustomers ? (
                     <div className="flex items-center gap-2">
                       <Loader2 className="size-3 animate-spin" />
@@ -512,37 +570,40 @@ return (
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customerEmail">Email *</Label>
-              <Input id="customerEmail" type="email" value={formData.customerEmail} readOnly placeholder="Auto-filled from customer selection" className="bg-gray-50" />
+              <Label htmlFor="customerEmail" className={mode === 'extend' ? 'text-gray-500' : ''}>Email *</Label>
+              <Input id="customerEmail" type="email" value={formData.customerEmail} readOnly placeholder="Auto-filled from customer selection" className={mode === 'extend' ? 'bg-gray-100' : 'bg-gray-50'} disabled={mode === 'extend'} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customerPhone">Phone *</Label>
-              <Input id="customerPhone" value={formData.customerPhone} readOnly placeholder="Auto-filled from customer selection" className="bg-gray-50" />
+              <Label htmlFor="customerPhone" className={mode === 'extend' ? 'text-gray-500' : ''}>Phone *</Label>
+              <Input id="customerPhone" value={formData.customerPhone} readOnly placeholder="Auto-filled from customer selection" className={mode === 'extend' ? 'bg-gray-100' : 'bg-gray-50'} disabled={mode === 'extend'} />
             </div>
           </div>
+          {mode === 'extend' && (
+            <p className="text-xs text-gray-500">Pre-filled from the project you selected. Only scaffolding sets can be edited.</p>
+          )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle>Project Details</CardTitle></CardHeader>
+      <Card className={mode === 'extend' ? 'bg-gray-50/80 opacity-95 pointer-events-none' : ''}>
+        <CardHeader><CardTitle className={mode === 'extend' ? 'text-gray-500' : ''}>Project Details</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="projectName">Project Name *</Label>
-              <Input id="projectName" value={formData.projectName} onChange={(e) => setFormData({ ...formData, projectName: e.target.value })} placeholder="Enter project name" />
+              <Label htmlFor="projectName" className={mode === 'extend' ? 'text-gray-500' : ''}>Project Name *</Label>
+              <Input id="projectName" value={formData.projectName} onChange={(e) => setFormData({ ...formData, projectName: e.target.value })} placeholder="Enter project name" readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="projectLocation">Project Location *</Label>
-              <Input id="projectLocation" value={formData.projectLocation} onChange={(e) => setFormData({ ...formData, projectLocation: e.target.value })} placeholder="Enter project location" />
+              <Label htmlFor="projectLocation" className={mode === 'extend' ? 'text-gray-500' : ''}>Project Location *</Label>
+              <Input id="projectLocation" value={formData.projectLocation} onChange={(e) => setFormData({ ...formData, projectLocation: e.target.value })} placeholder="Enter project location" readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="requestedDate">Requested Date</Label>
-              <Input id="requestedDate" type="date" value={formData.requestedDate} disabled className="bg-gray-50" />
+              <Label htmlFor="requestedDate" className={mode === 'extend' ? 'text-gray-500' : ''}>Requested Date</Label>
+              <Input id="requestedDate" type="text" value={formatDateToDDMMYYYY(formData.requestedDate)} readOnly placeholder="dd/mm/yyyy" className={mode === 'extend' ? 'bg-gray-100' : 'bg-gray-50'} disabled={mode === 'extend'} />
               <p className="text-xs text-gray-500">Always set to today's date</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes or requirements" rows={3} />
+              <Label htmlFor="notes" className={mode === 'extend' ? 'text-gray-500' : ''}>Notes</Label>
+              <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes or requirements" rows={3} readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
             </div>
           </div>
         </CardContent>
@@ -563,7 +624,7 @@ return (
         <CardContent className="space-y-6">
           {uiSets.length === 0 ? (
             <div className="text-center py-8 text-gray-500 border-2 border-dashed rounded-lg">
-              <Calendar className="size-12 mx-auto mb-3 text-gray-400" />
+              <CalendarIcon className="size-12 mx-auto mb-3 text-gray-400" />
               <p className="font-medium">No sets created yet</p>
               <p className="text-sm">Click "Create Set" to organize scaffolding items</p>
             </div>
@@ -587,7 +648,32 @@ return (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Required Date *</Label>
-                          <Input type="date" value={set.requiredDate} min={formData.requestedDate} onChange={(e) => updateSet(set.id, 'requiredDate', e.target.value)} />
+                          <Popover open={requiredDatePopoverSetId === set.id} onOpenChange={(open) => setRequiredDatePopoverSetId(open ? set.id : null)}>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                <CalendarIcon className="mr-2 size-4 text-[#6B7280]" />
+                                {set.requiredDate ? formatDateToDDMMYYYY(set.requiredDate) : 'dd/mm/yyyy'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={set.requiredDate ? new Date(set.requiredDate + 'T12:00:00') : undefined}
+                                onSelect={(date) => {
+                                  if (!date) return;
+                                  const y = date.getFullYear();
+                                  const m = String(date.getMonth() + 1).padStart(2, '0');
+                                  const d = String(date.getDate()).padStart(2, '0');
+                                  updateSet(set.id, 'requiredDate', `${y}-${m}-${d}`);
+                                  setRequiredDatePopoverSetId(null);
+                                }}
+                                disabled={requiredDateDisabled}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          {mode === 'extend' && (
+                            <p className="text-xs text-gray-500">Must be today or later.</p>
+                          )}
                         </div>
                         <div className="space-y-2">
                           <Label>Rental Duration (month) *</Label>

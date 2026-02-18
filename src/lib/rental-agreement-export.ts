@@ -49,7 +49,7 @@ export function generateRentalAgreementListPdf(items: RentalAgreementExportRow[]
   const contentTop = MARGIN + HEADER_AREA;
   const contentBottom = pageHeight - FOOTER_AREA;
 
-  const colWidths = [22, 22, 28, 24, 34, 36, 34, 18, 16, 18]; // agreementNumber, poNumber, projectName, hirer, termOfHire, monthlyRental (wider), totalRental, status, version, createdAt
+  const colWidths = [22, 22, 26, 22, 44, 34, 32, 18, 16, 18]; // agreementNumber, poNumber, projectName, hirer, termOfHire (wider), monthlyRental, totalRental, status, version, createdAt
   const headers = ['Agreement No', 'P/O No', 'Project Name', 'Hirer', 'Term of Hire', 'Monthly Rental (RM)', 'Total Rental (RM)', 'Status', 'Ver', 'Created'];
 
   function drawPageHeader() {
@@ -114,7 +114,7 @@ export function generateRentalAgreementListPdf(items: RentalAgreementExportRow[]
       item.poNumber,
       item.projectName.slice(0, 22),
       item.hirer.slice(0, 20),
-      item.termOfHire.slice(0, 28),
+      item.termOfHire.slice(0, 42),
       item.monthlyRental.toFixed(2),
       item.totalAmount != null ? item.totalAmount.toFixed(2) : '—',
       item.status,

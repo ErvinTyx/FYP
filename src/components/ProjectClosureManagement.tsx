@@ -63,6 +63,7 @@ import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
 import { Separator } from "./ui/separator";
 import { toast } from "sonner";
+import { parseDaysFromTermOfHireString } from "@/lib/term-of-hire";
 
 type ClosureStatus = "active" | "pending" | "approved";
 
@@ -96,16 +97,6 @@ interface ClosureRequest {
   approvedBy?: string;
   approvedDate?: string;
   validationChecks: ValidationCheck;
-}
-
-/** Parse number of days from termOfHire string (e.g. "180 days (...)" or "6 months (...)"). */
-function parseDaysFromTermOfHire(termOfHire: string | null | undefined): number | null {
-  if (!termOfHire?.trim()) return null;
-  const daysMatch = termOfHire.match(/(\d+)\s*days?/i);
-  if (daysMatch) return parseInt(daysMatch[1], 10);
-  const monthsMatch = termOfHire.match(/(\d+)\s*months?/i);
-  if (monthsMatch) return parseInt(monthsMatch[1], 10) * 30;
-  return null;
 }
 
 // Row from GET /api/project-closure-requests
@@ -144,7 +135,7 @@ function rowToClosureRequest(row: ProjectClosureRow): ClosureRequest {
     : "";
   const status = (closureRequest?.status ?? "active") as ClosureStatus;
   const returnProcessComplete = returnRequestStatus === "Completed";
-  const actualRentalPeriodDays = parseDaysFromTermOfHire(agreement.termOfHire);
+  const actualRentalPeriodDays = parseDaysFromTermOfHireString(agreement.termOfHire);
   const rentalPeriodMet = actualRentalPeriodDays !== null && actualRentalPeriodDays >= MINIMUM_RENTAL_PERIOD_DAYS;
   return {
     id: agreement.id,
