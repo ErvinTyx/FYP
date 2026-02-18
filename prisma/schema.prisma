@@ -979,7 +979,6 @@ model CreditNoteItem {
   currentPrice            Decimal   @db.Decimal(15, 2)  // Price from Invoice
   unitPrice               Decimal   @db.Decimal(15, 2)  // Legacy compatibility
   amount                  Decimal   @db.Decimal(15, 2)  // Calculated: quantity × currentPrice
-  daysCharged             Int?      // For monthly rental / additional charge line items
   
   createdAt               DateTime  @default(now())
 }

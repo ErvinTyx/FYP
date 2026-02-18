@@ -71,7 +71,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         currentPrice: toNum(i.currentPrice),
         unitPrice: toNum(i.unitPrice),
         amount: toNum(i.amount),
-        daysCharged: i.daysCharged ?? undefined,
       })),
       attachments: updated.attachments.map((a) => ({
         ...a,

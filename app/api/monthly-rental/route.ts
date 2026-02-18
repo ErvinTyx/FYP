@@ -292,7 +292,18 @@ export async function GET(request: NextRequest) {
             },
           },
           agreement: true,
-          items: true,
+          items: {
+            select: {
+              id: true,
+              invoiceId: true,
+              scaffoldingItemId: true,
+              scaffoldingItemName: true,
+              quantityBilled: true,
+              unitPrice: true,
+              lineTotal: true,
+              createdAt: true,
+            },
+          },
         },
       });
 
@@ -390,7 +401,18 @@ export async function GET(request: NextRequest) {
           },
         },
         agreement: true,
-        items: true,
+        items: {
+          select: {
+            id: true,
+            invoiceId: true,
+            scaffoldingItemId: true,
+            scaffoldingItemName: true,
+            quantityBilled: true,
+            unitPrice: true,
+            lineTotal: true,
+            createdAt: true,
+          },
+        },
       },
       orderBy: {
         createdAt: orderDir,
@@ -676,7 +698,18 @@ export async function POST(request: NextRequest) {
           },
         },
         agreement: true,
-        items: true,
+        items: {
+          select: {
+            id: true,
+            invoiceId: true,
+            scaffoldingItemId: true,
+            scaffoldingItemName: true,
+            quantityBilled: true,
+            unitPrice: true,
+            lineTotal: true,
+            createdAt: true,
+          },
+        },
       },
     });
 
@@ -749,7 +782,18 @@ export async function PUT(request: NextRequest) {
           },
         },
         agreement: true,
-        items: true,
+        items: {
+          select: {
+            id: true,
+            invoiceId: true,
+            scaffoldingItemId: true,
+            scaffoldingItemName: true,
+            quantityBilled: true,
+            unitPrice: true,
+            lineTotal: true,
+            createdAt: true,
+          },
+        },
       },
     });
 
@@ -900,7 +944,18 @@ export async function PUT(request: NextRequest) {
           },
         },
         agreement: true,
-        items: true,
+        items: {
+          select: {
+            id: true,
+            invoiceId: true,
+            scaffoldingItemId: true,
+            scaffoldingItemName: true,
+            quantityBilled: true,
+            unitPrice: true,
+            lineTotal: true,
+            createdAt: true,
+          },
+        },
       },
     });
 

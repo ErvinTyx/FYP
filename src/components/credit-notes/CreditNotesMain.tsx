@@ -44,7 +44,6 @@ function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
           currentPrice: Number(i.currentPrice) ?? 0,
           unitPrice: Number(i.unitPrice) ?? 0,
           amount: Number(i.amount) ?? 0,
-          daysCharged: i.daysCharged != null ? Number(i.daysCharged) : undefined,
         }))
       : [],
   };

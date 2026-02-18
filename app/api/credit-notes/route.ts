@@ -39,7 +39,6 @@ function serializeCreditNote(cn: {
     currentPrice: { toNumber?: () => number } | number;
     unitPrice: { toNumber?: () => number } | number;
     amount: { toNumber?: () => number } | number;
-    daysCharged: number | null;
   }>;
   attachments: Array<{ id: string; fileName: string; fileUrl: string; fileSize: number; uploadedAt: Date }>;
 }) {
@@ -59,7 +58,6 @@ function serializeCreditNote(cn: {
       currentPrice: toNum(i.currentPrice),
       unitPrice: toNum(i.unitPrice),
       amount: toNum(i.amount),
-      daysCharged: i.daysCharged ?? undefined,
     })),
     attachments: cn.attachments.map((a) => ({
       ...a,
@@ -192,7 +190,7 @@ export async function POST(request: NextRequest) {
     }
 
     let totalAmount = 0;
-    const itemRows = itemsArray.map((item: { description?: string; quantity?: number; previousPrice?: number; currentPrice?: number; amount?: number; daysCharged?: number }) => {
+    const itemRows = itemsArray.map((item: { description?: string; quantity?: number; previousPrice?: number; currentPrice?: number; amount?: number }) => {
       const qty = Number(item.quantity) || 0;
       const prev = Number(item.previousPrice) || 0;
       const curr = Number(item.currentPrice) ?? Number(item.amount) / (qty || 1);
@@ -205,7 +203,6 @@ export async function POST(request: NextRequest) {
         currentPrice: curr,
         unitPrice: curr,
         amount: amt,
-        daysCharged: item.daysCharged != null ? Number(item.daysCharged) : null,
       };
     });
 

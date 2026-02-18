@@ -63,7 +63,6 @@ export interface RefundInvoiceDetailsResponse {
       quantityBilled?: number;
       quantity?: number;
       unitPrice: number;
-      daysCharged?: number;
       lineTotal?: number;
       amount?: number;
     }>;

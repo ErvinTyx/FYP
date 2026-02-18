@@ -59,14 +59,14 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
   const [date] = useState(editingNote?.date ?? new Date().toISOString().split("T")[0]);
   const [items, setItems] = useState<CreditNoteItem[]>(
     editingNote?.items?.length
-      ? editingNote.items.map((i) => ({ ...i, daysCharged: i.daysCharged }))
+      ? editingNote.items.map((i) => ({ ...i }))
       : [{ id: "1", description: "Reduction of deposit price", quantity: 1, previousPrice: 0, currentPrice: 0, unitPrice: 0, amount: 0 }]
   );
   const [attachments, setAttachments] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
   const [depositAmount, setDepositAmount] = useState(0);
-  const [monthlyInvoiceItems, setMonthlyInvoiceItems] = useState<Array<{ id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }>>([]);
+  const [monthlyInvoiceItems, setMonthlyInvoiceItems] = useState<Array<{ id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; lineTotal: number }>>([]);
   const [additionalChargeItems, setAdditionalChargeItems] = useState<Array<{ id: string; itemName: string; itemType: string; quantity: number; unitPrice: number; amount: number }>>([]);
   
   // Track if we're in initial edit loading mode - when true, skip overwriting items and source from API
@@ -271,12 +271,11 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
         .then((json) => {
           if (json.success && json.invoice && json.invoice.items) {
             const invItems = json.invoice.items.map(
-              (i: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }) => ({
+              (i: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; lineTotal: number }) => ({
                 id: i.id,
                 scaffoldingItemName: i.scaffoldingItemName,
                 quantityBilled: i.quantityBilled,
                 unitPrice: Number(i.unitPrice),
-                daysCharged: i.daysCharged,
                 lineTotal: Number(i.lineTotal),
               })
             );
@@ -284,15 +283,14 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
             // Only set items if not editing a saved draft
             if (!skipItemsOverwrite) {
               setItems(
-                invItems.map((invItem: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; daysCharged: number; lineTotal: number }) => ({
+                invItems.map((invItem: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; lineTotal: number }) => ({
                   id: invItem.id,
                   description: invItem.scaffoldingItemName,
                   quantity: invItem.quantityBilled,
                   previousPrice: invItem.unitPrice,
                   currentPrice: invItem.unitPrice,
                   unitPrice: invItem.unitPrice,
-                  amount: invItem.lineTotal ?? invItem.quantityBilled * invItem.unitPrice * (invItem.daysCharged || 1),
-                  daysCharged: invItem.daysCharged,
+                  amount: invItem.lineTotal,
                 }))
               );
             }
@@ -357,15 +355,6 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
           const qty = Number(updated.quantity) || 0;
           const curr = Number(updated.currentPrice) ?? 0;
           updated.amount = qty * curr;
-          if (invoiceType === "monthlyRental" && updated.daysCharged != null) {
-            updated.amount = qty * curr * (updated.daysCharged || 0);
-          }
-        }
-        if (field === "daysCharged") {
-          const qty = Number(updated.quantity) || 0;
-          const curr = Number(updated.currentPrice) ?? 0;
-          const days = Number(value) || 0;
-          updated.amount = qty * curr * days;
         }
         return updated;
       })
@@ -400,6 +389,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     const desc = invoiceType === "monthlyRental" ? (first as { scaffoldingItemName: string }).scaffoldingItemName : (first as { itemName: string }).itemName;
     const qty = invoiceType === "monthlyRental" ? (first as { quantityBilled: number }).quantityBilled : (first as { quantity: number }).quantity;
     const price = Number(first.unitPrice) || 0;
+    const lineTotal = invoiceType === "monthlyRental" ? Number((first as { lineTotal: number }).lineTotal) : qty * price;
     setItems((prev) => [
       ...prev,
       {
@@ -409,8 +399,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
         previousPrice: price,
         currentPrice: price,
         unitPrice: price,
-        amount: qty * price,
-        daysCharged: invoiceType === "monthlyRental" ? (first as { daysCharged: number }).daysCharged : undefined,
+        amount: lineTotal,
       },
     ]);
   };
@@ -451,7 +440,6 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       previousPrice: i.previousPrice,
       currentPrice: i.currentPrice,
       amount: i.amount,
-      daysCharged: i.daysCharged,
     })),
   });
 
@@ -698,18 +686,6 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                         className="h-10 bg-white border-[#D1D5DB] rounded-md"
                       />
                     </div>
-                    {invoiceType === "monthlyRental" && (
-                      <div className="space-y-2">
-                        <label className="text-[14px] text-[#374151]">Days charged</label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={item.daysCharged ?? ""}
-                          onChange={(e) => handleItemChange(item.id, "daysCharged", parseInt(e.target.value, 10) || 0)}
-                          className="h-10 bg-white border-[#D1D5DB] rounded-md"
-                        />
-                      </div>
-                    )}
                     <div className="space-y-2">
                       <label className="text-[14px] text-[#374151]">Amount (RM)</label>
                       <div className="h-10 px-3 bg-[#F3F4F6] border rounded-md flex items-center">RM{(item.amount || 0).toFixed(2)}</div>

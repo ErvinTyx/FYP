@@ -112,7 +112,6 @@ export async function GET(request: NextRequest) {
             scaffoldingItemName: i.scaffoldingItemName,
             quantityBilled: i.quantityBilled,
             unitPrice: Number(i.unitPrice),
-            daysCharged: i.daysCharged,
             lineTotal: Number(i.lineTotal),
           })),
         },

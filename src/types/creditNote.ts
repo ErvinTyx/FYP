@@ -44,7 +44,6 @@ export interface CreditNoteItem {
   currentPrice: number;
   unitPrice: number;
   amount: number;
-  daysCharged?: number;  // For monthly rental / additional charge lines
 }
 
 export interface CreditNoteFormData {
