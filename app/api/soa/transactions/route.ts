@@ -264,7 +264,7 @@ export async function GET(request: NextRequest) {
           entityType: 'additionalCharge',
           entityId: c.id,
         });
-        if (c.status === 'approved' && c.approvalDate) {
+        if ((c.status === 'paid' || c.status === 'approved') && c.approvalDate) {
           rawTxs.push({
             date: c.approvalDate,
             type: 'Additional Charge Payment',
