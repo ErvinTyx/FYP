@@ -917,8 +917,7 @@ model MonthlyRentalInvoiceItem {
   scaffoldingItemName     String
   quantityBilled          Int       // quantity still out at billing time
   unitPrice               Decimal   @db.Decimal(15, 2)
-  daysCharged             Int
-  lineTotal               Decimal   @db.Decimal(15, 2)  // qty × unitPrice × days
+  lineTotal               Decimal   @db.Decimal(15, 2)  // qty × unitPrice
   
   createdAt               DateTime  @default(now())
 }

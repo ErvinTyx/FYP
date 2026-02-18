@@ -69,7 +69,6 @@ export interface MonthlyRentalInvoiceItem {
   scaffoldingItemName: string;
   quantityBilled: number;
   unitPrice: number;
-  daysCharged: number;
   lineTotal: number;
   
   createdAt: string;

@@ -244,7 +244,6 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
     scaffoldingItemName: string;
     quantityBilled: number;
     unitPrice: number;
-    daysCharged: number;
     lineTotal: number;
   }> = [];
 
@@ -280,7 +279,6 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
       scaffoldingItemName: displayName,
       quantityBilled: quantity,
       unitPrice,
-      daysCharged: 30,
       lineTotal,
     });
   }

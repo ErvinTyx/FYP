@@ -216,7 +216,6 @@ async function calculateBillingAmount(
     scaffoldingItemName: string;
     quantityBilled: number;
     unitPrice: number;
-    daysCharged: number;
     lineTotal: number;
   }> = [];
 
@@ -252,7 +251,6 @@ async function calculateBillingAmount(
       scaffoldingItemName: displayName,
       quantityBilled: quantity,
       unitPrice,
-      daysCharged: 30,
       lineTotal,
     });
   }
