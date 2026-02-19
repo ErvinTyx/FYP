@@ -66,6 +66,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
   const [saving, setSaving] = useState(false);
 
   const [depositAmount, setDepositAmount] = useState(0);
+  const [originalInvoiceAmount, setOriginalInvoiceAmount] = useState<number | null>(null);
   const [monthlyInvoiceItems, setMonthlyInvoiceItems] = useState<Array<{ id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; lineTotal: number }>>([]);
   const [additionalChargeItems, setAdditionalChargeItems] = useState<Array<{ id: string; itemName: string; itemType: string; quantity: number; unitPrice: number; amount: number }>>([]);
   
@@ -116,6 +117,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       setMonthlyInvoiceItems([]);
       setAdditionalChargeItems([]);
       setDepositAmount(0);
+      setOriginalInvoiceAmount(null);
       if (invoiceType === "deposit") {
         setItems([{ id: "1", description: "Reduction of deposit price", quantity: 1, previousPrice: 0, currentPrice: 0, unitPrice: 0, amount: 0 }]);
       }
@@ -247,7 +249,9 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
         .then((r) => r.json())
         .then((json) => {
           if (json.success && json.deposit) {
-            setDepositAmount(Number(json.deposit.depositAmount) || 0);
+            const depositAmt = Number(json.deposit.depositAmount) || 0;
+            setDepositAmount(depositAmt);
+            setOriginalInvoiceAmount(depositAmt); // Store original invoice amount
             // Only set items if not editing a saved draft
             if (!skipItemsOverwrite) {
               setItems([
@@ -255,7 +259,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                   id: "1",
                   description: "Reduction of deposit price",
                   quantity: 1,
-                  previousPrice: Number(json.deposit.depositAmount) || 0,
+                  previousPrice: depositAmt,
                   currentPrice: 0,
                   unitPrice: 0,
                   amount: 0,
@@ -280,6 +284,10 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
               })
             );
             setMonthlyInvoiceItems(invItems);
+            // Store original invoice total amount for validation
+            if (json.invoice.totalAmount != null) {
+              setOriginalInvoiceAmount(Number(json.invoice.totalAmount) || 0);
+            }
             // Only set items if not editing a saved draft
             if (!skipItemsOverwrite) {
               setItems(
@@ -314,6 +322,10 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
               })
             );
             setAdditionalChargeItems(chargeItems);
+            // Store original invoice total amount for validation
+            if (charge.totalCharges != null) {
+              setOriginalInvoiceAmount(Number(charge.totalCharges) || 0);
+            }
             // Only set items if not editing a saved draft
             if (!skipItemsOverwrite) {
               setItems(
@@ -344,6 +356,12 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     const inv = invoicesList.find((i) => i.id === id);
     setSourceId(id);
     setOriginalInvoice(inv?.label ?? id);
+    // Store the original invoice amount for validation
+    if (inv?.amount != null) {
+      setOriginalInvoiceAmount(inv.amount);
+    } else {
+      setOriginalInvoiceAmount(null);
+    }
   };
 
   const handleItemChange = (id: string, field: keyof CreditNoteItem, value: number | string) => {
@@ -463,6 +481,11 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       }
       if (totalAmount <= 0) {
         toast.error("Total amount must be greater than zero");
+        return false;
+      }
+      // Validate that credit note amount doesn't exceed original invoice amount
+      if (originalInvoiceAmount != null && totalAmount > originalInvoiceAmount) {
+        toast.error(`Credit note amount (RM${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) cannot exceed original invoice amount (RM${originalInvoiceAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`);
         return false;
       }
     }
