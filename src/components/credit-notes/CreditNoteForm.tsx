@@ -287,10 +287,10 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                   id: invItem.id,
                   description: invItem.scaffoldingItemName,
                   quantity: invItem.quantityBilled,
-                  previousPrice: invItem.unitPrice,
-                  currentPrice: invItem.unitPrice,
+                  previousPrice: invItem.lineTotal, // Use lineTotal as previousPrice
+                  currentPrice: invItem.lineTotal, // Start with same value
                   unitPrice: invItem.unitPrice,
-                  amount: invItem.lineTotal,
+                  amount: 0, // Will be calculated as difference
                 }))
               );
             }
@@ -321,10 +321,10 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                   id: ci.id,
                   description: ci.itemName,
                   quantity: ci.quantity,
-                  previousPrice: ci.unitPrice,
-                  currentPrice: ci.unitPrice,
+                  previousPrice: ci.amount, // Use amount as previousPrice (like lineTotal for monthly rental)
+                  currentPrice: ci.amount, // Start with same value
                   unitPrice: ci.unitPrice,
-                  amount: ci.amount,
+                  amount: 0, // Will be calculated as difference
                 }))
               );
             }
@@ -351,7 +351,25 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       prev.map((item) => {
         if (item.id !== id) return item;
         const updated = { ...item, [field]: value };
-        if (field === "quantity" || field === "currentPrice" || field === "amount") {
+        if (field === "currentPrice") {
+          // For monthly rental and additional charges: amount = previousPrice - currentPrice (difference)
+          if (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") {
+            const prev = Number(updated.previousPrice) || 0;
+            let curr = Number(updated.currentPrice) ?? 0;
+            // Validation: currentPrice cannot exceed previousPrice
+            if (curr > prev) {
+              curr = prev; // Cap it at previousPrice
+              updated.currentPrice = prev;
+              const fieldName = invoiceType === "monthlyRental" ? "Adjusted line total" : "Adjusted amount";
+              toast.error(`${fieldName} cannot exceed original amount`);
+            }
+            updated.amount = prev - curr; // Credit amount is the difference
+          } else {
+            const qty = Number(updated.quantity) || 0;
+            const curr = Number(updated.currentPrice) ?? 0;
+            updated.amount = qty * curr;
+          }
+        } else if (field === "quantity" && invoiceType !== "monthlyRental" && invoiceType !== "additionalCharge") {
           const qty = Number(updated.quantity) || 0;
           const curr = Number(updated.currentPrice) ?? 0;
           updated.amount = qty * curr;
@@ -376,38 +394,9 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
   };
 
   const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+  const totalCurrentPrice = items.reduce((sum, item) => sum + (item.currentPrice || 0), 0);
 
-  const addMonthlyOrAdditionalItem = () => {
-    const sourceItems = invoiceType === "monthlyRental" ? monthlyInvoiceItems : additionalChargeItems;
-    const selectedDescriptions = items.map((i) => i.description).filter(Boolean);
-    const available = sourceItems.filter((s) => {
-      const name = invoiceType === "monthlyRental" ? (s as { scaffoldingItemName: string }).scaffoldingItemName : (s as { itemName: string }).itemName;
-      return !selectedDescriptions.includes(name) || selectedDescriptions.filter((d) => d === name).length < 2;
-    });
-    if (available.length === 0) return;
-    const first = available[0];
-    const desc = invoiceType === "monthlyRental" ? (first as { scaffoldingItemName: string }).scaffoldingItemName : (first as { itemName: string }).itemName;
-    const qty = invoiceType === "monthlyRental" ? (first as { quantityBilled: number }).quantityBilled : (first as { quantity: number }).quantity;
-    const price = Number(first.unitPrice) || 0;
-    const lineTotal = invoiceType === "monthlyRental" ? Number((first as { lineTotal: number }).lineTotal) : qty * price;
-    setItems((prev) => [
-      ...prev,
-      {
-        id: first.id + "-" + Date.now(),
-        description: desc,
-        quantity: qty,
-        previousPrice: price,
-        currentPrice: price,
-        unitPrice: price,
-        amount: lineTotal,
-      },
-    ]);
-  };
 
-  const removeItem = (id: string) => {
-    if (items.length <= 1) return;
-    setItems((prev) => prev.filter((i) => i.id !== id));
-  };
 
   const uploadAttachments = async (): Promise<Array<{ fileName: string; fileUrl: string; fileSize: number }>> => {
     const results: Array<{ fileName: string; fileUrl: string; fileSize: number }> = [];
@@ -453,9 +442,24 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       return false;
     }
     if (forSubmit) {
-      if (items.some((i) => !i.description || i.quantity <= 0 || i.amount < 0)) {
-        toast.error("Please complete all line items with valid quantity and amount");
-        return false;
+      if (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") {
+        // For monthly rental and additional charges: check description, amount, and validate currentPrice <= previousPrice
+        if (items.some((i) => !i.description || i.amount <= 0)) {
+          toast.error("Please complete all line items with valid adjusted amounts");
+          return false;
+        }
+        // Validate that adjusted amount doesn't exceed original amount
+        if (items.some((i) => (i.currentPrice || 0) > (i.previousPrice || 0))) {
+          const fieldName = invoiceType === "monthlyRental" ? "Adjusted line total" : "Adjusted amount";
+          toast.error(`${fieldName} cannot exceed original amount for any item`);
+          return false;
+        }
+      } else {
+        // For deposit: check description, quantity, and amount
+        if (items.some((i) => !i.description || i.quantity <= 0 || i.amount < 0)) {
+          toast.error("Please complete all line items with valid quantity and amount");
+          return false;
+        }
       }
       if (totalAmount <= 0) {
         toast.error("Total amount must be greater than zero");
@@ -628,12 +632,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       <Card className="border-[#E5E7EB]">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-[18px]">Line Items</CardTitle>
-          {invoiceType !== "deposit" && canAddItem && (
-            <Button type="button" variant="outline" className="h-9 px-4 rounded-lg" onClick={addMonthlyOrAdditionalItem}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add item
-            </Button>
-          )}
+          
         </CardHeader>
         <CardContent className="space-y-4">
           {invoiceType === "deposit" && sourceId && (
@@ -662,60 +661,67 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                       <div className="h-10 px-3 bg-[#F9FAFB] border rounded-md flex items-center text-sm">{item.description}</div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[14px] text-[#374151]">Quantity</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) => handleItemChange(item.id, "quantity", parseInt(e.target.value, 10) || 0)}
-                        className="h-10 bg-white border-[#D1D5DB] rounded-md"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[14px] text-[#374151]">Previous price (RM)</label>
+                      <label className="text-[14px] text-[#374151]">
+                        {invoiceType === "monthlyRental" ? "Original line total (RM)" : invoiceType === "additionalCharge" ? "Original amount (RM)" : "Previous price (RM)"}
+                      </label>
                       <div className="h-10 px-3 bg-[#F9FAFB] border rounded-md flex items-center">RM{item.previousPrice.toFixed(2)}</div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[14px] text-[#374151]">Current price (RM)</label>
+                      <label className="text-[14px] text-[#374151]">
+                        {invoiceType === "monthlyRental" ? "Adjusted line total (RM)" : invoiceType === "additionalCharge" ? "Adjusted amount (RM)" : "Current price (RM)"}
+                      </label>
                       <Input
                         type="number"
                         step="0.01"
                         min="0"
+                        max={invoiceType === "monthlyRental" || invoiceType === "additionalCharge" ? item.previousPrice : undefined}
                         value={item.currentPrice || ""}
                         onChange={(e) => handleItemChange(item.id, "currentPrice", parseFloat(e.target.value) || 0)}
                         className="h-10 bg-white border-[#D1D5DB] rounded-md"
                       />
+                      {(invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && item.currentPrice > item.previousPrice && (
+                        <p className="text-xs text-red-500">Cannot exceed original amount of RM{item.previousPrice.toFixed(2)}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[14px] text-[#374151]">Amount (RM)</label>
+                      <label className="text-[14px] text-[#374151]">Credit amount (RM)</label>
                       <div className="h-10 px-3 bg-[#F3F4F6] border rounded-md flex items-center">RM{(item.amount || 0).toFixed(2)}</div>
                     </div>
-                    {items.length > 1 && (
-                      <div className="flex items-end">
-                        <Button type="button" variant="outline" size="sm" onClick={() => removeItem(item.id)} className="text-[#DC2626] border-[#DC2626]">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Remove
-                        </Button>
-                      </div>
-                    )}
+                    
                   </div>
                 </CardContent>
               </Card>
             ))}
 
           {invoiceType === "deposit" && items.length === 1 && (
-            <div className="flex justify-between items-center p-4 bg-[#F3F4F6] rounded-lg">
-              <span className="text-[#374151]">Total credit (RM)</span>
-              <span className="font-medium">RM{totalAmount.toFixed(2)}</span>
+            <div className="flex justify-end">
+              <div className="w-full md:w-1/3 space-y-2">
+                <div className="flex justify-between items-center p-4 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg">
+                  <span className="text-[#374151]">Total adjusted deposit amount (RM)</span>
+                  <span className="text-[#374151] font-medium">RM{(depositAmount - totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between items-center p-4 bg-[#F15929] bg-opacity-10 border border-[#F15929] rounded-lg">
+                  <span className="text-[#231F20]">Total credit amount (RM)</span>
+                  <span className="text-[#231F20] font-medium">RM{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
             </div>
           )}
 
           {(invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && items.length > 0 && (
             <div className="flex justify-end">
               <div className="w-full md:w-1/3 space-y-2">
+                {(invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && (
+                  <div className="flex justify-between items-center p-4 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg">
+                    <span className="text-[#374151]">
+                      {invoiceType === "monthlyRental" ? "Total adjusted line total (RM)" : "Total adjusted amount (RM)"}
+                    </span>
+                    <span className="text-[#374151] font-medium">RM{totalCurrentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center p-4 bg-[#F15929] bg-opacity-10 border border-[#F15929] rounded-lg">
-                  <span className="text-[#231F20]">Total (RM)</span>
-                  <span className="text-[#231F20]">RM{totalAmount.toLocaleString()}</span>
+                  <span className="text-[#231F20]">Total credit amount (RM)</span>
+                  <span className="text-[#231F20] font-medium">RM{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
             </div>
