@@ -32,6 +32,7 @@ interface ScaffoldingItemWithRepairs {
   category: string;
   price: number;
   originPrice: number;
+  available?: number;
   damageRepairs?: ScaffoldingDamageRepair[];
 }
 
@@ -217,6 +218,28 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     const total = repairItems.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
     setFormData(prev => ({ ...prev, estimatedCost: Number.isFinite(total) ? total : 0 }));
   }, [repairItems]);
+
+  // Auto-set priority from remaining scaffolding stock: <25 = urgent, <50 = high, <75 = medium, else low; highest urgency wins
+  useEffect(() => {
+    if (repairItems.length === 0 || scaffoldingItems.length === 0) return;
+    const urgencyOrder = ['urgent', 'high', 'medium', 'low'] as const;
+    let worst: (typeof urgencyOrder)[number] = 'low';
+    for (const item of repairItems) {
+      const scaffoldingItem = scaffoldingItems.find(
+        s => s.id === item.scaffoldingItemId || (item.scaffoldingItemName && (
+          s.name.toLowerCase() === item.scaffoldingItemName.toLowerCase() ||
+          item.scaffoldingItemName.toLowerCase().includes(s.name.toLowerCase())
+        ))
+      );
+      const available = scaffoldingItem?.available ?? 999;
+      let priority: (typeof urgencyOrder)[number] = 'low';
+      if (available <= 25) priority = 'urgent';
+      else if (available <= 50) priority = 'high';
+      else if (available <= 75) priority = 'medium';
+      if (urgencyOrder.indexOf(priority) < urgencyOrder.indexOf(worst)) worst = priority;
+    }
+    setFormData(prev => ({ ...prev, priority: worst }));
+  }, [repairItems, scaffoldingItems]);
 
   const getAvailableConditionReportItems = (currentRepairItemId: string) => {
     if (!conditionReport || !conditionReport.items) return [];

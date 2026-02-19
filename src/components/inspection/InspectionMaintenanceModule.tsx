@@ -648,16 +648,14 @@ export function InspectionMaintenanceModule() {
         }
       }
 
-      // Second, create damage invoice
+      // Second, create damage invoice (no tax)
       const subtotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
-      const tax = subtotal * 0.06; // 6% tax
-      const total = subtotal + tax;
+      const total = subtotal;
 
       console.log('Creating damage invoice with data:', {
         orpNumber: slip.orpNumber,
         invoiceItems: invoiceItems,
         subtotal,
-        tax,
         total
       });
 
@@ -671,7 +669,7 @@ export function InspectionMaintenanceModule() {
           vendor: 'Power Metal & Steel - Repair Services',
           items: invoiceItems,
           subtotal,
-          tax,
+          tax: 0,
           total,
           paymentStatus: 'pending',
           notes: `Generated from repair slip ${slip.orpNumber}`,

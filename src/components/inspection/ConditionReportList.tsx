@@ -99,7 +99,7 @@ export function ConditionReportList({ reports, searchQuery, sourceFilter = 'all'
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   <div className="flex items-center gap-2">
                     <User className="size-4 text-gray-400" />
                     <div>
@@ -119,13 +119,6 @@ export function ConditionReportList({ reports, searchQuery, sourceFilter = 'all'
                     <div>
                       <p className="text-gray-500">Items Inspected</p>
                       <p className="text-[#231F20]">{report.totalItemsInspected} items</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Wrench className="size-4 text-gray-400" />
-                    <div>
-                      <p className="text-gray-500">Repair Cost</p>
-                      <p className="text-[#231F20]">RM {Number(report.totalRepairCost || 0).toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
