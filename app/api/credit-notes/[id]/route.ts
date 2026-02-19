@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { resolveAgreementId } from '../resolveAgreementId';
 
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 
@@ -202,6 +203,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         }))
       : [];
 
+    // Resolve agreementId from source invoice (use provided or existing)
+    const effectiveSourceId = sourceId !== undefined ? (sourceId || null) : existing.sourceId;
+    const agreementId = await resolveAgreementId(validInvoiceType, effectiveSourceId);
+
     // Delete existing items before updating
     await prisma.creditNoteItem.deleteMany({ where: { creditNoteId: id } });
     
@@ -220,6 +225,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         ...(sourceId !== undefined && { sourceId: sourceId || null }),
         ...(originalInvoice != null && { originalInvoice }),
         ...(deliveryOrderId !== undefined && { deliveryOrderId: deliveryOrderId || null }),
+        agreementId,
         amount: totalAmount,
         ...(reason != null && { reason }),
         ...(reasonDescription !== undefined && { reasonDescription: reasonDescription || null }),

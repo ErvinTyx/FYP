@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { CreditNotesList } from "./CreditNotesList";
 import { CreditNoteForm } from "./CreditNoteForm";
 import { CreditNoteDetails } from "./CreditNoteDetails";
+import { ApplyCreditModal } from "./ApplyCreditModal";
 import { CreditNote } from "../../types/creditNote";
 import { toast } from "sonner";
 
@@ -46,6 +47,7 @@ function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
           amount: Number(i.amount) ?? 0,
         }))
       : [],
+    agreementId: data.agreementId as string | undefined,
   };
 }
 
@@ -164,6 +166,34 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
     }
   };
 
+  // Apply credit modal state
+  const [applyCreditNote, setApplyCreditNote] = useState<CreditNote | null>(null);
+
+  const handleApplyCredit = (cn: CreditNote) => {
+    setApplyCreditNote(cn);
+  };
+
+  const handleCreditApplied = async () => {
+    setApplyCreditNote(null);
+    // Refresh the detail by re-fetching credit notes
+    await fetchCreditNotes();
+    // Re-select current note to refresh details
+    if (selectedNoteId) {
+      try {
+        const res = await fetch(`/api/credit-notes/${selectedNoteId}`);
+        const json = await res.json();
+        if (json.success) {
+          const updated = mapApiToCreditNote(json.data);
+          setCreditNotes((prev) =>
+            prev.map((cn) => (cn.id === updated.id ? updated : cn))
+          );
+        }
+      } catch {
+        // swallow
+      }
+    }
+  };
+
   const handleBack = () => {
     setCurrentView("list");
     setSelectedNoteId(null);
@@ -227,7 +257,18 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
           onBack={handleBack}
           onApprove={handleApprove}
           onReject={handleReject}
+          onApplyCredit={handleApplyCredit}
           userRole={userRole}
+        />
+      )}
+
+      {/* Apply Credit Modal */}
+      {applyCreditNote && (
+        <ApplyCreditModal
+          isOpen={!!applyCreditNote}
+          onClose={() => setApplyCreditNote(null)}
+          creditNote={applyCreditNote}
+          onApplied={handleCreditApplied}
         />
       )}
     </div>

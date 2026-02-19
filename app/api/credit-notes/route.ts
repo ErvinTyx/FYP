@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { resolveAgreementId } from './resolveAgreementId';
 
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 
@@ -216,6 +217,9 @@ export async function POST(request: NextRequest) {
     const creditNoteNumber = await generateCreditNoteNumber();
     const createdBy = session.user.email || session.user.name || 'Unknown';
 
+    // Resolve agreementId from source invoice
+    const agreementId = await resolveAgreementId(validInvoiceType, sourceId);
+
     const attachmentRows = Array.isArray(attachments)
       ? attachments.map((a: { fileName?: string; fileUrl?: string; fileSize?: number }) => ({
           fileName: String(a.fileName || ''),
@@ -233,6 +237,7 @@ export async function POST(request: NextRequest) {
         sourceId: sourceId || null,
         originalInvoice,
         deliveryOrderId: deliveryOrderId || null,
+        agreementId,
         amount: totalAmount,
         reason,
         reasonDescription: reasonDescription || null,

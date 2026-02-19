@@ -20,6 +20,7 @@ type TransactionType =
   | 'Additional Charge'
   | 'Additional Charge Payment'
   | 'Credit Note'
+  | 'Credit Applied'
   | 'Adjustment';
 
 type EntityType = 'deposit' | 'monthlyRental' | 'additionalCharge' | 'creditNote' | 'refund';
@@ -115,7 +116,9 @@ export async function GET(request: NextRequest) {
         entityType: 'deposit',
         entityId: d.id,
       });
-      if (d.status === 'Paid' && d.approvedAt) {
+      // Only add payment row if NOT paid via credit note application
+      // (credit-applied invoices already have "Credit Applied" rows below)
+      if (d.status === 'Paid' && d.approvedAt && d.referenceNumber !== 'Credit Note Applied') {
         rawTxs.push({
           date: d.approvedAt,
           type: 'Deposit Payment',
@@ -171,7 +174,8 @@ export async function GET(request: NextRequest) {
         entityType: 'monthlyRental',
         entityId: inv.id,
       });
-      if (inv.status === 'Paid' && inv.approvedAt) {
+      // Only add payment row if NOT paid via credit note application
+      if (inv.status === 'Paid' && inv.approvedAt && inv.referenceNumber !== 'Credit Note Applied') {
         rawTxs.push({
           date: inv.approvedAt,
           type: 'Monthly Payment',
@@ -264,7 +268,8 @@ export async function GET(request: NextRequest) {
           entityType: 'additionalCharge',
           entityId: c.id,
         });
-        if ((c.status === 'paid' || c.status === 'approved') && c.approvalDate) {
+        // Only add payment row if NOT paid via credit note application
+        if ((c.status === 'paid' || c.status === 'approved') && c.approvalDate && c.referenceId !== 'Credit Note Applied') {
           rawTxs.push({
             date: c.approvalDate,
             type: 'Additional Charge Payment',
@@ -284,32 +289,74 @@ export async function GET(request: NextRequest) {
     const invoiceIds = invoices.map((i) => i.id);
     const sourceIds = [...depositIds, ...invoiceIds, ...additionalChargeIds];
 
-    // --- Credit notes (sourceId in our entities) ---
-    // Only include approved credit notes in balance calculation (rejected ones don't count)
-    if (sourceIds.length > 0) {
-      const creditNotes = await prisma.creditNote.findMany({
-        where: { sourceId: { in: sourceIds } },
-        orderBy: { date: 'asc' },
-      });
-      for (const cn of creditNotes) {
-        const amt = toNum(cn.amount);
-        const status = mapStatus(cn.status);
-        // Only count credit amount if approved (not rejected or draft)
-        // Check the actual database status, not the mapped status
-        const dbStatus = (cn.status || '').toLowerCase();
-        const creditAmount = dbStatus === 'approved' ? amt : 0;
-        rawTxs.push({
-          date: cn.date,
-          type: 'Credit Note',
-          reference: cn.creditNoteNumber,
-          description: cn.reason || 'Credit note',
-          debit: 0,
-          credit: creditAmount,
-          status: status,
-          entityType: 'creditNote',
-          entityId: cn.id,
-        });
+    // --- Credit note applications (credits applied to invoices in this agreement) ---
+    // Fetch applications FIRST so we can check which credit notes have been applied
+    const creditNoteApps = await prisma.creditNoteApplication.findMany({
+      where: {
+        targetInvoiceId: { in: sourceIds },
+      },
+      include: {
+        creditNote: {
+          select: { creditNoteNumber: true },
+        },
+      },
+      orderBy: { appliedAt: 'asc' },
+    });
+
+    // Build a map of credit note IDs to total applied amount (for invoices in this agreement only)
+    const creditNoteAppliedMap = new Map<string, number>();
+    for (const app of creditNoteApps) {
+      const current = creditNoteAppliedMap.get(app.creditNoteId) || 0;
+      creditNoteAppliedMap.set(app.creditNoteId, current + toNum(app.amountApplied));
+    }
+
+    // --- Credit notes (for this agreement) ---
+    // Fetch credit notes by agreementId (we added this field to scope credit notes to agreements)
+    // For approved credit notes: show remaining balance (total - applied) as credit
+    // This reflects the available credit that can still be applied
+    const creditNotes = await prisma.creditNote.findMany({
+      where: {
+        OR: [
+          { sourceId: { in: sourceIds } }, // Credit notes created from invoices in this agreement
+          { agreementId: agreementId }, // Credit notes scoped to this agreement
+        ],
+      },
+      orderBy: { date: 'asc' },
+    });
+    for (const cn of creditNotes) {
+      const status = mapStatus(cn.status);
+      const totalAmount = toNum(cn.amount);
+      const dbStatus = (cn.status || '').toLowerCase();
+      let creditToShow = 0;
+      if (dbStatus === 'approved') {
+        // Calculate remaining balance: total - applied (for invoices in this agreement)
+        const totalAppliedInAgreement = creditNoteAppliedMap.get(cn.id) || 0;
+        creditToShow = Math.max(0, totalAmount - totalAppliedInAgreement);
       }
+      rawTxs.push({
+        date: cn.date,
+        type: 'Credit Note',
+        reference: cn.creditNoteNumber,
+        description: cn.reason || 'Credit note',
+        debit: 0,
+        credit: creditToShow, // Show remaining balance (total - applied)
+        status: status,
+        entityType: 'creditNote',
+        entityId: cn.id,
+      });
+    }
+    for (const app of creditNoteApps) {
+      rawTxs.push({
+        date: app.appliedAt,
+        type: 'Credit Applied',
+        reference: app.creditNote.creditNoteNumber,
+        description: `Credit applied to ${app.targetInvoiceNumber}`,
+        debit: 0,
+        credit: 0, // Show 0 credit - Credit Applied entries are informational only
+        status: 'Paid',
+        entityType: 'creditNote',
+        entityId: app.creditNoteId,
+      });
     }
 
     // --- Refunds (sourceId in our entities) ---

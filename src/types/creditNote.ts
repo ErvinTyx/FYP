@@ -26,6 +26,10 @@ export interface CreditNote {
   rejectionReason?: string;
   attachments: CreditNoteAttachment[];
   items: CreditNoteItem[];
+  agreementId?: string;
+  applications?: CreditNoteApplication[];
+  remainingBalance?: number;
+  totalApplied?: number;
 }
 
 export interface CreditNoteAttachment {
@@ -44,6 +48,29 @@ export interface CreditNoteItem {
   currentPrice: number;
   unitPrice: number;
   amount: number;
+}
+
+export interface CreditNoteApplication {
+  id: string;
+  creditNoteId: string;
+  targetInvoiceType: CreditNoteInvoiceType;
+  targetInvoiceId: string;
+  targetInvoiceNumber: string;
+  amountApplied: number;
+  appliedBy: string;
+  appliedAt: string;
+  notes?: string;
+}
+
+export interface EligibleInvoice {
+  id: string;
+  invoiceNumber: string;
+  invoiceType: CreditNoteInvoiceType;
+  totalAmount: number;
+  outstanding: number;
+  status: string;
+  date: string;
+  description: string;
 }
 
 export interface CreditNoteFormData {

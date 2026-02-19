@@ -939,6 +939,7 @@ model CreditNote {
   sourceId                String?  // id of Deposit, MonthlyRentalInvoice, or AdditionalCharge
   originalInvoice         String
   deliveryOrderId         String?
+  agreementId             String?   // Resolved from source invoice for scoping credit applications
   
   // Credit Note Details
   amount                  Decimal   @db.Decimal(15, 2)
@@ -966,6 +967,7 @@ model CreditNote {
   // Relations
   items                   CreditNoteItem[]
   attachments             CreditNoteAttachment[]
+  applications            CreditNoteApplication[]
 }
 
 model CreditNoteItem {
@@ -992,6 +994,24 @@ model CreditNoteAttachment {
   fileUrl                 String
   fileSize                Int
   uploadedAt              DateTime  @default(now())
+}
+
+model CreditNoteApplication {
+  id                      String    @id @default(cuid())
+  creditNoteId            String
+  creditNote              CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  
+  targetInvoiceType       String    // deposit, monthlyRental, additionalCharge
+  targetInvoiceId         String
+  targetInvoiceNumber     String
+  amountApplied           Decimal   @db.Decimal(15, 2)
+  
+  appliedBy               String
+  appliedAt               DateTime  @default(now())
+  notes                   String?   @db.Text
+  
+  @@index([creditNoteId])
+  @@index([targetInvoiceId])
 }
 
 // ============================================

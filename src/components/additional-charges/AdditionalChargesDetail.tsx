@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ArrowLeft,
   Calendar,
@@ -8,6 +8,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  CreditCard,
 } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
@@ -111,6 +112,34 @@ export function AdditionalChargesDetail({
     (creditNotesLoading || hasCreditNoteData);
   const payableAmount = Math.max(0, charge.totalCharges - totalCredited);
   const showRefundSummary = charge.status === "Paid" && amountToReturn > 0;
+
+  // Credit note applications (credits applied TO this additional charge invoice)
+  const [creditApplications, setCreditApplications] = useState<Array<{
+    id: string;
+    creditNoteId: string;
+    creditNoteNumber: string;
+    amountApplied: number;
+    appliedBy: string;
+    appliedAt: string;
+    notes?: string;
+  }>>([]);
+  const [totalCreditsApplied, setTotalCreditsApplied] = useState(0);
+
+  useEffect(() => {
+    const fetchApps = async () => {
+      try {
+        const res = await fetch(`/api/credit-notes/invoice-applications?invoiceId=${charge.id}`);
+        const json = await res.json();
+        if (json.success) {
+          setCreditApplications(json.data || []);
+          setTotalCreditsApplied(json.totalApplied || 0);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    fetchApps();
+  }, [charge.id]);
 
   const handlePopUploaded = async (file: File) => {
     try {
@@ -439,6 +468,56 @@ export function AdditionalChargesDetail({
                 </p>
               </>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Credits Applied to this Invoice */}
+      {creditApplications.length > 0 && (
+        <Card className="border-[#D1FAE5] bg-[#F0FDF4]">
+          <CardHeader>
+            <CardTitle className="text-[18px] flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-[#059669]" />
+              Credits Applied to This Invoice
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-md border border-[#D1FAE5] bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-[#D1FAE5] hover:bg-[#D1FAE5]">
+                    <TableHead className="text-[#065F46]">Credit Note</TableHead>
+                    <TableHead className="text-[#065F46] text-right">Amount Applied (RM)</TableHead>
+                    <TableHead className="text-[#065F46]">Applied By</TableHead>
+                    <TableHead className="text-[#065F46]">Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {creditApplications.map((app) => (
+                    <TableRow key={app.id} className="hover:bg-[#F8FAF8]">
+                      <TableCell className="text-[#1F2937] font-medium">{app.creditNoteNumber}</TableCell>
+                      <TableCell className="text-[#059669] text-right font-medium">
+                        RM{app.amountApplied.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-[#4B5563]">{app.appliedBy}</TableCell>
+                      <TableCell className="text-[#4B5563]">{new Date(app.appliedAt).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-[#059669] bg-white px-4 py-3">
+              <p className="text-sm text-[#1F2937] font-medium">Total credits applied</p>
+              <p className="text-lg font-semibold text-[#059669]">
+                RM{totalCreditsApplied.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-[#6B7280] bg-white px-4 py-3">
+              <p className="text-sm text-[#1F2937] font-medium">Effective outstanding</p>
+              <p className="text-lg font-semibold text-[#111827]">
+                RM{Math.max(0, charge.totalCharges - totalCreditsApplied).toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}

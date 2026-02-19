@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Download, CheckCircle, XCircle, FileText, Printer } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { ArrowLeft, Download, CheckCircle, XCircle, FileText, Printer, CreditCard, DollarSign } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -14,7 +14,7 @@ import {
 } from "../ui/table";
 import { StatusBadge } from "./StatusBadge";
 import { RejectionModal } from "./RejectionModal";
-import { CreditNote } from "../../types/creditNote";
+import { CreditNote, CreditNoteApplication } from "../../types/creditNote";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -28,6 +28,7 @@ interface CreditNoteDetailsProps {
   onBack: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string, reason: string) => void;
+  onApplyCredit?: (creditNote: CreditNote) => void;
   userRole: "Admin" | "Finance" | "Staff" | "Viewer";
 }
 
@@ -36,12 +37,41 @@ export function CreditNoteDetails({
   onBack,
   onApprove,
   onReject,
+  onApplyCredit,
   userRole,
 }: CreditNoteDetailsProps) {
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [autoPrint, setAutoPrint] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+
+  // Application tracking state
+  const [applications, setApplications] = useState<CreditNoteApplication[]>([]);
+  const [totalApplied, setTotalApplied] = useState(0);
+  const [remainingBalance, setRemainingBalance] = useState(0);
+  const [loadingApplications, setLoadingApplications] = useState(false);
+
+  const fetchApplications = useCallback(async () => {
+    if (creditNote.status !== "Approved") return;
+    setLoadingApplications(true);
+    try {
+      const res = await fetch(`/api/credit-notes/${creditNote.id}/applications`);
+      const json = await res.json();
+      if (json.success) {
+        setApplications(json.data || []);
+        setTotalApplied(json.totalApplied || 0);
+        setRemainingBalance(json.remainingBalance || 0);
+      }
+    } catch {
+      console.error("Failed to fetch applications");
+    } finally {
+      setLoadingApplications(false);
+    }
+  }, [creditNote.id, creditNote.status]);
+
+  useEffect(() => {
+    fetchApplications();
+  }, [fetchApplications]);
 
   useEffect(() => {
     if (showPrintModal && autoPrint) {
@@ -314,6 +344,107 @@ export function CreditNoteDetails({
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Credit Balance & Application Section (Approved only) */}
+      {creditNote.status === "Approved" && (
+        <>
+          {/* Credit Balance Card */}
+          <Card className="border-[#E5E7EB]">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-[18px] flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-[#F15929]" />
+                  Credit Balance
+                </CardTitle>
+                {remainingBalance > 0 && (userRole === "Admin" || userRole === "Finance") && onApplyCredit && (
+                  <Button
+                    onClick={() => onApplyCredit(creditNote)}
+                    className="bg-[#F15929] hover:bg-[#D14E24] text-white h-10 px-6 rounded-lg"
+                  >
+                    <DollarSign className="mr-2 h-4 w-4" />
+                    Apply to Invoice
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingApplications ? (
+                <p className="text-[#6B7280] text-sm">Loading...</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-6">
+                  <div className="p-4 bg-[#F9FAFB] rounded-lg">
+                    <p className="text-[14px] text-[#6B7280]">Total Credit</p>
+                    <p className="text-[20px] font-semibold text-[#111827]">
+                      RM{creditNote.amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-[#FEF2F2] rounded-lg">
+                    <p className="text-[14px] text-[#6B7280]">Applied</p>
+                    <p className="text-[20px] font-semibold text-[#DC2626]">
+                      RM{totalApplied.toLocaleString("en-MY", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-[#F0FDF4] rounded-lg">
+                    <p className="text-[14px] text-[#6B7280]">Remaining</p>
+                    <p className="text-[20px] font-semibold text-[#059669]">
+                      RM{remainingBalance.toLocaleString("en-MY", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Application History */}
+          {applications.length > 0 && (
+            <Card className="border-[#E5E7EB]">
+              <CardHeader>
+                <CardTitle className="text-[18px]">Application History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Amount Applied</TableHead>
+                      <TableHead>Applied By</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {applications.map((app) => (
+                      <TableRow key={app.id} className="hover:bg-[#F3F4F6]">
+                        <TableCell className="text-[#111827] font-medium">
+                          {app.targetInvoiceNumber}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="bg-[#F3F4F6] text-[#374151]">
+                            {app.targetInvoiceType === "deposit"
+                              ? "Deposit"
+                              : app.targetInvoiceType === "monthlyRental"
+                                ? "Monthly Rental"
+                                : "Additional Charge"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-[#059669] font-medium">
+                          RM{app.amountApplied.toLocaleString("en-MY", { minimumFractionDigits: 2 })}
+                        </TableCell>
+                        <TableCell className="text-[#374151]">{app.appliedBy}</TableCell>
+                        <TableCell className="text-[#374151]">
+                          {new Date(app.appliedAt).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-[#6B7280]">{app.notes || "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
       {/* Audit Trail */}
