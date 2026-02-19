@@ -139,7 +139,6 @@ export interface DamageInvoice {
   vendor?: string;
   items: InvoiceItem[];
   subtotal: number;
-  tax: number;
   total: number;
   paymentStatus: 'pending' | 'paid' | 'overdue';
   paidDate?: string;

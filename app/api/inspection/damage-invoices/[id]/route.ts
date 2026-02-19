@@ -58,7 +58,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const transformedInvoice = {
       ...invoice,
       subtotal: Number(invoice.subtotal),
-      tax: Number(invoice.tax),
       total: Number(invoice.total),
       items: invoice.items.map((item: any) => ({
         ...item,

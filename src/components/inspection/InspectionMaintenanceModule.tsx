@@ -669,7 +669,6 @@ export function InspectionMaintenanceModule() {
           vendor: 'Power Metal & Steel - Repair Services',
           items: invoiceItems,
           subtotal,
-          tax: 0,
           total,
           paymentStatus: 'pending',
           notes: `Generated from repair slip ${slip.orpNumber}`,

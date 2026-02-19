@@ -253,7 +253,6 @@ model DamageInvoice {
   vendor          String?
   items           InvoiceItem[]
   subtotal        Decimal       @default(0) @db.Decimal(15, 2)
-  tax             Decimal       @default(0) @db.Decimal(15, 2)
   total           Decimal       @default(0) @db.Decimal(15, 2)
   paymentStatus   String        @default("pending")
   paidDate        String?
