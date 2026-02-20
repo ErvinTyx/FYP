@@ -204,8 +204,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       : [];
 
     // Resolve agreementId from source invoice (use provided or existing)
+    const isReturnItems = (reason || existing.reason) === 'Returned Items';
     const effectiveSourceId = sourceId !== undefined ? (sourceId || null) : existing.sourceId;
-    const agreementId = await resolveAgreementId(validInvoiceType, effectiveSourceId);
+    const agreementId = isReturnItems && effectiveSourceId
+      ? effectiveSourceId  // For return items, sourceId is already the agreementId
+      : await resolveAgreementId(validInvoiceType, effectiveSourceId);
 
     // Delete existing items before updating
     await prisma.creditNoteItem.deleteMany({ where: { creditNoteId: id } });

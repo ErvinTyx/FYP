@@ -171,9 +171,17 @@ export async function POST(request: NextRequest) {
       attachments,
     } = body;
 
-    if (!customerName || !customerId || !invoiceType || !originalInvoice || !reason || !date) {
+    // originalInvoice is optional when reason is "Returned Items" (auto-generated from returns)
+    const isReturnItems = reason === 'Returned Items';
+    if (!customerName || !customerId || !invoiceType || !reason || !date) {
       return NextResponse.json(
-        { success: false, message: 'customerName, customerId, invoiceType, originalInvoice, reason, and date are required' },
+        { success: false, message: 'customerName, customerId, invoiceType, reason, and date are required' },
+        { status: 400 }
+      );
+    }
+    if (!isReturnItems && !originalInvoice) {
+      return NextResponse.json(
+        { success: false, message: 'originalInvoice is required (unless reason is Returned Items)' },
         { status: 400 }
       );
     }
@@ -217,8 +225,13 @@ export async function POST(request: NextRequest) {
     const creditNoteNumber = await generateCreditNoteNumber();
     const createdBy = session.user.email || session.user.name || 'Unknown';
 
-    // Resolve agreementId from source invoice
-    const agreementId = await resolveAgreementId(validInvoiceType, sourceId);
+    // Resolve agreementId: for Returned Items the sourceId may be the agreementId itself
+    const agreementId = isReturnItems && sourceId
+      ? sourceId  // sourceId is already the agreementId for return items
+      : await resolveAgreementId(validInvoiceType, sourceId);
+
+    // For Returned Items, originalInvoice defaults to a label if not provided
+    const effectiveOriginalInvoice = originalInvoice || (isReturnItems ? 'Auto - Returned Items' : '');
 
     const attachmentRows = Array.isArray(attachments)
       ? attachments.map((a: { fileName?: string; fileUrl?: string; fileSize?: number }) => ({
@@ -235,7 +248,7 @@ export async function POST(request: NextRequest) {
         customerId,
         invoiceType: validInvoiceType,
         sourceId: sourceId || null,
-        originalInvoice,
+        originalInvoice: effectiveOriginalInvoice,
         deliveryOrderId: deliveryOrderId || null,
         agreementId,
         amount: totalAmount,

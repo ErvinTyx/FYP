@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Plus, Trash2, Send } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Send, CalendarDays, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -69,7 +69,18 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
   const [originalInvoiceAmount, setOriginalInvoiceAmount] = useState<number | null>(null);
   const [monthlyInvoiceItems, setMonthlyInvoiceItems] = useState<Array<{ id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: number; lineTotal: number }>>([]);
   const [additionalChargeItems, setAdditionalChargeItems] = useState<Array<{ id: string; itemName: string; itemType: string; quantity: number; unitPrice: number; amount: number }>>([]);
-  
+
+  // Return items state (for reason === "Returned Items")
+  const [returnItemsData, setReturnItemsData] = useState<Array<{
+    scaffoldingItemId: string; name: string; quantity: number; unitPrice: number;
+    rentalMonths: number; actualDays: number; actualMonths: number; chargedMonths: number;
+    minimumMonths: number; previousPrice: number; currentPrice: number; lineTotal: number;
+    returnRequestId: string; returnRequestNumber: string; setName: string;
+    startDate: string | null; endDate: string | null; agreementNo: string;
+  }>>([]);
+  const [returnItemsLoading, setReturnItemsLoading] = useState(false);
+  const [returnItemsAgreementId, setReturnItemsAgreementId] = useState<string | null>(null);
+
   // Track if we're in initial edit loading mode - when true, skip overwriting items and source from API
   const isInitialEditLoadRef = useRef(!!editingNote && editingNote.items && editingNote.items.length > 0);
   const skipSourceResetRef = useRef(!!editingNote && !!editingNote.sourceId);
@@ -346,6 +357,56 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     }
   }, [sourceId, invoiceType]);
 
+  // Fetch return items when reason is "Returned Items"
+  useEffect(() => {
+    if (reason !== "Returned Items" || !selectedCustomer) {
+      setReturnItemsData([]);
+      setReturnItemsAgreementId(null);
+      return;
+    }
+
+    // Skip initial edit load for return items if editing
+    if (isInitialEditLoadRef.current) return;
+
+    const name = selectedCustomer.customerName;
+    setReturnItemsLoading(true);
+
+    fetch(`/api/credit-notes/return-items?customerName=${encodeURIComponent(name)}&invoiceType=${encodeURIComponent(invoiceType)}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.items)) {
+          setReturnItemsData(json.items);
+          setReturnItemsAgreementId(json.agreementId || null);
+
+          // Auto-populate credit note line items from return items
+          if (json.items.length > 0) {
+            const newItems: CreditNoteItem[] = json.items.map((ri: typeof returnItemsData[0], idx: number) => ({
+              id: `ret-${idx}`,
+              description: ri.name,
+              quantity: ri.quantity,
+              previousPrice: ri.previousPrice,
+              currentPrice: ri.currentPrice,
+              unitPrice: ri.unitPrice,
+              amount: ri.previousPrice - ri.currentPrice, // credit = original - charged
+            }));
+            setItems(newItems);
+            // Set auto originalInvoice label
+            setOriginalInvoice("Auto - Returned Items");
+          } else {
+            setItems([]);
+          }
+        } else {
+          setReturnItemsData([]);
+          setItems([]);
+        }
+      })
+      .catch(() => {
+        setReturnItemsData([]);
+        setItems([]);
+      })
+      .finally(() => setReturnItemsLoading(false));
+  }, [reason, selectedCustomer, invoiceType]);
+
   const handleSelectCustomer = (c: CustomerOption) => {
     setSelectedCustomer(c);
     setCustomerSearch(c.customerName);
@@ -370,16 +431,15 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
         if (item.id !== id) return item;
         const updated = { ...item, [field]: value };
         if (field === "currentPrice") {
-          // For monthly rental and additional charges: amount = previousPrice - currentPrice (difference)
-          if (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") {
+          // For monthly rental, additional charges, and return items: amount = previousPrice - currentPrice (difference)
+          if (invoiceType === "monthlyRental" || invoiceType === "additionalCharge" || reason === "Returned Items") {
             const prev = Number(updated.previousPrice) || 0;
             let curr = Number(updated.currentPrice) ?? 0;
             // Validation: currentPrice cannot exceed previousPrice
             if (curr > prev) {
               curr = prev; // Cap it at previousPrice
               updated.currentPrice = prev;
-              const fieldName = invoiceType === "monthlyRental" ? "Adjusted line total" : "Adjusted amount";
-              toast.error(`${fieldName} cannot exceed original amount`);
+              toast.error("Charged amount cannot exceed original amount");
             }
             updated.amount = prev - curr; // Credit amount is the difference
           } else {
@@ -435,8 +495,8 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     customerName: selectedCustomer?.customerName ?? "",
     customerId: selectedCustomer?.customerId ?? "",
     invoiceType,
-    sourceId: sourceId || undefined,
-    originalInvoice,
+    sourceId: reason === "Returned Items" ? (returnItemsAgreementId || undefined) : (sourceId || undefined),
+    originalInvoice: reason === "Returned Items" ? "Auto - Returned Items" : originalInvoice,
     reason,
     reasonDescription: reasonDescription || undefined,
     date,
@@ -455,8 +515,13 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       toast.error("Please search and select a customer");
       return false;
     }
-    if (!sourceId || !originalInvoice) {
+    // Skip invoice check for "Returned Items" — items come from returns, not an invoice
+    if (reason !== "Returned Items" && (!sourceId || !originalInvoice)) {
       toast.error("Please select the original invoice");
+      return false;
+    }
+    if (reason === "Returned Items" && items.length === 0) {
+      toast.error("No return items found for this customer");
       return false;
     }
     if (forSubmit) {
@@ -595,28 +660,39 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[14px] text-[#374151]">
-              Original invoice <span className="text-[#DC2626]">*</span>
-            </label>
-            <Select
-              value={sourceId}
-              onValueChange={handleOriginalInvoiceSelect}
-              disabled={!selectedCustomer || invoicesList.length === 0}
-            >
-              <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
-                <SelectValue placeholder="Select original invoice..." />
-              </SelectTrigger>
-              <SelectContent>
-                {invoicesList.map((inv) => (
-                  <SelectItem key={inv.id} value={inv.id}>
-                    {inv.label}
-                    {inv.amount != null ? ` — RM${Number(inv.amount).toLocaleString()}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Hide invoice selection when reason is "Returned Items" — items are auto-fetched from returns */}
+          {reason !== "Returned Items" && (
+            <div className="space-y-2">
+              <label className="text-[14px] text-[#374151]">
+                Original invoice <span className="text-[#DC2626]">*</span>
+              </label>
+              <Select
+                value={sourceId}
+                onValueChange={handleOriginalInvoiceSelect}
+                disabled={!selectedCustomer || invoicesList.length === 0}
+              >
+                <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
+                  <SelectValue placeholder="Select original invoice..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {invoicesList.map((inv) => (
+                    <SelectItem key={inv.id} value={inv.id}>
+                      {inv.label}
+                      {inv.amount != null ? ` — RM${Number(inv.amount).toLocaleString()}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {reason === "Returned Items" && selectedCustomer && (
+            <div className="p-3 bg-[#EFF6FF] border border-[#BFDBFE] rounded-lg">
+              <p className="text-sm text-[#1E40AF]">
+                <CalendarDays className="inline h-4 w-4 mr-1 -mt-0.5" />
+                Invoice selection is not required for returned items. The system will automatically calculate charges based on completed return requests.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
@@ -658,6 +734,93 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
           
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Return Items: loading state */}
+          {reason === "Returned Items" && returnItemsLoading && (
+            <div className="flex items-center justify-center py-8 text-[#6B7280]">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Loading return items...
+            </div>
+          )}
+
+          {/* Return Items: no items found */}
+          {reason === "Returned Items" && !returnItemsLoading && selectedCustomer && returnItemsData.length === 0 && (
+            <div className="text-center py-8 text-[#6B7280]">
+              No completed return requests found for this customer.
+            </div>
+          )}
+
+          {/* Return Items: show items with duration breakdown */}
+          {reason === "Returned Items" && !returnItemsLoading && returnItemsData.length > 0 &&
+            items.map((item, idx) => {
+              const retData = returnItemsData[idx];
+              return (
+                <Card key={item.id} className="border-[#E5E7EB] bg-[#F9FAFB]">
+                  <CardContent className="pt-4 pb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[14px] text-[#374151]">Description</label>
+                        <div className="h-10 px-3 bg-[#F9FAFB] border rounded-md flex items-center text-sm">{item.description}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[14px] text-[#374151]">Qty returned</label>
+                        <div className="h-10 px-3 bg-[#F9FAFB] border rounded-md flex items-center text-sm">{item.quantity}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[14px] text-[#374151]">Original line total (RM)</label>
+                        <div className="h-10 px-3 bg-[#F9FAFB] border rounded-md flex items-center">RM{item.previousPrice.toFixed(2)}</div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[14px] text-[#374151]">Charged amount (RM)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max={item.previousPrice}
+                          value={item.currentPrice || ""}
+                          onChange={(e) => handleItemChange(item.id, "currentPrice", parseFloat(e.target.value) || 0)}
+                          className="h-10 bg-white border-[#D1D5DB] rounded-md"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[14px] text-[#374151]">Credit amount (RM)</label>
+                        <div className="h-10 px-3 bg-[#F3F4F6] border rounded-md flex items-center">RM{(item.amount || 0).toFixed(2)}</div>
+                      </div>
+                    </div>
+
+                    {/* Duration breakdown info */}
+                    {retData && (
+                      <div className="mt-3 p-3 bg-[#EFF6FF] rounded-lg border border-[#BFDBFE]">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-[#374151]">
+                          <div>
+                            <span className="font-medium text-[#1E40AF]">Delivery date:</span>{" "}
+                            {retData.startDate || "N/A"}
+                          </div>
+                          <div>
+                            <span className="font-medium text-[#1E40AF]">Return date:</span>{" "}
+                            {retData.endDate || "N/A"}
+                          </div>
+                          <div>
+                            <span className="font-medium text-[#1E40AF]">Actual:</span>{" "}
+                            {retData.actualDays} days ({retData.actualMonths} mo)
+                          </div>
+                          <div>
+                            <span className="font-medium text-[#1E40AF]">Charged:</span>{" "}
+                            {retData.chargedMonths} mo
+                            {retData.chargedMonths > retData.actualMonths && (
+                              <span className="text-[#D97706]"> (min {retData.minimumMonths} mo)</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-xs text-[#6B7280]">
+                          Agreement: {retData.agreementNo} &middot; Set: {retData.setName} &middot; Return: {retData.returnRequestNumber}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+
           {invoiceType === "deposit" && sourceId && (
             <div className="space-y-2">
               <label className="text-[14px] text-[#374151]">Reduction amount (RM) <span className="text-[#DC2626]">*</span></label>
@@ -674,7 +837,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
             </div>
           )}
 
-          {(invoiceType === "monthlyRental" || invoiceType === "additionalCharge") &&
+          {reason !== "Returned Items" && (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") &&
             items.map((item) => (
               <Card key={item.id} className="border-[#E5E7EB] bg-[#F9FAFB]">
                 <CardContent className="pt-4 pb-4">
@@ -731,7 +894,23 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
             </div>
           )}
 
-          {(invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && items.length > 0 && (
+          {/* Totals for return items */}
+          {reason === "Returned Items" && !returnItemsLoading && items.length > 0 && (
+            <div className="flex justify-end">
+              <div className="w-full md:w-1/3 space-y-2">
+                <div className="flex justify-between items-center p-4 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg">
+                  <span className="text-[#374151]">Total charged amount (RM)</span>
+                  <span className="text-[#374151] font-medium">RM{totalCurrentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between items-center p-4 bg-[#F15929] bg-opacity-10 border border-[#F15929] rounded-lg">
+                  <span className="text-[#231F20]">Total credit amount (RM)</span>
+                  <span className="text-[#231F20] font-medium">RM{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {reason !== "Returned Items" && (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && items.length > 0 && (
             <div className="flex justify-end">
               <div className="w-full md:w-1/3 space-y-2">
                 {(invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && (
