@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `rentalagreement` ADD COLUMN `totalRentalMonth` INTEGER NULL;
+ALTER TABLE `RentalAgreement` ADD COLUMN `totalRentalMonth` INTEGER NULL;
