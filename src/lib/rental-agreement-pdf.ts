@@ -23,6 +23,8 @@ export interface RentalAgreementForPDF {
   hirerPhone?: string | null;
   location?: string | null;
   termOfHire?: string | null;
+  totalRentalMonth?: number | null;
+  totalRental?: number | null;
   monthlyRental: number;
   securityDeposit: number;
   minimumCharges: number;
@@ -138,7 +140,8 @@ export function generateRentalAgreementPdf(agreement: RentalAgreementForPDF): js
   const row2Y = y + 16;
   const row3Y = y + 26;
   const row4Y = y + 36;
-  const combinedH = 44;
+  const row5Y = y + 46;
+  const combinedH = 66;
   doc.rect(MARGIN, y, CONTENT_W, combinedH);
   doc.line(MARGIN + colW, y, MARGIN + colW, y + combinedH);
   doc.setFont('helvetica', 'normal');
@@ -162,14 +165,22 @@ export function generateRentalAgreementPdf(agreement: RentalAgreementForPDF): js
   doc.text(`Default Interest: ${agreement.defaultInterest}% per month`, MARGIN + colW + 3, row2Y, {
     maxWidth: colW - 6,
   });
-  doc.text(`Name of Owner Signatory: ${agreement.ownerSignatoryName || ''}`, MARGIN + 3, row3Y, {
+  const totalRentalMonthLabel = agreement.totalRentalMonth != null
+    ? `${agreement.totalRentalMonth} month${agreement.totalRentalMonth !== 1 ? 's' : ''}`
+    : '-';
+  doc.text(`Total Rental Month: ${totalRentalMonthLabel}`, MARGIN + 3, row3Y, { maxWidth: colW - 6 });
+  const totalRentalFormatted = agreement.totalRental != null
+    ? `RM ${Number(agreement.totalRental).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : '-';
+  doc.text(`Total Rental (RM): ${totalRentalFormatted}`, MARGIN + colW + 3, row3Y, { maxWidth: colW - 6 });
+  doc.text(`Name of Owner Signatory: ${agreement.ownerSignatoryName || ''}`, MARGIN + 3, row4Y, {
     maxWidth: colW - 6,
   });
-  doc.text(`Name of Hirer Signatory: ${agreement.hirerSignatoryName || ''}`, MARGIN + colW + 3, row3Y, {
+  doc.text(`Name of Hirer Signatory: ${agreement.hirerSignatoryName || ''}`, MARGIN + colW + 3, row4Y, {
     maxWidth: colW - 6,
   });
-  doc.text(`NRIC No: ${agreement.ownerNRIC || ''}`, MARGIN + 3, row4Y, { maxWidth: colW - 6 });
-  doc.text(`NRIC No: ${agreement.hirerNRIC || ''}`, MARGIN + colW + 3, row4Y, { maxWidth: colW - 6 });
+  doc.text(`NRIC No: ${agreement.ownerNRIC || ''}`, MARGIN + 3, row5Y, { maxWidth: colW - 6 });
+  doc.text(`NRIC No: ${agreement.hirerNRIC || ''}`, MARGIN + colW + 3, row5Y, { maxWidth: colW - 6 });
   y += combinedH + 8;
 
   // ----- Acknowledgement (bold: Integral, binding Owner, Owner) -----

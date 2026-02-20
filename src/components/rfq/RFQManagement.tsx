@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Eye, Edit, Trash2, FileText, Calendar, User, CheckCircle, XCircle, FileCheck, Download } from 'lucide-react';
+import { Plus, Search, Filter, Eye, Edit, Trash2, FileText, Calendar, User, CheckCircle, XCircle, FileCheck, Download, Copy, ArrowLeft } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { RFQForm } from './RFQForm';
@@ -43,6 +44,14 @@ export function RFQManagement() {
   const [viewMode, setViewMode] = useState<'list' | 'form' | 'details'>('list');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rfqToReject, setRfqToReject] = useState<string | null>(null);
+  /** Extend RFQ flow: 'select' = choose source RFQ, 'form' = editing new RFQ from that source */
+  const [extendStep, setExtendStep] = useState<'select' | 'form' | null>(null);
+  /** When extending, id of the RFQ we are extending from (for POST body) */
+  const [extendFromRfqId, setExtendFromRfqId] = useState<string | null>(null);
+  /** RFQs that have at least one completed signed agreement (for Extend dropdown) */
+  const [rfqsWithSignedAgreement, setRfqsWithSignedAgreement] = useState<RFQ[]>([]);
+  /** Selected RFQ id in the extend-select step */
+  const [extendSelectedRfqId, setExtendSelectedRfqId] = useState<string>('');
 
   const getEarliestRequiredDate = (rfq: RFQ) => {
     if (!rfq.items || rfq.items.length === 0) return null;
@@ -154,6 +163,43 @@ export function RFQManagement() {
 
   const handleCreateNew = () => {
     setSelectedRFQ(null);
+    setExtendStep(null);
+    setExtendFromRfqId(null);
+    setViewMode('form');
+  };
+
+  const handleExtendRFQ = async () => {
+    setExtendStep('select');
+    setExtendSelectedRfqId('');
+    try {
+      const response = await fetch('/api/rfq?withSignedAgreementOnly=true');
+      if (response.ok) {
+        const data = await response.json();
+        const list = data.data || [];
+        setRfqsWithSignedAgreement(list);
+        if (list.length === 0) {
+          toast.info('No projects available to extend. You need an RFQ with a completed signed rental agreement.');
+        }
+      } else {
+        toast.error('Failed to load RFQs with signed agreements');
+        setRfqsWithSignedAgreement([]);
+      }
+    } catch (error) {
+      toast.error('Failed to load RFQs');
+      setRfqsWithSignedAgreement([]);
+    }
+  };
+
+  const handleExtendContinue = () => {
+    if (!extendSelectedRfqId) {
+      toast.error('Please select a project');
+      return;
+    }
+    const sourceRfq = rfqsWithSignedAgreement.find(r => r.id === extendSelectedRfqId);
+    if (!sourceRfq) return;
+    setExtendFromRfqId(sourceRfq.id);
+    setSelectedRFQ({ ...sourceRfq, items: [] });
+    setExtendStep('form');
     setViewMode('form');
   };
 
@@ -477,7 +523,42 @@ export function RFQManagement() {
 
   const handleSave = async (rfq: RFQ) => {
     try {
-      if (selectedRFQ) {
+      if (extendFromRfqId) {
+        // Create new RFQ from extended source (POST with extendedFromRfqId)
+        const body = {
+          customerName: rfq.customerName,
+          customerEmail: rfq.customerEmail,
+          customerPhone: rfq.customerPhone,
+          projectName: rfq.projectName,
+          projectLocation: rfq.projectLocation,
+          requestedDate: rfq.requestedDate,
+          status: rfq.status,
+          totalAmount: rfq.totalAmount,
+          notes: rfq.notes,
+          createdBy: rfq.createdBy,
+          items: rfq.items,
+          extendedFromRfqId: extendFromRfqId,
+        };
+        const response = await fetch('/api/rfq', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          toast.error(`Failed to create RFQ: ${error.message}`);
+          return;
+        }
+        const createdRFQ = await response.json();
+        saveRfqs([createdRFQ.data || rfq, ...rfqs]);
+        toast.success('RFQ created successfully (extended)');
+        setViewMode('list');
+        setSelectedRFQ(null);
+        setExtendFromRfqId(null);
+        setExtendStep(null);
+        return;
+      }
+      if (selectedRFQ?.id && !extendFromRfqId) {
         // Update existing RFQ
         const response = await fetch(`/api/rfq/${rfq.id}`, {
           method: 'PUT',
@@ -509,7 +590,6 @@ export function RFQManagement() {
         }
 
         const createdRFQ = await response.json();
-        // Prepend new RFQ to beginning to maintain newest-first order
         saveRfqs([createdRFQ.data || rfq, ...rfqs]);
         toast.success('RFQ created successfully');
       }
@@ -524,6 +604,9 @@ export function RFQManagement() {
   const handleCancel = () => {
     setViewMode('list');
     setSelectedRFQ(null);
+    setExtendStep(null);
+    setExtendFromRfqId(null);
+    setExtendSelectedRfqId('');
   };
 
   const filteredRfqs = rfqs.filter(rfq => {
@@ -572,12 +655,100 @@ export function RFQManagement() {
     approved: rfqs.filter(r => r.status === 'approved').length
   };
 
+  if (extendStep === 'select') {
+    const selectedForDisplay = rfqsWithSignedAgreement.find(r => r.id === extendSelectedRfqId);
+    const noProjectsAvailable = rfqsWithSignedAgreement.length === 0;
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" onClick={handleCancel}>
+            <ArrowLeft className="size-4" />
+          </Button>
+          <div>
+            <h1 className="text-[#231F20]">Extend RFQ</h1>
+            <p className="text-gray-600">Choose a project that has a completed signed agreement</p>
+          </div>
+        </div>
+        <Card>
+          <CardHeader><CardTitle>Customer Information</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-gray-500">Select Customer</Label>
+                <Input value={selectedForDisplay ? selectedForDisplay.customerName : '—'} readOnly disabled className="bg-gray-100" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-gray-500">Email</Label>
+                <Input value={selectedForDisplay ? selectedForDisplay.customerEmail : '—'} readOnly disabled className="bg-gray-100" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-gray-500">Phone</Label>
+                <Input value={selectedForDisplay ? selectedForDisplay.customerPhone || '—' : '—'} readOnly disabled className="bg-gray-100" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Project Details</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="extend-project">Project Name (RFQ number) *</Label>
+                <Select value={extendSelectedRfqId} onValueChange={setExtendSelectedRfqId} disabled={noProjectsAvailable}>
+                  <SelectTrigger id="extend-project">
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rfqsWithSignedAgreement.map(r => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.projectName} ({r.rfqNumber})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {noProjectsAvailable && (
+                  <p className="text-sm text-amber-600">
+                    No projects available to extend. You need an RFQ with a completed signed rental agreement.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label className="text-gray-500">Project Location</Label>
+                <Input value={selectedForDisplay ? selectedForDisplay.projectLocation : '—'} readOnly disabled className="bg-gray-100" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-gray-500">Requested Date</Label>
+                <Input value={selectedForDisplay ? formatRfqDate(selectedForDisplay.requestedDate) : '—'} readOnly disabled className="bg-gray-100" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-gray-500">Notes</Label>
+                <Input value={selectedForDisplay?.notes || '—'} readOnly disabled className="bg-gray-100" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Scaffolding Sets</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-500">Sets will be added in the next step.</p>
+          </CardContent>
+        </Card>
+        <div className="flex justify-end">
+          <Button onClick={handleExtendContinue} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={!extendSelectedRfqId}>
+            Continue
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (viewMode === 'form') {
     return (
       <RFQForm
         rfq={selectedRFQ}
         onSave={handleSave}
         onCancel={handleCancel}
+        mode={extendFromRfqId ? 'extend' : undefined}
       />
     );
   }
@@ -600,10 +771,16 @@ export function RFQManagement() {
           <h1 className="text-[#231F20]">Request for Quotation (RFQ)</h1>
           <p className="text-gray-600">Manage scaffolding quotation requests</p>
         </div>
-        <Button onClick={handleCreateNew} className="bg-[#F15929] hover:bg-[#d94d1f]">
-          <Plus className="size-4 mr-2" />
-          New RFQ
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExtendRFQ}>
+            <Copy className="size-4 mr-2" />
+            Extend RFQ
+          </Button>
+          <Button onClick={handleCreateNew} className="bg-[#F15929] hover:bg-[#d94d1f]">
+            <Plus className="size-4 mr-2" />
+            New RFQ
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -720,6 +897,9 @@ export function RFQManagement() {
                           </Badge>
                         </div>
                         <p className="text-gray-600 mt-1">{rfq.projectName}</p>
+                        {rfq.extendedFromRfq && (
+                          <p className="text-xs text-gray-500 mt-0.5">Extended from {rfq.extendedFromRfq.rfqNumber}</p>
+                        )}
                       </div>
                     </div>
                     

@@ -10,7 +10,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+
+/** Include items and extendedFromRfq for RFQ responses (assertion for Prisma client with extendedFromRfq relation) */
+const rfqInclude = {
+  items: true,
+  extendedFromRfq: { select: { id: true, rfqNumber: true, projectName: true } },
+} as Prisma.rFQInclude;
 
 /**
  * Helper function to generate unique RFQ number
@@ -41,6 +48,7 @@ export async function POST(request: NextRequest) {
       notes,
       createdBy,
       items,
+      extendedFromRfqId,
     } = body;
 
     // Debug logging
@@ -162,21 +170,23 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Create RFQ header
+      // Create RFQ header (data cast for Prisma client with extendedFromRfqId)
+      const createData = {
+        rfqNumber,
+        customerName,
+        customerEmail,
+        customerPhone: customerPhone || '',
+        projectName,
+        projectLocation: projectLocation || '',
+        requestedDate: reqDate,
+        status: status || 'draft',
+        totalAmount: totalAmount || 0,
+        notes: notes || '',
+        createdBy,
+        ...(extendedFromRfqId && { extendedFromRfqId }),
+      } as Prisma.rFQUncheckedCreateInput;
       const rfq = await tx.rFQ.create({
-        data: {
-          rfqNumber,
-          customerName,
-          customerEmail,
-          customerPhone: customerPhone || '',
-          projectName,
-          projectLocation: projectLocation || '',
-          requestedDate: reqDate,
-          status: status || 'draft',
-          totalAmount: totalAmount || 0,
-          notes: notes || '',
-          createdBy,
-        },
+        data: createData,
       });
 
       // Create RFQ items if provided
@@ -200,12 +210,10 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Return complete RFQ with items
+      // Return complete RFQ with items and extendedFromRfq if set
       return tx.rFQ.findUnique({
         where: { id: rfq.id },
-        include: {
-          items: true,
-        },
+        include: rfqInclude,
       });
     });
 
@@ -249,17 +257,28 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const customerEmail = searchParams.get('customerEmail');
     const createdBy = searchParams.get('createdBy');
+    const withSignedAgreementOnly = searchParams.get('withSignedAgreementOnly') === 'true';
 
     const filters: any = {};
     if (status) filters.status = status;
     if (customerEmail) filters.customerEmail = customerEmail;
     if (createdBy) filters.createdBy = createdBy;
+    if (withSignedAgreementOnly) {
+      filters.rentalAgreements = { some: { signedStatus: 'completed' } };
+      // Exclude RFQs that have already been used as the source of an extended RFQ (one project can only be extended once)
+      const alreadyExtendedSources = await prisma.rFQ.findMany({
+        where: { extendedFromRfqId: { not: null } },
+        select: { extendedFromRfqId: true },
+      } as never) as unknown as { extendedFromRfqId: string | null }[];
+      const usedSourceIds = [...new Set(alreadyExtendedSources.map((r) => r.extendedFromRfqId).filter(Boolean))] as string[];
+      if (usedSourceIds.length > 0) {
+        filters.id = { notIn: usedSourceIds };
+      }
+    }
 
     const rfqs = await prisma.rFQ.findMany({
       where: filters,
-      include: {
-        items: true,
-      },
+      include: rfqInclude,
       orderBy: {
         createdAt: 'desc',
       },

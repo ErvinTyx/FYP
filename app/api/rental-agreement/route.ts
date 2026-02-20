@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-import { computeTermOfHireFromRfqItems } from '../../../src/lib/term-of-hire';
+import { computeTermOfHireFromRfqItems, getTotalRentalMonthFromDays, parseDaysFromTermOfHireString } from '../../../src/lib/term-of-hire';
 
 // Roles allowed to manage rental agreements
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
@@ -46,6 +46,7 @@ function buildAgreementSnapshot(agreement: {
   hirerPhone: string | null;
   location: string | null;
   termOfHire: string | null;
+  totalRentalMonth?: number | null;
   monthlyRental: unknown;
   securityDeposit: unknown;
   minimumCharges: unknown;
@@ -69,6 +70,7 @@ function buildAgreementSnapshot(agreement: {
     hirerPhone: agreement.hirerPhone,
     location: agreement.location,
     termOfHire: agreement.termOfHire,
+    totalRentalMonth: agreement.totalRentalMonth ?? null,
     monthlyRental: Number(agreement.monthlyRental),
     securityDeposit: Number(agreement.securityDeposit),
     minimumCharges: Number(agreement.minimumCharges),
@@ -255,6 +257,7 @@ export async function GET(request: NextRequest) {
         hirerPhone: agreement.hirerPhone,
       location: agreement.location,
       termOfHire: agreement.termOfHire,
+      totalRentalMonth: (agreement as { totalRentalMonth?: number | null }).totalRentalMonth ?? null,
       monthlyRental: Number(agreement.monthlyRental),
         securityDeposit: Number(agreement.securityDeposit),
         minimumCharges: Number(agreement.minimumCharges),
@@ -340,6 +343,7 @@ export async function POST(request: NextRequest) {
       status,
       allowedRoles,
       rfqId,
+      extendedFromAgreementId: bodyExtendedFromAgreementId,
     } = body;
 
     // Validate required fields (agreement number and PO number are auto-generated)
@@ -357,6 +361,8 @@ export async function POST(request: NextRequest) {
       const computed = await computeTermOfHireFromRfqItems(prisma, rfqId);
       if (computed) resolvedTermOfHire = computed;
     }
+    const termDays = parseDaysFromTermOfHireString(resolvedTermOfHire);
+    const totalRentalMonth = termDays != null ? getTotalRentalMonthFromDays(termDays) : null;
 
     // Auto-generate unique Rental Agreement Number (RA-YYYY-NNN)
     const year = new Date().getFullYear();
@@ -389,59 +395,90 @@ export async function POST(request: NextRequest) {
     }
     const poNumber = `${prefixPo}${String(maxPoNum + 1).padStart(3, '0')}`;
 
+    // Resolve extendedFromAgreementId: use body value, or derive from extended RFQ when rfqId is provided
+    let extendedFromAgreementId: string | null = bodyExtendedFromAgreementId || null;
+    if (!extendedFromAgreementId && rfqId) {
+      const rfq = await prisma.rFQ.findUnique({
+        where: { id: rfqId },
+      });
+      const sourceRfqId = (rfq as { extendedFromRfqId?: string | null } | null)?.extendedFromRfqId;
+      if (sourceRfqId) {
+        // Find an agreement linked to the source RFQ (prefer completed signed)
+        const sourceAgreement = await prisma.rentalAgreement.findFirst({
+          where: { rfqId: sourceRfqId, signedStatus: 'completed' },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        if (!sourceAgreement) {
+          const anySource = await prisma.rentalAgreement.findFirst({
+            where: { rfqId: sourceRfqId },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true },
+          });
+          if (anySource) extendedFromAgreementId = anySource.id;
+        } else {
+          extendedFromAgreementId = sourceAgreement.id;
+        }
+      }
+    }
+
     // Create the rental agreement with initial version
-    const newAgreement = await prisma.rentalAgreement.create({
-      data: {
-        agreementNumber,
-        poNumber,
-        projectName,
-        owner,
-        ownerPhone: ownerPhone || null,
-        hirer,
-        hirerPhone: hirerPhone || null,
-        location: location || null,
-        termOfHire: resolvedTermOfHire,
-        monthlyRental: monthlyRental || 0,
-        securityDeposit: securityDeposit || 0,
-        minimumCharges: minimumCharges || 0,
-        defaultInterest: defaultInterest || 0,
-        ownerSignatoryName: ownerSignatoryName || null,
-        ownerNRIC: ownerNRIC || null,
-        hirerSignatoryName: hirerSignatoryName || null,
-        hirerNRIC: hirerNRIC || null,
-        status: status || 'Draft',
-        currentVersion: 1,
-        createdBy: session.user.email,
-        rfqId: rfqId || null,
-        versions: {
-          create: {
-            versionNumber: 1,
-            changes: 'Initial agreement created',
-            allowedRoles: JSON.stringify(allowedRoles || ['Admin', 'Manager', 'Sales', 'Finance']),
-            createdBy: session.user.email,
-            ...({ snapshot: buildAgreementSnapshot({
-              agreementNumber,
-              poNumber,
-              projectName,
-              owner,
-              ownerPhone: ownerPhone || null,
-              hirer,
-              hirerPhone: hirerPhone || null,
-              location: location || null,
-              termOfHire: resolvedTermOfHire,
-              monthlyRental: monthlyRental || 0,
-              securityDeposit: securityDeposit || 0,
-              minimumCharges: minimumCharges || 0,
-              defaultInterest: defaultInterest || 0,
-              ownerSignatoryName: ownerSignatoryName || null,
-              ownerNRIC: ownerNRIC || null,
-              hirerSignatoryName: hirerSignatoryName || null,
-              hirerNRIC: hirerNRIC || null,
-              status: status || 'Draft',
-            }) } as Record<string, unknown>),
-          },
+    const createData = {
+      agreementNumber,
+      poNumber,
+      projectName,
+      owner,
+      ownerPhone: ownerPhone || null,
+      hirer,
+      hirerPhone: hirerPhone || null,
+      location: location || null,
+      termOfHire: resolvedTermOfHire,
+      totalRentalMonth,
+      monthlyRental: monthlyRental || 0,
+      securityDeposit: securityDeposit || 0,
+      minimumCharges: minimumCharges || 0,
+      defaultInterest: defaultInterest || 0,
+      ownerSignatoryName: ownerSignatoryName || null,
+      ownerNRIC: ownerNRIC || null,
+      hirerSignatoryName: hirerSignatoryName || null,
+      hirerNRIC: hirerNRIC || null,
+      status: status || 'Draft',
+      currentVersion: 1,
+      createdBy: session.user.email,
+      rfqId: rfqId || null,
+      extendedFromAgreementId,
+      versions: {
+        create: {
+          versionNumber: 1,
+          changes: 'Initial agreement created',
+          allowedRoles: JSON.stringify(allowedRoles || ['Admin', 'Manager', 'Sales', 'Finance']),
+          createdBy: session.user.email,
+          ...({ snapshot: buildAgreementSnapshot({
+            agreementNumber,
+            poNumber,
+            projectName,
+            owner,
+            ownerPhone: ownerPhone || null,
+            hirer,
+            hirerPhone: hirerPhone || null,
+            location: location || null,
+            termOfHire: resolvedTermOfHire,
+            totalRentalMonth,
+            monthlyRental: monthlyRental || 0,
+            securityDeposit: securityDeposit || 0,
+            minimumCharges: minimumCharges || 0,
+            defaultInterest: defaultInterest || 0,
+            ownerSignatoryName: ownerSignatoryName || null,
+            ownerNRIC: ownerNRIC || null,
+            hirerSignatoryName: hirerSignatoryName || null,
+            hirerNRIC: hirerNRIC || null,
+            status: status || 'Draft',
+          }) } as Record<string, unknown>),
         },
       },
+    };
+    const newAgreement = await prisma.rentalAgreement.create({
+      data: createData as Parameters<typeof prisma.rentalAgreement.create>[0]['data'],
       include: {
         versions: true,
         rfq: true,
@@ -557,7 +594,7 @@ export async function PUT(request: NextRequest) {
     // Only scalar fields allowed for update (exclude relations and read-only fields from body)
     const scalarFields = [
       'agreementNumber', 'poNumber', 'projectName', 'owner', 'ownerPhone', 'hirer', 'hirerPhone',
-      'location', 'termOfHire', 'monthlyRental', 'securityDeposit', 'minimumCharges',
+      'location', 'termOfHire', 'totalRentalMonth', 'monthlyRental', 'securityDeposit', 'minimumCharges',
       'defaultInterest', 'ownerSignatoryName', 'ownerNRIC', 'hirerSignatoryName', 'hirerNRIC',
       'ownerSignature', 'hirerSignature', 'ownerSignatureDate', 'hirerSignatureDate',
       'signedDocumentUrl', 'signedDocumentUploadedAt', 'signedDocumentUploadedBy', 'signedStatus', 'status', 'createdBy',
@@ -578,6 +615,10 @@ export async function PUT(request: NextRequest) {
       const computed = await computeTermOfHireFromRfqItems(prisma, existingWithRfq.rfqId);
       if (computed) dataForUpdate.termOfHire = computed;
     }
+    // Derive totalRentalMonth from effective term (updated or existing)
+    const effectiveTerm = (dataForUpdate.termOfHire ?? (existingAgreement as { termOfHire?: string | null }).termOfHire) as string | null | undefined;
+    const updateTermDays = parseDaysFromTermOfHireString(effectiveTerm);
+    dataForUpdate.totalRentalMonth = updateTermDays != null ? getTotalRentalMonthFromDays(updateTermDays) : null;
 
     // Check if we need deposit count (for auto-create deposit logic)
     let existingDepositCount = 0;

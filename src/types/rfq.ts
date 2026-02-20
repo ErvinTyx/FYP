@@ -45,6 +45,8 @@ export interface RFQ {
   createdAt: string;
   updatedAt: string;
   assignedTo?: string;
+  extendedFromRfqId?: string | null;
+  extendedFromRfq?: { id: string; rfqNumber: string; projectName: string } | null;
 }
 
 export interface RFQNotification {
