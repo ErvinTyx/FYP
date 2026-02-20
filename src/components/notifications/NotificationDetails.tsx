@@ -65,31 +65,37 @@ export function NotificationDetails({ notification, onClose }: NotificationDetai
     });
   };
 
+  const isContentNotification = notification.type === 'content_created' || notification.type === 'content_updated';
+
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[80vh]">
         <DialogHeader>
-          <DialogTitle>RFQ Change Details</DialogTitle>
+          <DialogTitle>{isContentNotification ? 'Content Update' : 'RFQ Change Details'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Notification Info */}
           <div className="p-4 bg-gray-50 rounded-lg space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-[#231F20]">{notification.rfqNumber}</h3>
+              <h3 className="text-[#231F20]">{notification.contentTitle ?? notification.rfqNumber ?? 'Notification'}</h3>
               <Badge className="bg-blue-100 text-blue-800">
                 {notification.type.replace(/_/g, ' ').toUpperCase()}
               </Badge>
             </div>
             <p className="text-gray-600">{notification.message}</p>
+            {isContentNotification && notification.contentCategory && (
+              <p className="text-sm text-[#6B7280]">Category: {notification.contentCategory}</p>
+            )}
             <div className="flex items-center gap-4 text-sm text-gray-500">
-              <span>Modified by {notification.createdBy}</span>
+              <span>{isContentNotification ? 'Updated' : 'Modified'} by {notification.createdBy}</span>
               <span>•</span>
               <span>{formatTimestamp(notification.createdAt)}</span>
             </div>
           </div>
 
-          {/* Changes List */}
+          {/* Changes List - only for RFQ notifications */}
+          {!isContentNotification && (
           <div>
             <h4 className="text-[#231F20] mb-3">
               Changes Made ({notification.changes.length})
@@ -164,6 +170,7 @@ export function NotificationDetails({ notification, onClose }: NotificationDetai
               </div>
             </ScrollArea>
           </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

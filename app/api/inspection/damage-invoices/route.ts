@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
       vendor,
       items,
       subtotal,
-      tax,
       total,
       paymentStatus,
       notes,
@@ -73,8 +72,7 @@ export async function POST(request: NextRequest) {
           invoiceDate: invoiceDate || new Date().toISOString(),
           vendor: vendor || null,
           subtotal: parseFloat((subtotal || 0).toString()),
-          tax: parseFloat((tax || 0).toString()),
-          total: parseFloat((total || 0).toString()),
+          total: parseFloat((total || subtotal || 0).toString()),
           paymentStatus: paymentStatus || 'pending',
           notes: notes || null,
           createdFrom: createdFrom || 'repair-slip',
@@ -170,7 +168,6 @@ export async function GET(request: NextRequest) {
     const transformedInvoices = invoices.map((invoice: any) => ({
       ...invoice,
       subtotal: Number(invoice.subtotal),
-      tax: Number(invoice.tax),
       total: Number(invoice.total),
       items: invoice.items.map((item: any) => ({
         ...item,

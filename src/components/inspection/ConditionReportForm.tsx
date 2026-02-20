@@ -97,8 +97,10 @@ export function ConditionReportForm({
   const [loadingScaffoldingItems, setLoadingScaffoldingItems] = useState(true);
   const [staffUsers, setStaffUsers] = useState<StaffUserSummary[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(true);
-  const [returnPhotos, setReturnPhotos] = useState<InspectionImage[]>([]);
-  const [appliedReturnPhotos, setAppliedReturnPhotos] = useState(false);
+  const [damagePhotosFromReturn, setDamagePhotosFromReturn] = useState<InspectionImage[]>([]);
+  
+  // When editing, use report.returnRequestId so we can fetch driver name and damage photos from return
+  const effectiveReturnRequestId = returnRequestId || report?.returnRequestId;
   
   // Store original return quantities for validation
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
@@ -154,32 +156,33 @@ export function ConditionReportForm({
     return normalized;
   };
 
-  // Fetch return photos for display in condition report
+  // Fetch return photos and driver name for condition report (damage photos from return only; driver = Returned By)
+  // When editing an auto-created report, use report.returnRequestId so this still runs
   useEffect(() => {
     const fetchReturnPhotos = async () => {
-      if (!returnRequestId) return;
+      if (!effectiveReturnRequestId) return;
       try {
         const response = await fetch('/api/return');
         const result = await response.json();
         if (!result.success || !result.returnRequests) return;
         const matched = result.returnRequests.find((req: { id: string; requestId: string }) =>
-          req.id === returnRequestId || req.requestId === returnRequestId
+          req.id === effectiveReturnRequestId || req.requestId === effectiveReturnRequestId
         );
         if (!matched) return;
-        const photos = [
-          ...normalizeReturnPhotos(matched.damagePhotos, 'Damage'),
-          ...normalizeReturnPhotos(matched.warehousePhotos, 'Warehouse'),
-          ...normalizeReturnPhotos(matched.driverRecordPhotos, 'Driver'),
-          ...normalizeReturnPhotos(matched.externalGoodsPhotos, 'External'),
-        ];
-        setReturnPhotos(photos);
-        setAppliedReturnPhotos(false);
+        // Driver name from return management = "Returned By" (not customer name)
+        const driverName = (matched as { pickupDriver?: string }).pickupDriver;
+        if (driverName) {
+          setFormData(prev => ({ ...prev, returnedBy: driverName }));
+        }
+        // Damage photos from return only (no driver recording or warehouse receipt)
+        const damageOnly = normalizeReturnPhotos((matched as { damagePhotos?: unknown }).damagePhotos, 'Damage');
+        setDamagePhotosFromReturn(damageOnly);
       } catch (error) {
         console.error('Error fetching return photos:', error);
       }
     };
     fetchReturnPhotos();
-  }, [returnRequestId]);
+  }, [effectiveReturnRequestId]);
 
   // Fetch staff users for inspector selection
   useEffect(() => {
@@ -268,21 +271,7 @@ export function ConditionReportForm({
     }
   }, [returnRequestItems, report, scaffoldingItems, propCustomerName, agreementNo]);
 
-  // Apply return photos into item images (if empty)
-  useEffect(() => {
-    if (appliedReturnPhotos || returnPhotos.length === 0 || items.length === 0) return;
-    const nextItems = items.map(item => {
-      if (item.images && item.images.length > 0) {
-        return item;
-      }
-      return {
-        ...item,
-        images: returnPhotos,
-      };
-    });
-    setItems(nextItems);
-    setAppliedReturnPhotos(true);
-  }, [returnPhotos, items, appliedReturnPhotos]);
+  // Do not auto-apply return photos to per-item images; damage photos from return are shown in their own section
 
   useEffect(() => {
     if (report) {
@@ -591,7 +580,7 @@ export function ConditionReportForm({
                 id="returnedBy"
                 value={formData.returnedBy}
                 onChange={(e) => setFormData({ ...formData, returnedBy: e.target.value })}
-                placeholder="Person who returned the items"
+                placeholder="Driver name (from return management)"
               />
             </div>
             <div className="space-y-2">
@@ -918,6 +907,33 @@ export function ConditionReportForm({
                 </div>
               </div>
             ))
+          )}
+
+          {/* Damage Photos from Return: above Total Items Inspected, not inside each item; auto-fetched from return */}
+          {items.length > 0 && effectiveReturnRequestId && (
+            <div className="space-y-3 p-4 rounded-lg border border-gray-200 bg-white">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="size-5 text-gray-600" />
+                <h3 className="text-[#231F20] font-medium">Damage Photos from Return</h3>
+              </div>
+              <p className="text-sm text-gray-600">Auto-fetched from return management (damage photos only)</p>
+              {damagePhotosFromReturn.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {damagePhotosFromReturn.map((image) => (
+                    <div key={image.id} className="relative group">
+                      <img
+                        src={image.url}
+                        alt={image.caption || 'Damage photo from return'}
+                        className="w-full h-24 object-cover rounded border"
+                      />
+                      <p className="text-xs text-gray-600 mt-1 truncate">{image.caption}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 italic">No damage photos from return</p>
+              )}
+            </div>
           )}
 
           {items.length > 0 && (
