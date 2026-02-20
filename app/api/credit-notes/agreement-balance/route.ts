@@ -51,17 +51,36 @@ export async function GET(request: NextRequest) {
       (s, cn) => s + cn.applications.reduce((sa, a) => sa + toNum(a.amountApplied), 0),
       0
     );
-    const remainingBalance = Math.max(0, totalApprovedCredit - totalApplied);
+    
+    // Also subtract refunds (including Draft and Pending Approval, not just Approved)
+    // This ensures refunds count as "applied" even before they're approved
+    const cnIds = creditNotes.map((cn) => cn.id);
+    const refunds = cnIds.length > 0
+      ? await prisma.refund.findMany({
+          where: { creditNoteId: { in: cnIds } },
+          select: { creditNoteId: true, amount: true },
+        })
+      : [];
+    const refundedByCN = new Map<string, number>();
+    for (const r of refunds) {
+      if (!r.creditNoteId) continue;
+      refundedByCN.set(r.creditNoteId, (refundedByCN.get(r.creditNoteId) || 0) + toNum(r.amount));
+    }
+    const totalRefunded = Array.from(refundedByCN.values()).reduce((s, v) => s + v, 0);
+    
+    const remainingBalance = Math.max(0, totalApprovedCredit - totalApplied - totalRefunded);
 
     const creditNoteBreakdown = creditNotes.map((cn) => {
       const amount = toNum(cn.amount);
       const applied = cn.applications.reduce((s, a) => s + toNum(a.amountApplied), 0);
+      const refunded = refundedByCN.get(cn.id) || 0;
       return {
         id: cn.id,
         creditNoteNumber: cn.creditNoteNumber,
         amount,
         applied,
-        remaining: Math.max(0, amount - applied),
+        refunded,
+        remaining: Math.max(0, amount - applied - refunded),
       };
     });
 

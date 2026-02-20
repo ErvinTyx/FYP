@@ -63,16 +63,6 @@ async function generateRefundNumber(): Promise<string> {
   return `${prefix}${seq.toString().padStart(3, '0')}`;
 }
 
-async function getTotalCredited(sourceId: string): Promise<number> {
-  const list = await prisma.creditNote.findMany({
-    where: { sourceId, status: 'Approved' },
-    select: { amount: true },
-  });
-  const toNum = (v: unknown) =>
-    typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0);
-  return list.reduce((sum, cn) => sum + toNum(cn.amount), 0);
-}
-
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
@@ -145,6 +135,7 @@ export async function POST(request: NextRequest) {
       originalInvoice,
       customerName,
       customerId,
+      creditNoteId,
       amount,
       refundMethod,
       reason,
@@ -159,6 +150,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (!creditNoteId) {
+      return NextResponse.json(
+        { success: false, message: 'creditNoteId is required — please select a credit note' },
+        { status: 400 }
+      );
+    }
     const numAmount = Number(amount);
     if (!(numAmount > 0)) {
       return NextResponse.json(
@@ -169,25 +166,51 @@ export async function POST(request: NextRequest) {
     const validStatus = status === 'Draft' || status === 'Pending Approval' ? status : 'Draft';
     const validType = ['deposit', 'monthlyRental', 'additionalCharge'].includes(invoiceType) ? invoiceType : 'deposit';
 
-    const totalCredited = await getTotalCredited(sourceId);
-    const approvedRefunds = await prisma.refund.findMany({
-      where: { sourceId, status: 'Approved' },
+    // Validate credit note exists, is approved, and belongs to the same source
+    const toNum = (v: unknown) =>
+      typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0);
+    const creditNote = await prisma.creditNote.findUnique({
+      where: { id: creditNoteId },
+      select: { id: true, creditNoteNumber: true, amount: true, sourceId: true, status: true },
+    });
+    if (!creditNote) {
+      return NextResponse.json(
+        { success: false, message: 'Credit note not found' },
+        { status: 404 }
+      );
+    }
+    if (creditNote.status !== 'Approved') {
+      return NextResponse.json(
+        { success: false, message: 'Only approved credit notes can be refunded' },
+        { status: 400 }
+      );
+    }
+    if (creditNote.sourceId !== sourceId) {
+      return NextResponse.json(
+        { success: false, message: 'Credit note does not belong to the selected invoice' },
+        { status: 400 }
+      );
+    }
+
+    // Calculate remaining balance for this specific credit note
+    const cnAmount = toNum(creditNote.amount);
+    const cnApps = await prisma.creditNoteApplication.findMany({
+      where: { creditNoteId },
+      select: { amountApplied: true },
+    });
+    const totalApplied = cnApps.reduce((s, a) => s + toNum(a.amountApplied), 0);
+    const cnRefunds = await prisma.refund.findMany({
+      where: { creditNoteId, status: 'Approved' },
       select: { amount: true },
     });
-    const totalRefunded = approvedRefunds.reduce(
-      (sum, refund) =>
-        sum +
-        (typeof refund.amount === 'number'
-          ? refund.amount
-          : (refund.amount as { toNumber?: () => number }).toNumber?.() ?? 0),
-      0
-    );
-    const maxRefundable = Math.max(0, totalCredited - totalRefunded);
+    const totalRefunded = cnRefunds.reduce((s, r) => s + toNum(r.amount), 0);
+    const maxRefundable = Math.max(0, cnAmount - totalApplied - totalRefunded);
+
     if (numAmount > maxRefundable) {
       return NextResponse.json(
         {
           success: false,
-          message: `Refund amount cannot exceed remaining refundable balance (RM${maxRefundable.toFixed(2)})`,
+          message: `Refund amount cannot exceed credit note remaining balance (RM${maxRefundable.toFixed(2)})`,
         },
         { status: 400 }
       );
@@ -218,6 +241,8 @@ export async function POST(request: NextRequest) {
         originalInvoice,
         customerName,
         customerId,
+        creditNoteId,
+        creditNoteNumber: creditNote.creditNoteNumber,
         amount: numAmount,
         refundMethod: refundMethod || null,
         reason: reason?.trim() || null,

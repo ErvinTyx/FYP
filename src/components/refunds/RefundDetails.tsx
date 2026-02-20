@@ -244,6 +244,12 @@ export function RefundDetails({
                 {invoiceTypeLabel}
               </Badge>
             </div>
+            {refund.creditNoteNumber && (
+              <div>
+                <p className="text-[14px] text-[#6B7280]">Credit Note</p>
+                <p className="text-[#111827]">{refund.creditNoteNumber}</p>
+              </div>
+            )}
             <div className="col-span-2">
               <p className="text-[14px] text-[#6B7280]">Reason for Refund</p>
               <p className="text-[#111827] mt-1">{refund.reason || "—"}</p>
@@ -525,6 +531,9 @@ export function RefundDetails({
               <p><span className="text-[#6B7280]">Amount:</span> RM {refund.amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</p>
               <p><span className="text-[#6B7280]">Invoice:</span> {refund.originalInvoice}</p>
               <p><span className="text-[#6B7280]">Type:</span> {invoiceTypeLabel}</p>
+              {refund.creditNoteNumber && (
+                <p><span className="text-[#6B7280]">Credit Note:</span> {refund.creditNoteNumber}</p>
+              )}
               <p className="col-span-2"><span className="text-[#6B7280]">Reason:</span> {refund.reason || "—"}</p>
             </div>
           </div>

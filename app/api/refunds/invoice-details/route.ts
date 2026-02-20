@@ -45,18 +45,50 @@ export async function GET(request: NextRequest) {
     });
     const toNum = (v: unknown) => (typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0));
     const totalCredited = creditNotes.reduce((sum, cn) => sum + toNum(cn.amount), 0);
-    const approvedRefunds = await prisma.refund.findMany({
-      where: { sourceId, status: 'Approved' },
-      select: { amount: true },
+
+    // Fetch per-credit-note applications (CreditNoteApplication)
+    const cnIds = creditNotes.map((cn) => cn.id);
+    const applications = cnIds.length > 0
+      ? await prisma.creditNoteApplication.findMany({
+          where: { creditNoteId: { in: cnIds } },
+          select: { creditNoteId: true, amountApplied: true },
+        })
+      : [];
+    const appliedByCN = new Map<string, number>();
+    for (const app of applications) {
+      const prev = appliedByCN.get(app.creditNoteId) || 0;
+      appliedByCN.set(app.creditNoteId, prev + toNum(app.amountApplied));
+    }
+
+    // Fetch per-credit-note approved refunds
+    const refundsByCN = cnIds.length > 0
+      ? await prisma.refund.findMany({
+          where: { creditNoteId: { in: cnIds }, status: 'Approved' },
+          select: { creditNoteId: true, amount: true },
+        })
+      : [];
+    const refundedByCN = new Map<string, number>();
+    for (const ref of refundsByCN) {
+      if (!ref.creditNoteId) continue;
+      const prev = refundedByCN.get(ref.creditNoteId) || 0;
+      refundedByCN.set(ref.creditNoteId, prev + toNum(ref.amount));
+    }
+
+    const relatedCreditNotes = creditNotes.map((cn) => {
+      const cnAmount = toNum(cn.amount);
+      const totalApplied = appliedByCN.get(cn.id) || 0;
+      const totalRefunded = refundedByCN.get(cn.id) || 0;
+      const remainingBalance = Math.max(0, cnAmount - totalApplied - totalRefunded);
+      return {
+        id: cn.id,
+        creditNoteNumber: cn.creditNoteNumber,
+        amount: cnAmount,
+        remainingBalance,
+        date: cn.date.toISOString().split('T')[0],
+      };
     });
-    const totalRefunded = approvedRefunds.reduce((sum, refund) => sum + toNum(refund.amount), 0);
-    const amountToReturn = Math.max(0, totalCredited - totalRefunded);
-    const relatedCreditNotes = creditNotes.map((cn) => ({
-      id: cn.id,
-      creditNoteNumber: cn.creditNoteNumber,
-      amount: toNum(cn.amount),
-      date: cn.date.toISOString().split('T')[0],
-    }));
+
+    const amountToReturn = relatedCreditNotes.reduce((sum, cn) => sum + cn.remainingBalance, 0);
 
     if (invoiceType === 'deposit') {
       const deposit = await prisma.deposit.findUnique({

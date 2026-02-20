@@ -54,7 +54,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const totalAmount = toNum(cn.amount);
     const totalApplied = applications.reduce((s, a) => s + toNum(a.amountApplied), 0);
-    const remainingBalance = Math.max(0, totalAmount - totalApplied);
+    
+    // Also subtract refunds (including Draft and Pending Approval, not just Approved)
+    // This ensures refunds count as "applied" even before they're approved
+    const refunds = await prisma.refund.findMany({
+      where: { creditNoteId: id },
+      select: { amount: true },
+    });
+    const totalRefunded = refunds.reduce((s, r) => s + toNum(r.amount), 0);
+    
+    const remainingBalance = Math.max(0, totalAmount - totalApplied - totalRefunded);
 
     const serialized = applications.map((a) => ({
       ...a,

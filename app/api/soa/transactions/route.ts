@@ -249,13 +249,21 @@ export async function GET(request: NextRequest) {
             { openRepairSlipId: { in: openRepairSlipIds } },
             { deliverySetId: { in: deliverySetIds } },
             { returnRequestId: { in: returnRequestIds } },
+            { conditionReportId: { in: conditionReportIds } },
           ],
         },
         include: { items: true },
         orderBy: { createdAt: 'asc' },
       });
-      additionalChargeIds = charges.map((c) => c.id);
-      for (const c of charges) {
+      
+      // Deduplicate charges by ID to prevent processing the same charge twice
+      // (in case the query matches the same charge through multiple relationship paths)
+      const uniqueCharges = Array.from(
+        new Map(charges.map((c) => [c.id, c])).values()
+      );
+      
+      additionalChargeIds = uniqueCharges.map((c) => c.id);
+      for (const c of uniqueCharges) {
         const amt = toNum(c.totalCharges);
         rawTxs.push({
           date: c.createdAt,
@@ -312,7 +320,7 @@ export async function GET(request: NextRequest) {
 
     // --- Credit notes (for this agreement) ---
     // Fetch credit notes by agreementId (we added this field to scope credit notes to agreements)
-    // For approved credit notes: show remaining balance (total - applied) as credit
+    // For approved credit notes: show remaining balance (total - applied - refunded) as credit
     // This reflects the available credit that can still be applied
     const creditNotes = await prisma.creditNote.findMany({
       where: {
@@ -323,15 +331,37 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { date: 'asc' },
     });
+    
+    // Build a map of credit note IDs to total refunded amount
+    // Refunds reduce the available credit note balance
+    const creditNoteIds = creditNotes.map((cn) => cn.id);
+    const creditNoteRefundedMap = new Map<string, number>();
+    if (creditNoteIds.length > 0) {
+      const refundsForCreditNotes = await prisma.refund.findMany({
+        where: {
+          creditNoteId: { in: creditNoteIds },
+          status: 'Approved', // Only count approved refunds
+        },
+        select: { creditNoteId: true, amount: true },
+      });
+      for (const r of refundsForCreditNotes) {
+        if (r.creditNoteId) {
+          const current = creditNoteRefundedMap.get(r.creditNoteId) || 0;
+          creditNoteRefundedMap.set(r.creditNoteId, current + toNum(r.amount));
+        }
+      }
+    }
+    
     for (const cn of creditNotes) {
       const status = mapStatus(cn.status);
       const totalAmount = toNum(cn.amount);
       const dbStatus = (cn.status || '').toLowerCase();
       let creditToShow = 0;
       if (dbStatus === 'approved') {
-        // Calculate remaining balance: total - applied (for invoices in this agreement)
+        // Calculate remaining balance: total - applied - refunded (for invoices in this agreement)
         const totalAppliedInAgreement = creditNoteAppliedMap.get(cn.id) || 0;
-        creditToShow = Math.max(0, totalAmount - totalAppliedInAgreement);
+        const totalRefunded = creditNoteRefundedMap.get(cn.id) || 0;
+        creditToShow = Math.max(0, totalAmount - totalAppliedInAgreement - totalRefunded);
       }
       rawTxs.push({
         date: cn.date,
@@ -339,7 +369,7 @@ export async function GET(request: NextRequest) {
         reference: cn.creditNoteNumber,
         description: cn.reason || 'Credit note',
         debit: 0,
-        credit: creditToShow, // Show remaining balance (total - applied)
+        credit: creditToShow, // Show remaining balance (total - applied - refunded)
         status: status,
         entityType: 'creditNote',
         entityId: cn.id,
@@ -360,12 +390,27 @@ export async function GET(request: NextRequest) {
     }
 
     // --- Refunds (sourceId in our entities) ---
+    // Only show refunds that are NOT linked to credit notes
+    // Refunds linked to credit notes are already accounted for in the credit note balance calculation
     if (sourceIds.length > 0) {
       const refunds = await prisma.refund.findMany({
         where: { sourceId: { in: sourceIds } },
+        select: {
+          id: true,
+          refundNumber: true,
+          createdAt: true,
+          amount: true,
+          status: true,
+          reason: true,
+          creditNoteId: true, // Check if refund is linked to a credit note
+        },
         orderBy: { createdAt: 'asc' },
       });
       for (const r of refunds) {
+        // Skip refunds that are linked to credit notes - they're already accounted for in credit note balance
+        if (r.creditNoteId) {
+          continue;
+        }
         const amt = toNum(r.amount);
         rawTxs.push({
           date: r.createdAt,
@@ -381,12 +426,24 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Deduplicate transactions to prevent duplicates
+    // A transaction is considered duplicate if it has the same entityId, type, date, debit, and credit
+    const seenTxKeys = new Set<string>();
+    const uniqueRawTxs: RawTx[] = [];
+    for (const tx of rawTxs) {
+      const key = `${tx.entityType}:${tx.entityId}:${tx.type}:${tx.date.getTime()}:${tx.debit}:${tx.credit}`;
+      if (!seenTxKeys.has(key)) {
+        seenTxKeys.add(key);
+        uniqueRawTxs.push(tx);
+      }
+    }
+
     // Sort by date (latest = desc, earliest = asc) and add id, balance
-    rawTxs.sort((a, b) =>
+    uniqueRawTxs.sort((a, b) =>
       orderLatest ? b.date.getTime() - a.date.getTime() : a.date.getTime() - b.date.getTime()
     );
     let balance = 0;
-    const allTransactions = rawTxs.map((tx, idx) => {
+    const allTransactions = uniqueRawTxs.map((tx, idx) => {
       balance = balance + tx.debit - tx.credit;
       return {
         id: `tx-${agreementId}-${idx}-${tx.entityId}`,
@@ -411,10 +468,10 @@ export async function GET(request: NextRequest) {
     const totalDepositCollected = deposits.reduce((s, d) => s + toNum(d.depositAmount), 0);
     const totalMonthlyBilling = invoices.reduce((s, i) => s + toNum(i.totalAmount), 0);
     const totalPenalty = invoices.reduce((s, i) => s + toNum(i.overdueCharges), 0);
-    const chargesForAgreement = rawTxs.filter((t) => t.entityType === 'additionalCharge' && t.debit > 0);
+    const chargesForAgreement = uniqueRawTxs.filter((t) => t.entityType === 'additionalCharge' && t.debit > 0);
     const totalAdditionalCharges = chargesForAgreement.reduce((s, t) => s + t.debit, 0);
-    const totalCredits = rawTxs.reduce((s, t) => s + t.credit, 0);
-    const totalDebits = rawTxs.reduce((s, t) => s + t.debit, 0);
+    const totalCredits = uniqueRawTxs.reduce((s, t) => s + t.credit, 0);
+    const totalDebits = uniqueRawTxs.reduce((s, t) => s + t.debit, 0);
     const totalPaid = totalCredits;
     const finalBalance = totalDebits - totalCredits;
 

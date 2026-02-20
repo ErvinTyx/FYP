@@ -9,53 +9,45 @@ import prisma from '@/lib/prisma';
 
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 
-function serializeRefund(r: {
-  id: string;
-  refundNumber: string;
-  invoiceType: string;
-  sourceId: string;
-  originalInvoice: string;
-  customerName: string;
-  customerId: string;
-  amount: { toNumber?: () => number } | number;
-  refundMethod: string | null;
-  reason: string | null;
-  reasonDescription: string | null;
-  status: string;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-  approvedBy: string | null;
-  approvedAt: Date | null;
-  rejectedBy: string | null;
-  rejectedAt: Date | null;
-  rejectionReason: string | null;
-  attachments: Array<{ id: string; fileName: string; fileUrl: string; fileSize: number; uploadedAt: Date }>;
-}) {
-  const toNum = (v: { toNumber?: () => number } | number) =>
-    typeof v === 'number' ? v : (v as { toNumber?: () => number }).toNumber?.() ?? 0;
+const toNum = (v: unknown) =>
+  typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function serializeRefund(r: Record<string, any>) {
   return {
     ...r,
     amount: toNum(r.amount),
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-    approvedAt: r.approvedAt?.toISOString() ?? null,
-    rejectedAt: r.rejectedAt?.toISOString() ?? null,
-    attachments: r.attachments.map((a) => ({
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
+    updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt,
+    approvedAt: r.approvedAt instanceof Date ? r.approvedAt.toISOString() : (r.approvedAt ?? null),
+    rejectedAt: r.rejectedAt instanceof Date ? r.rejectedAt.toISOString() : (r.rejectedAt ?? null),
+    creditNoteId: r.creditNoteId ?? null,
+    creditNoteNumber: r.creditNoteNumber ?? null,
+    attachments: (r.attachments || []).map((a: { uploadedAt: Date | string; [key: string]: unknown }) => ({
       ...a,
-      uploadedAt: a.uploadedAt.toISOString(),
+      uploadedAt: a.uploadedAt instanceof Date ? a.uploadedAt.toISOString() : a.uploadedAt,
     })),
   };
 }
 
-async function getTotalCredited(sourceId: string): Promise<number> {
-  const list = await prisma.creditNote.findMany({
-    where: { sourceId, status: 'Approved' },
+async function getCreditNoteRemainingBalance(creditNoteId: string): Promise<number> {
+  const cn = await prisma.creditNote.findUnique({
+    where: { id: creditNoteId },
     select: { amount: true },
   });
-  const toNum = (v: unknown) =>
-    typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0);
-  return list.reduce((sum, cn) => sum + toNum(cn.amount), 0);
+  if (!cn) return 0;
+  const cnAmount = toNum(cn.amount);
+  const apps = await prisma.creditNoteApplication.findMany({
+    where: { creditNoteId },
+    select: { amountApplied: true },
+  });
+  const totalApplied = apps.reduce((s, a) => s + toNum(a.amountApplied), 0);
+  const refunds = await prisma.refund.findMany({
+    where: { creditNoteId, status: 'Approved' },
+    select: { amount: true },
+  });
+  const totalRefunded = refunds.reduce((s, r) => s + toNum(r.amount), 0);
+  return Math.max(0, cnAmount - totalApplied - totalRefunded);
 }
 
 interface RouteParams { params: Promise<{ id: string }> }
@@ -86,23 +78,48 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { searchParams } = new URL(request.url);
     const includeCreditNotes = searchParams.get('includeCreditNotes') === 'true';
-    let relatedCreditNotes: Array<{ id: string; creditNoteNumber: string; amount: number; date: string }> = [];
+    let relatedCreditNotes: Array<{ id: string; creditNoteNumber: string; amount: number; remainingBalance: number; date: string }> = [];
     if (includeCreditNotes) {
       const cns = await prisma.creditNote.findMany({
         where: { sourceId: refund.sourceId, status: 'Approved' },
         select: { id: true, creditNoteNumber: true, amount: true, date: true },
       });
-      const toNum = (v: unknown) =>
-        typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0);
-      relatedCreditNotes = cns.map((cn) => ({
-        id: cn.id,
-        creditNoteNumber: cn.creditNoteNumber,
-        amount: toNum(cn.amount),
-        date: cn.date.toISOString().split('T')[0],
-      }));
+      const cnIds = cns.map((cn) => cn.id);
+      const apps = cnIds.length > 0
+        ? await prisma.creditNoteApplication.findMany({
+            where: { creditNoteId: { in: cnIds } },
+            select: { creditNoteId: true, amountApplied: true },
+          })
+        : [];
+      const appliedMap = new Map<string, number>();
+      for (const a of apps) {
+        appliedMap.set(a.creditNoteId, (appliedMap.get(a.creditNoteId) || 0) + toNum(a.amountApplied));
+      }
+      const refs = cnIds.length > 0
+        ? await prisma.refund.findMany({
+            where: { creditNoteId: { in: cnIds }, status: 'Approved' },
+            select: { creditNoteId: true, amount: true },
+          })
+        : [];
+      const refundedMap = new Map<string, number>();
+      for (const r of refs) {
+        if (!r.creditNoteId) continue;
+        refundedMap.set(r.creditNoteId, (refundedMap.get(r.creditNoteId) || 0) + toNum(r.amount));
+      }
+      relatedCreditNotes = cns.map((cn) => {
+        const cnAmt = toNum(cn.amount);
+        const remaining = Math.max(0, cnAmt - (appliedMap.get(cn.id) || 0) - (refundedMap.get(cn.id) || 0));
+        return {
+          id: cn.id,
+          creditNoteNumber: cn.creditNoteNumber,
+          amount: cnAmt,
+          remainingBalance: remaining,
+          date: cn.date.toISOString().split('T')[0],
+        };
+      });
     }
 
-    const data = serializeRefund(refund as Parameters<typeof serializeRefund>[0]);
+    const data = serializeRefund(refund);
     return NextResponse.json({
       success: true,
       data: includeCreditNotes ? { ...data, relatedCreditNotes } : data,
@@ -153,12 +170,16 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         { status: 400 }
       );
     }
-    const totalCredited = await getTotalCredited(existing.sourceId);
-    if (numAmount > totalCredited) {
-      return NextResponse.json(
-        { success: false, message: `Refund amount cannot exceed total credited (RM${totalCredited.toFixed(2)})` },
-        { status: 400 }
-      );
+
+    // Validate against linked credit note's remaining balance
+    if (existing.creditNoteId) {
+      const remaining = await getCreditNoteRemainingBalance(existing.creditNoteId);
+      if (numAmount > remaining) {
+        return NextResponse.json(
+          { success: false, message: `Refund amount cannot exceed credit note remaining balance (RM${remaining.toFixed(2)})` },
+          { status: 400 }
+        );
+      }
     }
 
     const validStatus = status === 'Draft' || status === 'Pending Approval' ? status : existing.status;
@@ -192,7 +213,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       include: { attachments: true },
     });
 
-    const data = serializeRefund(updated as Parameters<typeof serializeRefund>[0]);
+    const data = serializeRefund(updated);
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('[Refunds] PUT [id] error:', error);

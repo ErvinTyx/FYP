@@ -18,6 +18,8 @@ export interface Refund {
   originalInvoice: string;
   customerName: string;
   customerId: string;
+  creditNoteId?: string;
+  creditNoteNumber?: string;
   amount: number;
   refundMethod?: string;
   reason?: string;
@@ -38,6 +40,7 @@ export interface RelatedCreditNote {
   id: string;
   creditNoteNumber: string;
   amount: number;
+  remainingBalance: number;
   date: string;
 }
 

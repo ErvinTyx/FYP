@@ -1026,6 +1026,8 @@ model Refund {
   originalInvoice         String
   customerName            String
   customerId              String
+  creditNoteId            String?   // linked credit note
+  creditNoteNumber        String?   // credit note number for display
   amount                  Decimal   @db.Decimal(15, 2)
   refundMethod            String?   // Bank Transfer, eWallet, Cash
   reason                  String?   @db.Text
@@ -1040,6 +1042,8 @@ model Refund {
   rejectedAt              DateTime?
   rejectionReason         String?   @db.Text
   attachments             RefundAttachment[]
+
+  @@index([creditNoteId])
 }
 
 model RefundAttachment {
