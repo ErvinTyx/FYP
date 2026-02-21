@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Download, Calendar as CalendarIcon, DollarSign, FileSpreadsheet, Loader2, Play } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, DollarSign, FileSpreadsheet, Loader2, Play } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import {
@@ -10,33 +10,32 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
-import { Label } from '../ui/label';
-import { Calendar } from '../ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { toast } from 'sonner';
-import { format, endOfDay } from 'date-fns';
+import { endOfDay } from 'date-fns';
 import type { ProjectFinancialReportResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateFinancialProfitabilityExcel, downloadExcel } from '@/lib/report-excel-generator';
+import type { ReportFilters } from './ReportGenerationEnhanced';
+import { ReportTablePagination } from './ReportTablePagination';
 
-interface ReportFilter {
-  reportType: string;
-  dateFrom?: Date;
-  dateTo?: Date;
-  searchQuery: string;
-}
-
-export function FinancialProfitabilityReport({ filters }: { filters: ReportFilter }) {
-  const [dateFrom, setDateFrom] = useState<Date>();
-  const [dateTo, setDateTo] = useState<Date>();
+export function FinancialProfitabilityReport({ filters }: { filters: ReportFilters }) {
   const [data, setData] = useState<ProjectFinancialReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const dateFrom = filters.dateFrom;
+  const dateTo = filters.dateTo;
+  const rowsPerPage = filters.rowsPerPage ?? 25;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [data, rowsPerPage]);
 
   const validateFilters = () => {
-    if (!dateFrom) { toast.error('Please select a From Date'); return false; }
-    if (!dateTo) { toast.error('Please select a To Date'); return false; }
+    if (!dateFrom) { toast.error('Please select a From Date or a month above'); return false; }
+    if (!dateTo) { toast.error('Please select a To Date or a month above'); return false; }
     if (dateFrom > dateTo) { toast.error('From Date cannot be after To Date'); return false; }
     const today = endOfDay(new Date());
     if (dateFrom > today || dateTo > today) { toast.error('Dates cannot be after today'); return false; }
@@ -88,6 +87,7 @@ export function FinancialProfitabilityReport({ filters }: { filters: ReportFilte
 
   const summary = data?.summary;
   const rows = data?.data ?? [];
+  const paginatedRows = rows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   if (error) {
     return (
@@ -125,41 +125,10 @@ export function FinancialProfitabilityReport({ filters }: { filters: ReportFilte
           <CardTitle className="text-sm">Report Filters</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label>From Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start">
-                    <CalendarIcon className="size-4 mr-2" />
-                    {dateFrom ? format(dateFrom, 'PP') : 'Select date'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} disabled={{ after: endOfDay(new Date()) }} />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="space-y-2">
-              <Label>To Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start">
-                    <CalendarIcon className="size-4 mr-2" />
-                    {dateTo ? format(dateTo, 'PP') : 'Select date'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={dateTo} onSelect={setDateTo} disabled={{ after: endOfDay(new Date()) }} />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="space-y-2 flex items-end">
-              <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f] w-full" disabled={loading}>
-                {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
-              </Button>
-            </div>
-          </div>
+          <p className="text-sm text-gray-600 mb-3">Select date range or month in the &quot;Report period & display&quot; section above, then generate.</p>
+          <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={loading}>
+            {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
+          </Button>
         </CardContent>
       </Card>
 
@@ -209,6 +178,12 @@ export function FinancialProfitabilityReport({ filters }: { filters: ReportFilte
               <CardTitle>Project Financial Details</CardTitle>
             </CardHeader>
             <CardContent>
+              <ReportTablePagination
+                totalRows={rows.length}
+                rowsPerPage={rowsPerPage}
+                currentPage={currentPage}
+                onPageChange={setCurrentPage}
+              />
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -230,7 +205,7 @@ export function FinancialProfitabilityReport({ filters }: { filters: ReportFilte
                       <TableCell colSpan={10} className="text-center text-gray-500 py-8">No data available</TableCell>
                     </TableRow>
                   ) : (
-                    rows.map((r) => (
+                    paginatedRows.map((r) => (
                       <TableRow key={r.project_id}>
                         <TableCell className="font-mono text-sm">{r.project_id.slice(0, 8)}</TableCell>
                         <TableCell>{r.customer_id}</TableCell>

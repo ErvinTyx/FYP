@@ -7,6 +7,10 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
     const location = searchParams.get('location');
+    const dateFromStr = searchParams.get('dateFrom');
+    const dateToStr = searchParams.get('dateTo');
+    const dateFrom = dateFromStr ? new Date(dateFromStr) : null;
+    const dateTo = dateToStr ? new Date(dateToStr) : null;
 
     // Build where clause
     const where: { category?: string; location?: string } = {};
@@ -20,14 +24,28 @@ export async function GET(request: NextRequest) {
     });
 
     // Get delivered items (currently rented out - delivered but may not yet be returned)
-    const activeDeliveryItems = await prisma.deliverySetItem.findMany({
+    const activeDeliveryItemsRaw = await prisma.deliverySetItem.findMany({
       where: {
         scaffoldingItemId: { not: null },
+        deliverySet: { status: 'Completed' },
+      },
+      include: {
         deliverySet: {
-          status: 'Completed',
+          select: {
+            completion: { select: { deliveredAt: true } },
+            schedule: { select: { scheduledDate: true } },
+            createdAt: true,
+          },
         },
       },
     });
+    const activeDeliveryItems = dateFrom && dateTo
+      ? activeDeliveryItemsRaw.filter((item) => {
+          const d = item.deliverySet.completion?.deliveredAt ?? item.deliverySet.schedule?.scheduledDate ?? item.deliverySet.createdAt;
+          const date = new Date(d);
+          return date >= dateFrom && date <= dateTo;
+        })
+      : activeDeliveryItemsRaw;
 
     // Get return request items to estimate idle days
     const returnItems = await prisma.returnRequestItem.findMany({
@@ -61,6 +79,7 @@ export async function GET(request: NextRequest) {
     for (const item of returnItems) {
       if (!item.scaffoldingItemId) continue;
       const returnDate = new Date(item.returnRequest.requestDate);
+      if (dateFrom && dateTo && (returnDate < dateFrom || returnDate > dateTo)) continue;
       const daysSinceReturn = Math.ceil((now.getTime() - returnDate.getTime()) / (1000 * 60 * 60 * 24));
       
       const existing = idleDaysMap.get(item.scaffoldingItemId) || { totalDays: 0, count: 0 };

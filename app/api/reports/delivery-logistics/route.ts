@@ -4,6 +4,12 @@ import type { DeliveryPerformanceRow, DeliveryPerformanceResponse } from '@/type
 
 export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const dateFromStr = searchParams.get('dateFrom');
+    const dateToStr = searchParams.get('dateTo');
+    const dateFrom = dateFromStr ? new Date(dateFromStr) : null;
+    const dateTo = dateToStr ? new Date(dateToStr) : null;
+
     const deliverySets = await prisma.deliverySet.findMany({
       include: {
         deliveryRequest: { select: { rfqId: true } },
@@ -21,6 +27,11 @@ export async function GET(request: NextRequest) {
     const data: DeliveryPerformanceRow[] = [];
 
     for (const ds of deliverySets) {
+      if (dateFrom && dateTo) {
+        const deliveryDate = ds.completion?.deliveredAt ?? ds.schedule?.scheduledDate ?? ds.createdAt;
+        const d = new Date(deliveryDate);
+        if (d < dateFrom || d > dateTo) continue;
+      }
       const deliveryDate = ds.completion?.deliveredAt ?? ds.schedule?.scheduledDate ?? ds.createdAt;
       const pickupDate = ds.returnRequests[0]?.schedule?.scheduledDate ?? ds.returnRequests[0]?.requestDate ?? deliveryDate;
       const deliveryDateObj = new Date(deliveryDate);

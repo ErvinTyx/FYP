@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Download, Search, Package, TrendingUp, AlertCircle, BarChart3, FileSpreadsheet, Loader2, Play
 } from 'lucide-react';
@@ -39,31 +39,45 @@ import {
 import type { InventoryUtilizationReportResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateInventoryUtilizationReportExcel, downloadExcel } from '@/lib/report-excel-generator';
-
-interface ReportFilter {
-  reportType: string;
-  searchQuery: string;
-  category?: string;
-}
+import type { ReportFilters } from './ReportGenerationEnhanced';
+import { ReportTablePagination } from './ReportTablePagination';
 
 const COLORS = ['#F15929', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
 
-export function InventoryUtilizationReport({ filters }: { filters: ReportFilter }) {
+export function InventoryUtilizationReport({ filters }: { filters: ReportFilters }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [utilizationFilter, setUtilizationFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'utilization' | 'idleDays' | 'rented'>('utilization');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const rowsPerPage = filters.rowsPerPage ?? 25;
 
   const [data, setData] = useState<InventoryUtilizationReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasGenerated, setHasGenerated] = useState(false);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [data, rowsPerPage]);
+
+  const validateFilters = () => {
+    if (!filters.dateFrom || !filters.dateTo) {
+      toast.error('Please select a date range or month above');
+      return false;
+    }
+    return true;
+  };
+
   const generateReport = async () => {
+    if (!validateFilters()) return;
     try {
       setLoading(true);
       setError(null);
       const params = new URLSearchParams();
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom.toISOString());
+      if (filters.dateTo) params.set('dateTo', filters.dateTo.toISOString());
       if (categoryFilter !== 'all') params.set('category', categoryFilter);
       const response = await fetch(`/api/reports/inventory-utilization?${params}`);
       if (!response.ok) throw new Error('Failed to fetch data');
@@ -100,6 +114,7 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
 
   const summary = data?.summary ?? { totalItems: 0, avgUtilization: 0, totalIdleDays: 0 };
   const categories = Array.from(new Set((data?.data ?? []).map(i => i.category)));
+  const paginatedData = filteredData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
   const byCategory = categories.map(cat => {
     const items = (data?.data ?? []).filter(i => i.category === cat);
     const total = items.reduce((s, i) => s + i.total_quantity, 0);
@@ -167,11 +182,12 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
           <CardTitle className="text-sm">Report Filters</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <p className="text-sm text-gray-600 mb-3">Select date range or month above.</p>
+          <div className="flex flex-wrap gap-4 items-end">
             <div className="space-y-2">
               <Label>Category</Label>
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger>
+                <SelectTrigger className="w-48">
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
@@ -182,11 +198,9 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2 flex items-end">
-              <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f] w-full" disabled={loading}>
-                {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
-              </Button>
-            </div>
+            <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={loading}>
+              {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -296,27 +310,33 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilter 
                   </Select>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item ID</TableHead>
-                    <TableHead>Item Name</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Total Qty</TableHead>
-                    <TableHead className="text-right">Rented</TableHead>
-                    <TableHead className="text-right">Utilization</TableHead>
-                    <TableHead className="text-right">Idle Days</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredData.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-gray-500 py-8">No data available</TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredData.map(item => (
+                </CardHeader>
+                <CardContent>
+                  <ReportTablePagination
+                    totalRows={filteredData.length}
+                    rowsPerPage={rowsPerPage}
+                    currentPage={currentPage}
+                    onPageChange={setCurrentPage}
+                  />
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Item ID</TableHead>
+                        <TableHead>Item Name</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right">Total Qty</TableHead>
+                        <TableHead className="text-right">Rented</TableHead>
+                        <TableHead className="text-right">Utilization</TableHead>
+                        <TableHead className="text-right">Idle Days</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredData.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center text-gray-500 py-8">No data available</TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedData.map(item => (
                       <TableRow key={item.item_id}>
                         <TableCell className="font-mono text-sm">{item.item_id.slice(0, 8)}</TableCell>
                         <TableCell>{item.item_name}</TableCell>

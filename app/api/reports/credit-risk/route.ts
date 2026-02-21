@@ -4,12 +4,28 @@ import type { CustomerCreditRiskRow, CustomerCreditRiskResponse } from '@/types/
 
 export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const dateFromStr = searchParams.get('dateFrom');
+    const dateToStr = searchParams.get('dateTo');
+    const dateFrom = dateFromStr ? new Date(dateFromStr) : null;
+    const dateTo = dateToStr ? new Date(dateToStr) : null;
+
+    const invoiceWhere: { status: { not: string }; dueDate?: { gte?: Date; lte?: Date } } = { status: { not: 'Paid' } };
+    if (dateFrom && dateTo) invoiceWhere.dueDate = { gte: dateFrom, lte: dateTo };
+    else if (dateFrom) invoiceWhere.dueDate = { gte: dateFrom };
+    else if (dateTo) invoiceWhere.dueDate = { lte: dateTo };
+
     const invoices = await prisma.monthlyRentalInvoice.findMany({
-      where: { status: { not: 'Paid' } },
+      where: invoiceWhere,
     });
 
+    const depositWhere: { status: { not: string }; dueDate?: { gte?: Date; lte?: Date } } = { status: { not: 'Paid' } };
+    if (dateFrom && dateTo) depositWhere.dueDate = { gte: dateFrom, lte: dateTo };
+    else if (dateFrom) depositWhere.dueDate = { gte: dateFrom };
+    else if (dateTo) depositWhere.dueDate = { lte: dateTo };
+
     const deposits = await prisma.deposit.findMany({
-      where: { status: { not: 'Paid' } },
+      where: depositWhere,
     });
 
     const customerMap = new Map<string, {

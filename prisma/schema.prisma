@@ -1083,7 +1083,7 @@ model RFQNotification {
 }
 
 // ============================================
-// REPORT TABLES
+// REPORT GENERATION TABLES
 // ============================================
 
 model ProjectFinancialReport {

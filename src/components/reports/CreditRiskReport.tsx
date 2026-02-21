@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, Shield, FileSpreadsheet, Loader2, Play } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -15,22 +15,39 @@ import { toast } from 'sonner';
 import type { CustomerCreditRiskResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateCreditRiskExcel, downloadExcel } from '@/lib/report-excel-generator';
+import type { ReportFilters } from './ReportGenerationEnhanced';
+import { ReportTablePagination } from './ReportTablePagination';
 
-interface ReportFilter {
-  reportType: string;
-}
-
-export function CreditRiskReport({ filters }: { filters: ReportFilter }) {
+export function CreditRiskReport({ filters }: { filters: ReportFilters }) {
   const [data, setData] = useState<CustomerCreditRiskResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const rowsPerPage = filters.rowsPerPage ?? 25;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [data, rowsPerPage]);
+
+  const validateFilters = () => {
+    if (!filters.dateFrom || !filters.dateTo) {
+      toast.error('Please select a date range or month above');
+      return false;
+    }
+    return true;
+  };
 
   const generateReport = async () => {
+    if (!validateFilters()) return;
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/reports/credit-risk');
+      const params = new URLSearchParams();
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom.toISOString());
+      if (filters.dateTo) params.set('dateTo', filters.dateTo.toISOString());
+      const response = await fetch(`/api/reports/credit-risk?${params}`);
       if (!response.ok) throw new Error('Failed to fetch data');
       const result = await response.json();
       setData(result);
@@ -72,6 +89,7 @@ export function CreditRiskReport({ filters }: { filters: ReportFilter }) {
 
   const summary = data?.summary;
   const rows = data?.data ?? [];
+  const paginatedRows = rows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   if (error) {
     return (
@@ -109,6 +127,7 @@ export function CreditRiskReport({ filters }: { filters: ReportFilter }) {
           <CardTitle className="text-sm">Report Filters</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
+          <p className="text-sm text-gray-600 mb-3">Select date range or month in the &quot;Report period & display&quot; section above, then generate.</p>
           <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={loading}>
             {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
           </Button>
@@ -153,6 +172,12 @@ export function CreditRiskReport({ filters }: { filters: ReportFilter }) {
               <CardTitle>Customer Credit Risk</CardTitle>
             </CardHeader>
             <CardContent>
+              <ReportTablePagination
+                totalRows={rows.length}
+                rowsPerPage={rowsPerPage}
+                currentPage={currentPage}
+                onPageChange={setCurrentPage}
+              />
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -170,7 +195,7 @@ export function CreditRiskReport({ filters }: { filters: ReportFilter }) {
                       <TableCell colSpan={6} className="text-center text-gray-500 py-8">No data available</TableCell>
                     </TableRow>
                   ) : (
-                    rows.map((r) => (
+                    paginatedRows.map((r) => (
                       <TableRow key={r.customer_id}>
                         <TableCell className="font-medium">{r.customer_id}</TableCell>
                         <TableCell className="text-right">RM {r.credit_limit.toLocaleString()}</TableCell>

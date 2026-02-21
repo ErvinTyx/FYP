@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, Search, Users, FileSpreadsheet, Loader2, Play } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -16,24 +16,40 @@ import { toast } from 'sonner';
 import type { CustomerRentalBehaviourResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateCustomerBehaviourExcel, downloadExcel } from '@/lib/report-excel-generator';
+import type { ReportFilters } from './ReportGenerationEnhanced';
+import { ReportTablePagination } from './ReportTablePagination';
 
-interface ReportFilter {
-  reportType: string;
-  searchQuery: string;
-}
-
-export function CustomerBehaviourReport({ filters }: { filters: ReportFilter }) {
+export function CustomerBehaviourReport({ filters }: { filters: ReportFilters }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [data, setData] = useState<CustomerRentalBehaviourResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const rowsPerPage = filters.rowsPerPage ?? 25;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [data, rowsPerPage]);
+
+  const validateFilters = () => {
+    if (!filters.dateFrom || !filters.dateTo) {
+      toast.error('Please select a date range or month above');
+      return false;
+    }
+    return true;
+  };
 
   const generateReport = async () => {
+    if (!validateFilters()) return;
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/reports/customer-behaviour');
+      const params = new URLSearchParams();
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom.toISOString());
+      if (filters.dateTo) params.set('dateTo', filters.dateTo.toISOString());
+      const response = await fetch(`/api/reports/customer-behaviour?${params}`);
       if (!response.ok) throw new Error('Failed to fetch data');
       const result = await response.json();
       setData(result);
@@ -65,6 +81,7 @@ export function CustomerBehaviourReport({ filters }: { filters: ReportFilter }) 
   const filteredRows = (data?.data ?? []).filter(
     (r) => !searchQuery || r.customer_name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const paginatedRows = filteredRows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
   if (error) {
     return (
@@ -102,6 +119,7 @@ export function CustomerBehaviourReport({ filters }: { filters: ReportFilter }) 
           <CardTitle className="text-sm">Report Filters</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
+          <p className="text-sm text-gray-600 mb-3">Select date range or month above, then generate.</p>
           <div className="flex gap-4 items-end">
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
@@ -130,6 +148,12 @@ export function CustomerBehaviourReport({ filters }: { filters: ReportFilter }) 
             <CardTitle>Customer Rental Behaviour</CardTitle>
           </CardHeader>
           <CardContent>
+            <ReportTablePagination
+              totalRows={filteredRows.length}
+              rowsPerPage={rowsPerPage}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+            />
             <Table>
               <TableHeader>
                 <TableRow>
@@ -148,7 +172,7 @@ export function CustomerBehaviourReport({ filters }: { filters: ReportFilter }) 
                     <TableCell colSpan={7} className="text-center text-gray-500 py-8">No data available</TableCell>
                   </TableRow>
                 ) : (
-                  filteredRows.map((r) => (
+                  paginatedRows.map((r) => (
                     <TableRow key={r.customer_id}>
                       <TableCell className="font-mono text-sm">{r.customer_id.slice(0, 8)}</TableCell>
                       <TableCell className="font-medium">{r.customer_name}</TableCell>

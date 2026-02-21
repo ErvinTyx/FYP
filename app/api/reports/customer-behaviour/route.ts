@@ -4,6 +4,12 @@ import type { CustomerRentalBehaviourRow, CustomerRentalBehaviourResponse } from
 
 export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const dateFromStr = searchParams.get('dateFrom');
+    const dateToStr = searchParams.get('dateTo');
+    const dateFrom = dateFromStr ? new Date(dateFromStr) : null;
+    const dateTo = dateToStr ? new Date(dateToStr) : null;
+
     const customers = await prisma.user.findMany({
       where: { customer: { isNot: null } },
       include: { customer: true },
@@ -13,7 +19,15 @@ export async function GET(request: NextRequest) {
       where: { status: { in: ['Approved', 'In Progress', 'Completed'] } },
     });
 
-    const invoices = await prisma.monthlyRentalInvoice.findMany();
+    const invoiceWhere: Record<string, unknown> = {};
+    if (dateFrom || dateTo) {
+      invoiceWhere.billingEndDate = {};
+      if (dateFrom) (invoiceWhere.billingEndDate as { gte?: Date }).gte = dateFrom;
+      if (dateTo) (invoiceWhere.billingEndDate as { lte?: Date }).lte = dateTo;
+    }
+    const invoices = await prisma.monthlyRentalInvoice.findMany({
+      where: Object.keys(invoiceWhere).length ? invoiceWhere : undefined,
+    });
     const agreements = await prisma.rentalAgreement.findMany({
       where: { rfqId: { not: null } },
       include: { rfq: true },

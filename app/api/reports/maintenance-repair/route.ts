@@ -4,11 +4,17 @@ import type { MaintenanceRecordRow, MaintenanceRecordResponse } from '@/types/re
 
 export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const dateFromStr = searchParams.get('dateFrom');
+    const dateToStr = searchParams.get('dateTo');
+    const dateFrom = dateFromStr ? new Date(dateFromStr) : null;
+    const dateTo = dateToStr ? new Date(dateToStr) : null;
+
     const repairItems = await prisma.repairItem.findMany({
       include: { openRepairSlip: true },
     });
 
-    const data: MaintenanceRecordRow[] = repairItems.map((ri) => {
+    let rows: MaintenanceRecordRow[] = repairItems.map((ri) => {
       const startDate = ri.openRepairSlip?.startDate ? new Date(ri.openRepairSlip.startDate) : null;
       const completedDate = ri.completedDate ? new Date(ri.completedDate) : null;
       const downtime_days = startDate && completedDate
@@ -30,13 +36,20 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const totalRepairs = data.length;
-    const totalCost = data.reduce((sum, r) => sum + r.repair_cost, 0);
+    if (dateFrom && dateTo) {
+      rows = rows.filter((r) => {
+        const d = new Date(r.repair_date);
+        return d >= dateFrom && d <= dateTo;
+      });
+    }
+
+    const totalRepairs = rows.length;
+    const totalCost = rows.reduce((sum, r) => sum + r.repair_cost, 0);
 
     await prisma.$transaction([
       prisma.maintenanceRecord.deleteMany(),
       prisma.maintenanceRecord.createMany({
-        data: data.map(r => ({
+        data: rows.map(r => ({
           repair_id: r.repair_id,
           item_id: r.item_id,
           damage_type: r.damage_type,
@@ -49,7 +62,7 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    const stored = await prisma.maintenanceRecord.findMany();
+    const stored = await prisma.maintenanceRecord.findMany({ orderBy: { repair_date: 'desc' } });
     const responseData: MaintenanceRecordRow[] = stored.map(r => ({
       repair_id: r.repair_id,
       item_id: r.item_id,

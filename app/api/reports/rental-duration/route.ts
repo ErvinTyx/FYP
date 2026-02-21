@@ -4,6 +4,12 @@ import type { RentalDurationRow, RentalDurationResponse } from '@/types/report';
 
 export async function GET(request: NextRequest) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const dateFromStr = searchParams.get('dateFrom');
+    const dateToStr = searchParams.get('dateTo');
+    const dateFrom = dateFromStr ? new Date(dateFromStr) : null;
+    const dateTo = dateToStr ? new Date(dateToStr) : null;
+
     const deliverySetItems = await prisma.deliverySetItem.findMany({
       where: {
         scaffoldingItemId: { not: null },
@@ -33,6 +39,11 @@ export async function GET(request: NextRequest) {
       const rental_end = returnReq?.schedule?.scheduledDate ?? returnReq?.requestDate ?? new Date();
       const startDate = new Date(rental_start);
       const endDate = new Date(rental_end);
+
+      if (dateFrom && dateTo) {
+        if (startDate > dateTo || endDate < dateFrom) continue;
+      }
+
       const rental_days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
       const extension_days = 0;
       const early_return = rental_days < 30 ? 'Yes' : 'No';
