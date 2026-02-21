@@ -7,6 +7,13 @@ import type {
   FinancialMonthlyData,
   CustomerPaymentData,
   FinancialSummary,
+  ProjectFinancialReportRow,
+  CustomerRentalBehaviourRow,
+  InventoryUtilizationRow,
+  MaintenanceRecordRow,
+  DeliveryPerformanceRow,
+  RentalDurationRow,
+  CustomerCreditRiskRow,
 } from '@/types/report';
 import { formatRfqDate } from './rfqDate';
 
@@ -343,6 +350,119 @@ export class ReportPDFGenerator {
     this.addTable(customerHeaders, customerRows, [60, 35, 35, 35, 30, 25, 25]);
     this.addFooter();
 
+    return this.doc.output('blob');
+  }
+
+  generateFinancialProfitabilityReport(data: ProjectFinancialReportRow[], options: PDFGeneratorOptions): Blob {
+    this.addHeader(options);
+    const totalRevenue = data.reduce((s, r) => s + r.total_rental_revenue, 0);
+    const totalProfit = data.reduce((s, r) => s + r.net_profit, 0);
+    this.addSummaryCards([
+      { label: 'Total Revenue', value: `RM ${totalRevenue.toLocaleString()}` },
+      { label: 'Total Profit', value: `RM ${totalProfit.toLocaleString()}` },
+    ]);
+    this.doc.setFontSize(12);
+    this.doc.setTextColor(TEXT_COLOR);
+    this.doc.text('Project Financial Details', this.margin, this.currentY);
+    this.currentY += 8;
+    const headers = ['Project', 'Customer', 'Revenue', 'Costs', 'Net Profit', 'Margin'];
+    const rows = data.slice(0, 20).map(r => [r.project_id.slice(0, 8), r.customer_id.slice(0, 15), r.total_rental_revenue.toLocaleString(), (r.total_repair_cost + r.total_damage_cost + r.transportation_cost).toLocaleString(), r.net_profit.toLocaleString(), `${r.profit_margin}%`]);
+    this.addTable(headers, rows, [30, 45, 35, 35, 35, 25]);
+    this.addFooter();
+    return this.doc.output('blob');
+  }
+
+  generateCustomerBehaviourReport(data: CustomerRentalBehaviourRow[], options: PDFGeneratorOptions): Blob {
+    this.addHeader(options);
+    this.doc.setFontSize(12);
+    this.doc.setTextColor(TEXT_COLOR);
+    this.doc.text('Customer Rental Behaviour', this.margin, this.currentY);
+    this.currentY += 8;
+    const headers = ['Customer', 'Industry', 'Projects', 'Value (RM)', 'Frequency', 'Last Rental'];
+    const rows = data.slice(0, 25).map(r => [r.customer_name.slice(0, 20), r.industry_type, r.total_projects, r.total_rental_value.toLocaleString(), r.rental_frequency, r.last_rental_date ?? '-']);
+    this.addTable(headers, rows, [50, 35, 25, 40, 30, 25]);
+    this.addFooter();
+    return this.doc.output('blob');
+  }
+
+  generateInventoryUtilizationReportNew(data: InventoryUtilizationRow[], options: PDFGeneratorOptions): Blob {
+    this.addHeader(options);
+    const totalItems = data.reduce((s, r) => s + r.total_quantity, 0);
+    const avgUtil = data.length > 0 ? Math.round(data.reduce((s, r) => s + r.utilization_rate, 0) / data.length) : 0;
+    this.addSummaryCards([
+      { label: 'Total Items', value: totalItems.toLocaleString() },
+      { label: 'Avg Utilization', value: `${avgUtil}%` },
+    ]);
+    this.doc.setFontSize(12);
+    this.doc.setTextColor(TEXT_COLOR);
+    this.doc.text('Inventory Utilization', this.margin, this.currentY);
+    this.currentY += 8;
+    const headers = ['Item', 'Category', 'Total', 'Rented', 'Util %', 'Idle Days'];
+    const rows = data.slice(0, 25).map(r => [r.item_name.slice(0, 25), r.category, r.total_quantity, r.rented_quantity, `${r.utilization_rate}%`, r.idle_days]);
+    this.addTable(headers, rows, [60, 35, 25, 25, 25, 25]);
+    this.addFooter();
+    return this.doc.output('blob');
+  }
+
+  generateMaintenanceRepairReport(data: MaintenanceRecordRow[], options: PDFGeneratorOptions): Blob {
+    this.addHeader(options);
+    const totalCost = data.reduce((s, r) => s + r.repair_cost, 0);
+    this.addSummaryCards([{ label: 'Total Repairs', value: String(data.length) }, { label: 'Total Cost', value: `RM ${totalCost.toLocaleString()}` }]);
+    this.doc.setFontSize(12);
+    this.doc.setTextColor(TEXT_COLOR);
+    this.doc.text('Maintenance Records', this.margin, this.currentY);
+    this.currentY += 8;
+    const headers = ['Repair ID', 'Item', 'Type', 'Date', 'Cost', 'Status'];
+    const rows = data.slice(0, 25).map(r => [r.repair_id, r.item_id.slice(0, 8), r.damage_type.slice(0, 15), r.repair_date, r.repair_cost.toLocaleString(), r.repair_status]);
+    this.addTable(headers, rows, [30, 30, 40, 25, 35, 25]);
+    this.addFooter();
+    return this.doc.output('blob');
+  }
+
+  generateDeliveryLogisticsReport(data: DeliveryPerformanceRow[], options: PDFGeneratorOptions): Blob {
+    this.addHeader(options);
+    const totalCost = data.reduce((s, r) => s + r.transportation_cost, 0);
+    const avgDelay = data.length > 0 ? Math.round(data.reduce((s, r) => s + r.delay_days, 0) / data.length) : 0;
+    this.addSummaryCards([{ label: 'Deliveries', value: String(data.length) }, { label: 'Avg Delay (days)', value: String(avgDelay) }, { label: 'Total Transport Cost', value: `RM ${totalCost.toLocaleString()}` }]);
+    this.doc.setFontSize(12);
+    this.doc.setTextColor(TEXT_COLOR);
+    this.doc.text('Delivery Performance', this.margin, this.currentY);
+    this.currentY += 8;
+    const headers = ['Delivery', 'Driver', 'Del Date', 'Pickup', 'Delay', 'Cost', 'Status'];
+    const rows = data.slice(0, 25).map(r => [r.delivery_id.slice(0, 8), r.driver_id.slice(0, 15), r.delivery_date, r.pickup_date, r.delay_days, r.transportation_cost.toLocaleString(), r.delivery_status]);
+    this.addTable(headers, rows, [30, 40, 25, 25, 20, 35, 30]);
+    this.addFooter();
+    return this.doc.output('blob');
+  }
+
+  generateRentalDurationReport(data: RentalDurationRow[], options: PDFGeneratorOptions): Blob {
+    this.addHeader(options);
+    const avgDays = data.length > 0 ? Math.round(data.reduce((s, r) => s + r.rental_days, 0) / data.length) : 0;
+    this.addSummaryCards([{ label: 'Total Rentals', value: String(data.length) }, { label: 'Avg Duration (days)', value: String(avgDays) }]);
+    this.doc.setFontSize(12);
+    this.doc.setTextColor(TEXT_COLOR);
+    this.doc.text('Rental Duration Details', this.margin, this.currentY);
+    this.currentY += 8;
+    const headers = ['Rental', 'Item', 'Start', 'End', 'Days', 'Early Return'];
+    const rows = data.slice(0, 25).map(r => [r.rental_id.slice(0, 12), r.item_id.slice(0, 8), r.rental_start, r.rental_end, r.rental_days, r.early_return]);
+    this.addTable(headers, rows, [35, 30, 25, 25, 20, 25]);
+    this.addFooter();
+    return this.doc.output('blob');
+  }
+
+  generateCreditRiskReport(data: CustomerCreditRiskRow[], options: PDFGeneratorOptions): Blob {
+    this.addHeader(options);
+    const totalOut = data.reduce((s, r) => s + r.outstanding_balance, 0);
+    const highCount = data.filter(r => r.risk_level === 'High').length;
+    this.addSummaryCards([{ label: 'High Risk', value: String(highCount) }, { label: 'Total Outstanding', value: `RM ${totalOut.toLocaleString()}` }]);
+    this.doc.setFontSize(12);
+    this.doc.setTextColor(TEXT_COLOR);
+    this.doc.text('Customer Credit Risk', this.margin, this.currentY);
+    this.currentY += 8;
+    const headers = ['Customer', 'Outstanding', 'Overdue', 'Aging Days', 'Risk'];
+    const rows = data.slice(0, 25).map(r => [r.customer_id.slice(0, 25), r.outstanding_balance.toLocaleString(), r.overdue_amount.toLocaleString(), r.aging_days, r.risk_level]);
+    this.addTable(headers, rows, [55, 40, 40, 30, 25]);
+    this.addFooter();
     return this.doc.output('blob');
   }
 }

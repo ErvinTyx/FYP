@@ -9,6 +9,13 @@ import type {
   FinancialMonthlyData,
   CustomerPaymentData,
   FinancialSummary,
+  ProjectFinancialReportRow,
+  CustomerRentalBehaviourRow,
+  InventoryUtilizationRow,
+  MaintenanceRecordRow,
+  DeliveryPerformanceRow,
+  RentalDurationRow,
+  CustomerCreditRiskRow,
 } from '@/types/report';
 import { formatRfqDate } from './rfqDate';
 
@@ -332,6 +339,101 @@ export function generateFinancialExcel(
   }
 
   // Generate blob
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// Financial & Profitability Report Excel
+export function generateFinancialProfitabilityExcel(
+  data: ProjectFinancialReportRow[],
+  options: ExcelGeneratorOptions
+): Blob {
+  const wb = XLSX.utils.book_new();
+  const summaryData = [
+    ['Power Metal & Steel'],
+    [options.title],
+    [`Generated: ${formatRfqDate(new Date())}`],
+    options.dateRange?.from && options.dateRange?.to ? [`Period: ${formatRfqDate(options.dateRange.from)} - ${formatRfqDate(options.dateRange.to)}`] : [''],
+    [''],
+    ['PROJECT FINANCIAL REPORT'],
+  ];
+  const headers = ['Project ID', 'Customer', 'Start', 'End', 'Revenue', 'Repair', 'Damage', 'Transport', 'Net Profit', 'Margin %'];
+  const rows = data.map(r => [r.project_id, r.customer_id, r.project_start_date, r.project_end_date, r.total_rental_revenue, r.total_repair_cost, r.total_damage_cost, r.transportation_cost, r.net_profit, r.profit_margin]);
+  const sheet = XLSX.utils.aoa_to_sheet([...summaryData, createHeaderRow(headers), ...rows]);
+  setColumnWidths(sheet, [20, 30, 12, 12, 15, 15, 15, 15, 15, 12]);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Financial Profitability');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// Customer Behaviour Report Excel
+export function generateCustomerBehaviourExcel(data: CustomerRentalBehaviourRow[], options: ExcelGeneratorOptions): Blob {
+  const wb = XLSX.utils.book_new();
+  const headers = ['Customer ID', 'Name', 'Industry', 'Projects', 'Total Value', 'Frequency', 'Last Rental'];
+  const rows = data.map(r => [r.customer_id, r.customer_name, r.industry_type, r.total_projects, r.total_rental_value, r.rental_frequency, r.last_rental_date ?? '']);
+  const sheet = XLSX.utils.aoa_to_sheet([[options.title], ['Generated: ' + formatRfqDate(new Date())], [], createHeaderRow(headers), ...rows]);
+  setColumnWidths(sheet, [20, 35, 15, 12, 18, 15, 15]);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Customer Behaviour');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// Inventory Utilization (new schema) Excel
+export function generateInventoryUtilizationReportExcel(data: InventoryUtilizationRow[], options: ExcelGeneratorOptions): Blob {
+  const wb = XLSX.utils.book_new();
+  const headers = ['Item ID', 'Item Name', 'Category', 'Total Qty', 'Rented', 'Utilization %', 'Idle Days'];
+  const rows = data.map(r => [r.item_id, r.item_name, r.category, r.total_quantity, r.rented_quantity, r.utilization_rate, r.idle_days]);
+  const sheet = XLSX.utils.aoa_to_sheet([[options.title], ['Generated: ' + formatRfqDate(new Date())], [], createHeaderRow(headers), ...rows]);
+  setColumnWidths(sheet, [25, 40, 20, 12, 12, 15, 12]);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Inventory Utilization');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// Maintenance Repair Report Excel
+export function generateMaintenanceRepairExcel(data: MaintenanceRecordRow[], options: ExcelGeneratorOptions): Blob {
+  const wb = XLSX.utils.book_new();
+  const headers = ['Repair ID', 'Item ID', 'Damage Type', 'Date', 'Cost', 'Status', 'Downtime Days', 'Technician'];
+  const rows = data.map(r => [r.repair_id, r.item_id, r.damage_type, r.repair_date, r.repair_cost, r.repair_status, r.downtime_days, r.technician ?? '']);
+  const sheet = XLSX.utils.aoa_to_sheet([[options.title], ['Generated: ' + formatRfqDate(new Date())], [], createHeaderRow(headers), ...rows]);
+  setColumnWidths(sheet, [20, 25, 25, 12, 15, 15, 15, 25]);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Maintenance Repair');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// Delivery Logistics Report Excel
+export function generateDeliveryLogisticsExcel(data: DeliveryPerformanceRow[], options: ExcelGeneratorOptions): Blob {
+  const wb = XLSX.utils.book_new();
+  const headers = ['Delivery ID', 'Project', 'Driver', 'Delivery Date', 'Pickup Date', 'Delay Days', 'Transport Cost', 'Status'];
+  const rows = data.map(r => [r.delivery_id, r.project_id, r.driver_id, r.delivery_date, r.pickup_date, r.delay_days, r.transportation_cost, r.delivery_status]);
+  const sheet = XLSX.utils.aoa_to_sheet([[options.title], ['Generated: ' + formatRfqDate(new Date())], [], createHeaderRow(headers), ...rows]);
+  setColumnWidths(sheet, [25, 25, 25, 15, 15, 12, 18, 20]);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Delivery Logistics');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// Rental Duration Report Excel
+export function generateRentalDurationExcel(data: RentalDurationRow[], options: ExcelGeneratorOptions): Blob {
+  const wb = XLSX.utils.book_new();
+  const headers = ['Rental ID', 'Item ID', 'Project', 'Start', 'End', 'Days', 'Extensions', 'Early Return'];
+  const rows = data.map(r => [r.rental_id, r.item_id, r.project_id, r.rental_start, r.rental_end, r.rental_days, r.extension_days, r.early_return]);
+  const sheet = XLSX.utils.aoa_to_sheet([[options.title], ['Generated: ' + formatRfqDate(new Date())], [], createHeaderRow(headers), ...rows]);
+  setColumnWidths(sheet, [35, 25, 25, 12, 12, 10, 12, 15]);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Rental Duration');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// Credit Risk Report Excel
+export function generateCreditRiskExcel(data: CustomerCreditRiskRow[], options: ExcelGeneratorOptions): Blob {
+  const wb = XLSX.utils.book_new();
+  const headers = ['Customer', 'Credit Limit', 'Outstanding', 'Overdue', 'Aging Days', 'Risk Level'];
+  const rows = data.map(r => [r.customer_id, r.credit_limit, r.outstanding_balance, r.overdue_amount, r.aging_days, r.risk_level]);
+  const sheet = XLSX.utils.aoa_to_sheet([[options.title], ['Generated: ' + formatRfqDate(new Date())], [], createHeaderRow(headers), ...rows]);
+  setColumnWidths(sheet, [35, 18, 18, 18, 15, 15]);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Credit Risk');
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }

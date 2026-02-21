@@ -1072,12 +1072,117 @@ model RFQNotification {
   id                      String    @id @default(cuid())
   rfqId                   String
   rfqNumber               String
-  
+
   type                    String    // 'created', 'updated', 'item_added', 'item_removed', 'item_modified', 'status_changed', 'assigned'
   message                 String
   changes                 String?   @db.LongText  // JSON array of changes
-  
+
   createdBy               String
   createdAt               DateTime  @default(now())
   read                    Boolean   @default(false)
+}
+
+// ============================================
+// REPORT TABLES
+// ============================================
+
+model ProjectFinancialReport {
+  id                    String   @id @default(cuid())
+  project_id            String
+  customer_id           String
+  project_start_date    DateTime
+  project_end_date      DateTime
+  total_rental_revenue  Decimal  @db.Decimal(15, 2)
+  total_repair_cost     Decimal  @db.Decimal(15, 2)
+  total_damage_cost     Decimal  @db.Decimal(15, 2)
+  transportation_cost   Decimal  @db.Decimal(15, 2)
+  net_profit            Decimal  @db.Decimal(15, 2)
+  profit_margin         Decimal  @db.Decimal(5, 2)
+
+  @@index([project_id])
+  @@index([customer_id])
+}
+
+model CustomerRentalBehaviour {
+  id                  String    @id @default(cuid())
+  customer_id         String
+  customer_name       String
+  industry_type       String
+  total_projects      Int
+  total_rental_value  Decimal   @db.Decimal(15, 2)
+  rental_frequency    String
+  last_rental_date    DateTime?
+
+  @@index([customer_id])
+}
+
+model InventoryUtilizationReport {
+  id                String  @id @default(cuid())
+  item_id           String
+  item_name         String
+  category          String
+  total_quantity    Int
+  rented_quantity   Int
+  utilization_rate  Decimal @db.Decimal(5, 2)
+  idle_days         Int
+
+  @@index([item_id])
+}
+
+model MaintenanceRecord {
+  id            String    @id @default(cuid())
+  repair_id     String
+  item_id       String
+  damage_type   String
+  repair_date   DateTime
+  repair_cost   Decimal   @db.Decimal(15, 2)
+  repair_status String
+  downtime_days Int
+  technician    String?
+
+  @@index([repair_id])
+  @@index([item_id])
+}
+
+model DeliveryPerformance {
+  id                  String   @id @default(cuid())
+  delivery_id         String
+  project_id          String
+  driver_id           String
+  delivery_date       DateTime
+  pickup_date         DateTime
+  delay_days          Int
+  transportation_cost Decimal  @db.Decimal(15, 2)
+  delivery_status     String
+
+  @@index([delivery_id])
+  @@index([project_id])
+}
+
+model RentalDuration {
+  id             String   @id @default(cuid())
+  rental_id      String
+  item_id        String
+  project_id     String
+  rental_start   DateTime
+  rental_end     DateTime
+  rental_days    Int
+  extension_days Int      @default(0)
+  early_return   String   // "Yes" or "No"
+
+  @@index([rental_id])
+  @@index([item_id])
+  @@index([project_id])
+}
+
+model CustomerCreditRisk {
+  id                  String   @id @default(cuid())
+  customer_id         String
+  credit_limit        Decimal  @db.Decimal(15, 2)
+  outstanding_balance Decimal  @db.Decimal(15, 2)
+  overdue_amount      Decimal  @db.Decimal(15, 2)
+  aging_days          Int
+  risk_level          String   // "Low", "Medium", "High"
+
+  @@index([customer_id])
 }

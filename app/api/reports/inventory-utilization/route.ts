@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import type {
-  InventoryUtilizationData,
-  InventoryUtilizationResponse,
-  UtilizationByCategory,
-  UtilizationByLocation,
-} from '@/types/report';
+import type { InventoryUtilizationRow, InventoryUtilizationReportResponse } from '@/types/report';
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,12 +19,12 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' },
     });
 
-    // Get active deliveries to calculate what's currently rented out
+    // Get delivered items (currently rented out - delivered but may not yet be returned)
     const activeDeliveryItems = await prisma.deliverySetItem.findMany({
       where: {
         scaffoldingItemId: { not: null },
         deliverySet: {
-          status: { notIn: ['Completed', 'Cancelled'] },
+          status: 'Completed',
         },
       },
     });
@@ -74,111 +69,63 @@ export async function GET(request: NextRequest) {
       idleDaysMap.set(item.scaffoldingItemId, existing);
     }
 
-    // Determine condition based on status and available quantity
-    function determineCondition(item: typeof scaffoldingItems[0]): 'Excellent' | 'Good' | 'Fair' | 'Needs Maintenance' {
-      if (item.itemStatus === 'Under Maintenance' || item.status === 'Unavailable') {
-        return 'Needs Maintenance';
-      }
-      if (item.available === 0) {
-        return 'Fair';
-      }
-      if (item.status === 'Available' && item.itemStatus === 'Available') {
-        return item.available > 50 ? 'Excellent' : 'Good';
-      }
-      return 'Good';
-    }
-
-    // Build response data
-    const data: InventoryUtilizationData[] = scaffoldingItems.map((item) => {
-      const inUse = rentedMap.get(item.id) || 0;
-      const idle = item.available;
-      const totalQuantity = inUse + idle;
-      const utilizationRate = totalQuantity > 0 ? Math.round((inUse / totalQuantity) * 100) : 0;
+    // Build response data - new Inventory_Utilization schema
+    const data: InventoryUtilizationRow[] = scaffoldingItems.map((item) => {
+      const rentedQuantity = rentedMap.get(item.id) || 0;
+      const totalQuantity = rentedQuantity + item.available;
+      const utilizationRate = totalQuantity > 0 ? Math.round((rentedQuantity / totalQuantity) * 100) : 0;
 
       const idleData = idleDaysMap.get(item.id);
-      const avgIdleDays = idleData && idleData.count > 0
+      const idleDays = idleData && idleData.count > 0
         ? Math.round(idleData.totalDays / idleData.count)
-        : 0; // No return history - show 0 idle days
+        : 0;
 
       return {
-        itemId: item.id,
-        itemCode: item.itemCode,
-        itemName: item.name,
+        item_id: item.id,
+        item_name: item.name,
         category: item.category,
-        totalQuantity: totalQuantity || item.available,
-        inUse,
-        idle,
-        utilizationRate,
-        avgIdleDays,
-        location: item.location || 'Warehouse A',
-        condition: determineCondition(item),
-        price: Number(item.price),
+        total_quantity: totalQuantity || item.available,
+        rented_quantity: rentedQuantity,
+        utilization_rate: utilizationRate,
+        idle_days: idleDays,
       };
     });
 
-    // Calculate summary
-    const summary = {
-      totalItems: data.reduce((sum, item) => sum + item.totalQuantity, 0),
-      totalInUse: data.reduce((sum, item) => sum + item.inUse, 0),
-      totalIdle: data.reduce((sum, item) => sum + item.idle, 0),
-      avgUtilization: data.length > 0
-        ? Math.round(data.reduce((sum, item) => sum + item.utilizationRate, 0) / data.length)
-        : 0,
-      avgIdleDays: data.length > 0
-        ? Math.round(data.reduce((sum, item) => sum + item.avgIdleDays, 0) / data.length)
-        : 0,
-      totalValue: data.reduce((sum, item) => sum + (item.totalQuantity * item.price), 0),
-      idleValue: data.reduce((sum, item) => sum + (item.idle * item.price), 0),
-    };
+    const totalItems = data.reduce((sum, item) => sum + item.total_quantity, 0);
+    const avgUtilization = data.length > 0
+      ? Math.round(data.reduce((sum, item) => sum + item.utilization_rate, 0) / data.length)
+      : 0;
+    const totalIdleDays = data.reduce((sum, item) => sum + item.idle_days, 0);
 
-    // Calculate by category
-    const categoryMap = new Map<string, { total: number; inUse: number; idle: number }>();
-    for (const item of data) {
-      const existing = categoryMap.get(item.category) || { total: 0, inUse: 0, idle: 0 };
-      existing.total += item.totalQuantity;
-      existing.inUse += item.inUse;
-      existing.idle += item.idle;
-      categoryMap.set(item.category, existing);
-    }
-    const byCategory: UtilizationByCategory[] = Array.from(categoryMap.entries()).map(
-      ([category, stats]) => ({
-        category,
-        total: stats.total,
-        inUse: stats.inUse,
-        idle: stats.idle,
-        utilizationRate: stats.total > 0 ? Math.round((stats.inUse / stats.total) * 100) : 0,
-      })
-    );
+    await prisma.$transaction([
+      prisma.inventoryUtilizationReport.deleteMany(),
+      prisma.inventoryUtilizationReport.createMany({
+        data: data.map(r => ({
+          item_id: r.item_id,
+          item_name: r.item_name,
+          category: r.category,
+          total_quantity: r.total_quantity,
+          rented_quantity: r.rented_quantity,
+          utilization_rate: r.utilization_rate,
+          idle_days: r.idle_days,
+        })),
+      }),
+    ]);
 
-    // Calculate by location
-    const locationMap = new Map<string, { total: number; inUse: number; idle: number }>();
-    for (const item of data) {
-      const existing = locationMap.get(item.location) || { total: 0, inUse: 0, idle: 0 };
-      existing.total += item.totalQuantity;
-      existing.inUse += item.inUse;
-      existing.idle += item.idle;
-      locationMap.set(item.location, existing);
-    }
-    const byLocation: UtilizationByLocation[] = Array.from(locationMap.entries()).map(
-      ([location, stats]) => ({
-        location,
-        total: stats.total,
-        inUse: stats.inUse,
-        idle: stats.idle,
-      })
-    );
+    const stored = await prisma.inventoryUtilizationReport.findMany();
+    const responseData: InventoryUtilizationRow[] = stored.map(r => ({
+      item_id: r.item_id,
+      item_name: r.item_name,
+      category: r.category,
+      total_quantity: r.total_quantity,
+      rented_quantity: r.rented_quantity,
+      utilization_rate: Number(r.utilization_rate),
+      idle_days: r.idle_days,
+    }));
 
-    // Get unique categories and locations
-    const categories = Array.from(new Set(scaffoldingItems.map(item => item.category)));
-    const locations = Array.from(new Set(scaffoldingItems.map(item => item.location || 'Warehouse A')));
-
-    const response: InventoryUtilizationResponse = {
-      data,
-      summary,
-      byCategory,
-      byLocation,
-      categories,
-      locations,
+    const response: InventoryUtilizationReportResponse = {
+      data: responseData,
+      summary: { totalItems, avgUtilization, totalIdleDays },
     };
 
     return NextResponse.json(response);

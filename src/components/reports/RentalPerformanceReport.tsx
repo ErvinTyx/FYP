@@ -26,7 +26,7 @@ import { Label } from '../ui/label';
 import { Calendar } from '../ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, endOfDay } from 'date-fns';
 import {
   BarChart,
   Bar,
@@ -83,6 +83,15 @@ export function RentalPerformanceReport({ filters }: { filters: ReportFilter }) 
     }
     if (dateFrom > dateTo) {
       toast.error('From Date cannot be after To Date');
+      return false;
+    }
+    const today = endOfDay(new Date());
+    if (dateFrom && dateFrom > today) {
+      toast.error('From Date cannot be after today');
+      return false;
+    }
+    if (dateTo && dateTo > today) {
+      toast.error('To Date cannot be after today');
       return false;
     }
     return true;
@@ -278,6 +287,7 @@ export function RentalPerformanceReport({ filters }: { filters: ReportFilter }) 
                     mode="single"
                     selected={dateFrom}
                     onSelect={setDateFrom}
+                    disabled={{ after: endOfDay(new Date()) }}
                   />
                 </PopoverContent>
               </Popover>
@@ -297,6 +307,7 @@ export function RentalPerformanceReport({ filters }: { filters: ReportFilter }) 
                     mode="single"
                     selected={dateTo}
                     onSelect={setDateTo}
+                    disabled={{ after: endOfDay(new Date()) }}
                   />
                 </PopoverContent>
               </Popover>

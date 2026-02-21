@@ -167,6 +167,143 @@ export interface FinancialResponse {
 }
 
 // ============================================
+// Project_Financial_Report
+// ============================================
+
+export interface ProjectFinancialReportRow {
+  project_id: string;
+  customer_id: string;
+  project_start_date: string;
+  project_end_date: string;
+  total_rental_revenue: number;
+  total_repair_cost: number;
+  total_damage_cost: number;
+  transportation_cost: number;
+  net_profit: number;
+  profit_margin: number;
+}
+
+export interface ProjectFinancialReportResponse {
+  data: ProjectFinancialReportRow[];
+  summary?: { totalRevenue: number; totalProfit: number; avgMargin: number };
+}
+
+// ============================================
+// Customer_Rental_Behaviour
+// ============================================
+
+export interface CustomerRentalBehaviourRow {
+  customer_id: string;
+  customer_name: string;
+  industry_type: string;
+  total_projects: number;
+  total_rental_value: number;
+  rental_frequency: string;
+  last_rental_date: string | null;
+}
+
+export interface CustomerRentalBehaviourResponse {
+  data: CustomerRentalBehaviourRow[];
+}
+
+// ============================================
+// Inventory_Utilization (report schema)
+// ============================================
+
+export interface InventoryUtilizationRow {
+  item_id: string;
+  item_name: string;
+  category: string;
+  total_quantity: number;
+  rented_quantity: number;
+  utilization_rate: number;
+  idle_days: number;
+}
+
+export interface InventoryUtilizationReportResponse {
+  data: InventoryUtilizationRow[];
+  summary?: { totalItems: number; avgUtilization: number; totalIdleDays: number };
+}
+
+// ============================================
+// Maintenance_Record
+// ============================================
+
+export interface MaintenanceRecordRow {
+  repair_id: string;
+  item_id: string;
+  damage_type: string;
+  repair_date: string;
+  repair_cost: number;
+  repair_status: string;
+  downtime_days: number;
+  technician: string | null;
+}
+
+export interface MaintenanceRecordResponse {
+  data: MaintenanceRecordRow[];
+  summary?: { totalRepairs: number; totalCost: number };
+}
+
+// ============================================
+// Delivery_Performance
+// ============================================
+
+export interface DeliveryPerformanceRow {
+  delivery_id: string;
+  project_id: string;
+  driver_id: string;
+  delivery_date: string;
+  pickup_date: string;
+  delay_days: number;
+  transportation_cost: number;
+  delivery_status: string;
+}
+
+export interface DeliveryPerformanceResponse {
+  data: DeliveryPerformanceRow[];
+  summary?: { totalDeliveries: number; avgDelayDays: number; totalCost: number };
+}
+
+// ============================================
+// Rental_Duration
+// ============================================
+
+export interface RentalDurationRow {
+  rental_id: string;
+  item_id: string;
+  project_id: string;
+  rental_start: string;
+  rental_end: string;
+  rental_days: number;
+  extension_days: number;
+  early_return: 'Yes' | 'No';
+}
+
+export interface RentalDurationResponse {
+  data: RentalDurationRow[];
+  summary?: { totalRentals: number; avgDuration: number; extensionRate: number };
+}
+
+// ============================================
+// Customer_Credit_Risk
+// ============================================
+
+export interface CustomerCreditRiskRow {
+  customer_id: string;
+  credit_limit: number;
+  outstanding_balance: number;
+  overdue_amount: number;
+  aging_days: number;
+  risk_level: 'Low' | 'Medium' | 'High';
+}
+
+export interface CustomerCreditRiskResponse {
+  data: CustomerCreditRiskRow[];
+  summary?: { highRiskCount: number; totalOutstanding: number };
+}
+
+// ============================================
 // Existing Types (Preserved)
 // ============================================
 
