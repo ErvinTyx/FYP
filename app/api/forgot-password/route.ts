@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     if (user){
       if (user.status !== 'active') {
         return NextResponse.json(
-          { success: false, message: 'Your account is inactive. Please contact support.' },
+          { success: false, message: 'Your account is inactive. Please contact admin.' },
           { status: 400 }
         );
       }
