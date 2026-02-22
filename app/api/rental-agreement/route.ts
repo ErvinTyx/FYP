@@ -115,6 +115,7 @@ export async function GET(request: NextRequest) {
     const agreementNumber = searchParams.get('agreementNumber');
     const includeRfqItems = searchParams.get('includeRfqItems') === 'true';
     const withRfqOnly = searchParams.get('withRfqOnly') === 'true';
+    const withSignedAgreementOnly = searchParams.get('withSignedAgreementOnly') === 'true';
 
     // Build where clause
     const where: Record<string, unknown> = {};
@@ -129,6 +130,13 @@ export async function GET(request: NextRequest) {
     // Filter to only agreements with linked RFQ if requested
     if (withRfqOnly) {
       where.rfqId = { not: null };
+    }
+    // Filter to only agreements with uploaded signed agreement (signedStatus completed or signedDocumentUrl set)
+    if (withSignedAgreementOnly) {
+      where.OR = [
+        { signedStatus: { in: ['completed', 'Completed', 'COMPLETED'] } },
+        { signedDocumentUrl: { not: null } },
+      ];
     }
 
     const agreements = await prisma.rentalAgreement.findMany({

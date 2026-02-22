@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Plus, FileText, Truck, Package, CheckCircle, Clock, XCircle, Phone, Mail, MapPin, Calendar as CalendarIcon, User, ArrowRight, Download, Upload, Check, X, Loader, AlertCircle, Filter } from 'lucide-react';
 import DeliveryOrderGeneration from './DeliveryOrderGeneration';
 import { Calendar } from './ui/calendar';
@@ -167,6 +167,7 @@ interface ReturnRequest {
   returnType: ReturnType;
   collectionMethod: CollectionMethod;
   deliverySetId?: string;
+  deliverySetIds?: string[] | null;  // When multiple sets combined in one return
   additionalChargeStatus?: string | null;
 }
 
@@ -284,6 +285,7 @@ export default function DeliveryReturnManagement({
   const [selectedAgreementId, setSelectedAgreementId] = useState<string>('');
   const [selectedRfqId, setSelectedRfqId] = useState<string>('');
   const [isCreating, setIsCreating] = useState(false);
+  const createReturnSubmittingRef = useRef(false);
 
   // Create Delivery Form states
   const [newDeliveryForm, setNewDeliveryForm] = useState({
@@ -393,7 +395,7 @@ export default function DeliveryReturnManagement({
   const fetchRentalAgreements = useCallback(async () => {
     try {
       // Fetch Active agreements with linked RFQ (items come from the separately-fetched rfqs state)
-      const response = await fetch('/api/rental-agreement?status=Active&withRfqOnly=true');
+      const response = await fetch('/api/rental-agreement?status=Active&withRfqOnly=true&withSignedAgreementOnly=true');
       const data = await response.json();
       if (data.success) {
         // Filter to only include agreements that have a linked RFQ
@@ -739,11 +741,14 @@ export default function DeliveryReturnManagement({
     // Validate individual items against returnable quantities
     const itemErrors: ReturnFormErrors['itemErrors'] = {};
 
-    // Validate items for each selected set
+    // Validate items for each selected set (include combined returns that reference this set)
     selectedReturnSets.forEach((selectedSetData, setIndex) => {
       const alreadyReturned: Record<string, number> = {};
       returnRequests
-        .filter(rr => rr.deliverySetId === selectedSetData.setId)
+        .filter(rr => {
+          if (rr.deliverySetIds?.length) return rr.deliverySetIds.includes(selectedSetData.setId);
+          return rr.deliverySetId === selectedSetData.setId;
+        })
         .forEach(rr => rr.items.forEach(ri => {
           if (ri.scaffoldingItemId) {
             alreadyReturned[ri.scaffoldingItemId] = (alreadyReturned[ri.scaffoldingItemId] || 0) + ri.quantity;
@@ -759,27 +764,32 @@ export default function DeliveryReturnManagement({
       // Validate items for this set
       selectedSetData.items.forEach((item, itemIndex) => {
         const itemError: { scaffoldingItemId?: string; quantity?: string } = {};
-        
-        if (item.scaffoldingItemId?.trim() && item.quantity < 1) {
-          itemError.quantity = 'Quantity must be at least 1';
+        if (!item.scaffoldingItemId?.trim()) return;
+
+        const qty = Number(item.quantity);
+        if (Number.isNaN(qty) || !Number.isFinite(qty)) {
+          itemError.quantity = 'Quantity must be a valid number';
+          isValid = false;
+        } else if (!Number.isInteger(qty) || qty < 1) {
+          itemError.quantity = 'Quantity must be a whole number (at least 1)';
           isValid = false;
         }
 
-        // Check if quantity exceeds returnable quantity
-        if (item.scaffoldingItemId?.trim()) {
-          const doItem = doItems.find(di => di.scaffoldingItemId === item.scaffoldingItemId);
-          const delivered = doItem?.quantity || 0;
-          const returned = alreadyReturned[item.scaffoldingItemId] || 0;
-          const returnable = delivered - returned;
-          if (item.quantity > returnable) {
-            itemError.quantity = `Quantity cannot exceed returnable amount (${returnable})`;
-            isValid = false;
-          }
+        const doItem = doItems.find(di => di.scaffoldingItemId === item.scaffoldingItemId);
+        const delivered = doItem?.quantity || 0;
+        const returned = alreadyReturned[item.scaffoldingItemId] || 0;
+        const returnable = delivered - returned;
+        if (qty > returnable) {
+          itemError.quantity = `Quantity cannot exceed returnable amount (${returnable})`;
+          isValid = false;
+        }
+        if (returnable < 1 && (doItem != null)) {
+          if (!itemError.quantity) itemError.quantity = 'No quantity left to return for this item';
+          isValid = false;
         }
 
         if (Object.keys(itemError).length > 0) {
           if (!errors.itemErrors) errors.itemErrors = {};
-          // Use a composite key: setIndex-itemIndex
           errors.itemErrors[`${setIndex}-${itemIndex}`] = itemError;
         }
       });
@@ -812,8 +822,11 @@ export default function DeliveryReturnManagement({
     });
   };
 
-  // Create Return Request handler
+  // Create Return Request handler (single request for all selected sets)
   const handleCreateReturnRequest = async () => {
+    if (createReturnSubmittingRef.current) return;
+    createReturnSubmittingRef.current = true;
+
     // Mark all fields as touched for validation display
     setReturnFormTouched({
       agreementId: true,
@@ -825,6 +838,7 @@ export default function DeliveryReturnManagement({
 
     // Validate the form
     if (!validateReturnForm()) {
+      createReturnSubmittingRef.current = false;
       return;
     }
 
@@ -835,6 +849,7 @@ export default function DeliveryReturnManagement({
       if (!firstSetId) {
         setReturnFormErrors({ general: 'No sets selected' });
         setIsCreating(false);
+        createReturnSubmittingRef.current = false;
         return;
       }
 
@@ -844,61 +859,109 @@ export default function DeliveryReturnManagement({
       if (!firstSet) {
         setReturnFormErrors({ general: 'Selected set not found' });
         setIsCreating(false);
+        createReturnSubmittingRef.current = false;
         return;
       }
 
       const parentReq = firstSet.parentReq;
 
-      // Create return requests for each selected set
-      const createPromises = selectedReturnSets.map(async (setData) => {
-        const set = deliveryRequests.flatMap(req =>
-          req.sets.filter(s => s.id === setData.setId).map(s => ({ set: s, parentReq: req }))
+      // Total returnable per item across all selected sets (delivered - alreadyReturned per set, summed)
+      const totalReturnable: Record<string, number> = {};
+      for (const setData of selectedReturnSets) {
+        const alreadyReturned: Record<string, number> = {};
+        returnRequests
+          .filter(rr => {
+            if (rr.deliverySetIds?.length) return rr.deliverySetIds.includes(setData.setId);
+            return rr.deliverySetId === setData.setId;
+          })
+          .forEach(rr => rr.items.forEach(ri => {
+            if (ri.scaffoldingItemId) {
+              alreadyReturned[ri.scaffoldingItemId] = (alreadyReturned[ri.scaffoldingItemId] || 0) + ri.quantity;
+            }
+          }));
+        const originalSet = deliveryRequests.flatMap(req =>
+          req.sets.filter(set => set.id === setData.setId).map(set => ({ ...set, parentReq: req }))
         )[0];
-        
-        if (!set) {
-          throw new Error(`Set ${setData.setId} not found`);
+        const doItems = originalSet?.items || [];
+        for (const doItem of doItems) {
+          const id = doItem.scaffoldingItemId;
+          if (!id) continue;
+          const delivered = doItem.quantity || 0;
+          const returned = alreadyReturned[id] || 0;
+          const returnable = delivered - returned;
+          totalReturnable[id] = (totalReturnable[id] || 0) + Math.max(0, returnable);
         }
+      }
 
-        // Get valid items for this set
+      // Build one combined return request: one entry per product, quantity = min(sum requested, total returnable)
+      const itemMap = new Map<string, { name: string; quantity: number; scaffoldingItemId: string }>();
+      for (const setData of selectedReturnSets) {
         const validItems = setData.items.filter(item => item.scaffoldingItemId?.trim());
-
-        // Generate unique request ID for each set
-        const timestamp = new Date().toISOString().replace(/[-:T]/g, '').split('.')[0];
-        const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
-        const requestId = `RET-${parentReq.agreementNo}-${timestamp}-${randomSuffix}`;
-
-        const response = await fetch('/api/return', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            requestId,
-            customerName: parentReq.customerName,
-            agreementNo: parentReq.agreementNo,
-            setName: setData.setName,
-            reason: newReturnForm.reason,
-            pickupAddress: parentReq.deliveryAddress || '',
-            customerPhone: parentReq.customerPhone || '',
-            customerEmail: parentReq.customerEmail,
-            returnType: newReturnForm.returnType,
-            collectionMethod: newReturnForm.collectionMethod,
-            deliverySetId: setData.setId,
-            items: validItems.map(item => ({
+        for (const item of validItems) {
+          const id = item.scaffoldingItemId!;
+          const existing = itemMap.get(id);
+          const qty = Math.max(1, Math.floor(Number(item.quantity)) || 1);
+          if (existing) {
+            existing.quantity += qty;
+          } else {
+            itemMap.set(id, {
               name: item.name,
-              quantity: item.quantity,
-              scaffoldingItemId: item.scaffoldingItemId,
-            })),
-          }),
-        });
-
-        const data = await response.json();
-        if (!data.success) {
-          throw new Error(data.message || `Failed to create return request for ${setData.setName}`);
+              quantity: qty,
+              scaffoldingItemId: id,
+            });
+          }
         }
-        return data;
+      }
+      const combinedItems = Array.from(itemMap.values())
+        .map(entry => {
+          const cap = totalReturnable[entry.scaffoldingItemId] ?? 0;
+          const quantity = Math.min(entry.quantity, Math.max(1, cap));
+          return { ...entry, quantity };
+        })
+        .filter(entry => entry.quantity >= 1);
+      if (combinedItems.length === 0) {
+        setReturnFormErrors({ general: 'No valid items to return. Ensure each item has a product selected.' });
+        setIsCreating(false);
+        createReturnSubmittingRef.current = false;
+        return;
+      }
+
+      const timestamp = new Date().toISOString().replace(/[-:T]/g, '').split('.')[0];
+      const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const requestId = `RET-${parentReq.agreementNo}-${timestamp}-${randomSuffix}`;
+      const combinedSetName = selectedReturnSets.length === 1
+        ? selectedReturnSets[0].setName
+        : [...selectedReturnSets].sort((a, b) => a.setName.localeCompare(b.setName)).map(s => s.setName).join(', ');
+      const deliverySetIds = selectedReturnSets.map(s => s.setId);
+
+      const response = await fetch('/api/return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId,
+          customerName: parentReq.customerName,
+          agreementNo: parentReq.agreementNo,
+          setName: combinedSetName,
+          reason: newReturnForm.reason,
+          pickupAddress: parentReq.deliveryAddress || '',
+          customerPhone: parentReq.customerPhone || '',
+          customerEmail: parentReq.customerEmail,
+          returnType: newReturnForm.returnType,
+          collectionMethod: newReturnForm.collectionMethod,
+          deliverySetId: firstSetId,
+          deliverySetIds: deliverySetIds.length > 1 ? deliverySetIds : undefined,
+          items: combinedItems.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            scaffoldingItemId: item.scaffoldingItemId,
+          })),
+        }),
       });
 
-      // Wait for all return requests to be created
-      await Promise.all(createPromises);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || response.statusText || 'Failed to create return request');
+      }
 
       // Refresh data
       await Promise.all([fetchReturnRequests(), fetchDeliveryRequests()]);
@@ -915,12 +978,15 @@ export default function DeliveryReturnManagement({
       setReturnFormErrors({});
       setReturnFormTouched({});
       
-      toast.success(`Successfully created ${selectedReturnSets.length} return request(s)`);
+      toast.success(selectedReturnSets.length === 1
+        ? 'Return request created successfully'
+        : `Return request created with ${selectedReturnSets.length} set(s) and all items`);
     } catch (error) {
       console.error('Error creating return requests:', error);
       setReturnFormErrors({ general: error instanceof Error ? error.message : 'An error occurred while creating the return requests' });
     } finally {
       setIsCreating(false);
+      createReturnSubmittingRef.current = false;
     }
   };
 
@@ -939,11 +1005,11 @@ export default function DeliveryReturnManagement({
   useEffect(() => {
     if (selectedReturnSets.length === 0 || selectedDONumbers.length === 0) return;
 
-    // Calculate already-returned quantities per delivery set
+    // Calculate already-returned quantities per delivery set (support multi-set returns via deliverySetIds)
     const returnedBySet: Record<string, Record<string, number>> = {};
     returnRequests.forEach(rr => {
-      if (rr.deliverySetId) {
-        const setId = rr.deliverySetId;
+      const setIds = rr.deliverySetIds?.length ? rr.deliverySetIds : (rr.deliverySetId ? [rr.deliverySetId] : []);
+      setIds.forEach((setId: string) => {
         if (!returnedBySet[setId]) returnedBySet[setId] = {};
         rr.items.forEach(ri => {
           if (ri.scaffoldingItemId) {
@@ -951,7 +1017,7 @@ export default function DeliveryReturnManagement({
             returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] || 0) + ri.quantity;
           }
         });
-      }
+      });
     });
 
     // Find the selected DO group
@@ -2691,7 +2757,7 @@ export default function DeliveryReturnManagement({
                 )}
                 {rentalAgreements.length === 0 && !deliveryFormErrors.agreementId && (
                   <p className="text-xs text-amber-600 mt-1">
-                    No active rental agreements with quotations available. Please create an active rental agreement with a linked quotation first.
+                    No active rental agreements with signed agreement and quotation available. Please ensure the agreement is Active and has an uploaded signed agreement.
                   </p>
                 )}
               </div>
@@ -2938,11 +3004,11 @@ export default function DeliveryReturnManagement({
                 // Derive available DOs: delivery sets with a DO number and delivered/completed status
                 const completedStatuses = ['Completed', 'Customer Confirmed', 'Delivered'];
                 
-                // Calculate already-returned quantities per delivery set
+                // Calculate already-returned quantities per delivery set (support multi-set returns via deliverySetIds)
                 const returnedBySet: Record<string, Record<string, number>> = {};
                 returnRequests.forEach(rr => {
-                  if (rr.deliverySetId) {
-                    const setId = rr.deliverySetId;
+                  const setIds = rr.deliverySetIds?.length ? rr.deliverySetIds : (rr.deliverySetId ? [rr.deliverySetId] : []);
+                  setIds.forEach((setId: string) => {
                     if (!returnedBySet[setId]) returnedBySet[setId] = {};
                     rr.items.forEach(ri => {
                       if (ri.scaffoldingItemId) {
@@ -2950,7 +3016,7 @@ export default function DeliveryReturnManagement({
                         returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] || 0) + ri.quantity;
                       }
                     });
-                  }
+                  });
                 });
 
                 // Step 1: Filter agreements that have completed delivery orders
@@ -3346,10 +3412,12 @@ export default function DeliveryReturnManagement({
                                         max={returnable || 1}
                                         value={currentQuantity}
                                         onChange={(e) => {
+                                          const raw = parseInt(e.target.value, 10);
+                                          const qty = Number.isNaN(raw) || raw < 1 ? 1 : Math.min(Math.floor(raw), Math.max(1, returnable));
                                           const updated = [...selectedReturnSets];
                                           const itemIdx = updated[setIndex].items.findIndex(i => i.scaffoldingItemId === item.scaffoldingItemId);
                                           if (itemIdx >= 0) {
-                                            updated[setIndex].items[itemIdx].quantity = Math.min(parseInt(e.target.value) || 1, returnable);
+                                            updated[setIndex].items[itemIdx].quantity = qty;
                                             setSelectedReturnSets(updated);
                                             clearReturnItemError(`${setIndex}-${itemIdx}`);
                                           }

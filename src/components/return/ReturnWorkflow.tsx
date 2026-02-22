@@ -6,6 +6,7 @@ import {
   Loader2, PackageX, Eye, AlertTriangle, Package
 } from 'lucide-react';
 import { uploadReturnPhotos } from '@/lib/upload';
+import { validateMalaysiaMobilePhone } from '@/lib/phone-validation';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -402,10 +403,9 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       errors.driverContact = 'Driver contact is required';
       isValid = false;
     } else {
-      // Optional phone format validation
-      const phoneRegex = /^[\d\s+\-()]+$/;
-      if (!phoneRegex.test(formData.driverContact)) {
-        errors.driverContact = 'Invalid phone number format';
+      const result = validateMalaysiaMobilePhone(formData.driverContact);
+      if (!result.isValid) {
+        errors.driverContact = result.error ?? 'Enter a valid Malaysia phone (e.g. 0123456789 or 01123456789)';
         isValid = false;
       }
     }
@@ -739,7 +739,6 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     const updatedData = {
       ...formData,
       customerNotificationSent: true,
-      inventoryUpdated: true,
       status: 'Customer Notified' as const,
     };
     setFormData(updatedData);
@@ -747,7 +746,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     setIsSaving(true);
     try {
       await onSave(updatedData as Return); // Save to database
-      toast.success('Customer notification sent — good items added back to inventory');
+      toast.success('Customer notification sent');
       
       if (formData.transportationType === 'Transportation Needed') {
         setCurrentStep(8);
@@ -1179,7 +1178,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
                   setFormData({ ...formData, driverContact: e.target.value });
                   if (e.target.value.trim()) clearStep2Error('driverContact');
                 }}
-                placeholder="+60 12-345-6789"
+                placeholder="e.g. 0123456789 or 01123456789"
                 className={step2Errors.driverContact ? 'border-red-500 bg-red-50' : ''}
               />
               {step2Errors.driverContact && (

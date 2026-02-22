@@ -1,6 +1,30 @@
 import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
 
 /**
+ * Validates that a string is a Malaysia mobile number:
+ * - 11 digits for 011XXXXXXXX
+ * - 10 digits for 01XXXXXXXX (e.g. 012, 016)
+ * @param value - Raw input (digits, spaces, dashes, etc. are stripped)
+ * @returns Object with isValid and optional error message
+ */
+export function validateMalaysiaMobilePhone(value: string): { isValid: boolean; error?: string } {
+  if (!value || !value.trim()) {
+    return { isValid: false, error: 'Phone number is required' };
+  }
+  const digits = value.replace(/\D/g, '');
+  const valid =
+    (digits.length === 11 && digits.startsWith('011')) ||
+    (digits.length === 10 && digits.startsWith('01'));
+  if (!valid) {
+    return {
+      isValid: false,
+      error: 'Enter a valid Malaysia phone (e.g. 0123456789 or 01123456789)',
+    };
+  }
+  return { isValid: true };
+}
+
+/**
  * Validates a phone number using Google's libphonenumber library
  * @param phoneNumber - The phone number string to validate
  * @param defaultCountry - Optional default country code (e.g., 'MY' for Malaysia)

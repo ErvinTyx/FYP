@@ -629,7 +629,8 @@ model ReturnRequest {
   pickupFee        Decimal?
   returnType       String              // Partial, Full
   collectionMethod String              // Self Return, Transportation Needed
-  deliverySetId    String?
+  deliverySetId    String?             // Primary/first set (backward compat)
+  deliverySetIds    Json?               // When multiple sets: ["setId1","setId2"] for combined return
   deliverySet      DeliverySet?        @relation(fields: [deliverySetId], references: [id])
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt

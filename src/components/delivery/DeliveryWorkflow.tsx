@@ -6,6 +6,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { uploadDeliveryPhotos } from '@/lib/upload';
+import { validateMalaysiaMobilePhone } from '@/lib/phone-validation';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -351,9 +352,9 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
         errors.driverContact = 'Driver contact is required';
         isValid = false;
       } else {
-        const phoneRegex = /^[\d\s+\-()]+$/;
-        if (!phoneRegex.test(formData.driverContact)) {
-          errors.driverContact = 'Invalid phone number format';
+        const result = validateMalaysiaMobilePhone(formData.driverContact);
+        if (!result.isValid) {
+          errors.driverContact = result.error ?? 'Enter a valid Malaysia phone (e.g. 0123456789 or 01123456789)';
           isValid = false;
         }
       }

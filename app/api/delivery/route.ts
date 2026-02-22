@@ -648,6 +648,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve agreement and enforce: must exist, be Active, and have uploaded signed agreement
+    const agreement = await prisma.rentalAgreement.findUnique({
+      where: { agreementNumber: agreementNo },
+      select: { id: true, status: true, signedStatus: true, signedDocumentUrl: true },
+    });
+    if (!agreement) {
+      return NextResponse.json(
+        { success: false, message: 'Agreement not found' },
+        { status: 400 }
+      );
+    }
+    if (agreement.status !== 'Active') {
+      return NextResponse.json(
+        { success: false, message: 'Only active agreements can have delivery requests.' },
+        { status: 400 }
+      );
+    }
+    const signedOk =
+      (agreement.signedStatus && ['completed', 'Completed', 'COMPLETED'].includes(agreement.signedStatus)) ||
+      agreement.signedDocumentUrl != null;
+    if (!signedOk) {
+      return NextResponse.json(
+        { success: false, message: 'Agreement must have an uploaded signed agreement to create a delivery request.' },
+        { status: 400 }
+      );
+    }
+
     // Check if request ID already exists
     const existingRequest = await prisma.deliveryRequest.findUnique({
       where: { requestId },

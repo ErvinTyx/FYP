@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { auth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { createChargeForReturn } from '@/lib/additional-charge-utils';
@@ -99,6 +100,7 @@ export async function GET(request: NextRequest) {
           returnType: req.returnType,
           collectionMethod: req.collectionMethod,
           deliverySetId: req.deliverySetId || null,
+          deliverySetIds: Array.isArray(req.deliverySetIds) ? req.deliverySetIds : null,
           additionalChargeStatus: returnChargeStatusMap.get(req.id) || null,
           createdAt: req.createdAt.toISOString(),
           updatedAt: req.updatedAt.toISOString(),
@@ -219,6 +221,7 @@ export async function POST(request: NextRequest) {
       collectionMethod,
       items,
       deliverySetId,
+      deliverySetIds,
     } = body;
 
     // Validate required fields
@@ -227,6 +230,24 @@ export async function POST(request: NextRequest) {
         { success: false, message: 'Request ID, customer name, agreement number, set name, reason, pickup address, return type, and collection method are required' },
         { status: 400 }
       );
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { success: false, message: 'At least one item is required for the return request' },
+        { status: 400 }
+      );
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const qty = item?.quantity;
+      if (qty == null || typeof qty !== 'number' || Number.isNaN(qty) || !Number.isInteger(qty) || qty < 1) {
+        return NextResponse.json(
+          { success: false, message: `Item "${(item?.name ?? 'item')}" must have a valid quantity (whole number, at least 1)` },
+          { status: 400 }
+        );
+      }
     }
 
     // Check if request ID already exists
@@ -241,7 +262,118 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the return request with items
+    // Validate quantities against returnable per set per item (so total quantity is not duplicated)
+    const setIds = (Array.isArray(deliverySetIds) && deliverySetIds.length > 0)
+      ? deliverySetIds as string[]
+      : (deliverySetId ? [deliverySetId] : []);
+
+    if (setIds.length > 0) {
+      // Delivered per set per item
+      const deliverySetItems = await prisma.deliverySetItem.findMany({
+        where: { deliverySetId: { in: setIds } },
+        select: { deliverySetId: true, scaffoldingItemId: true, quantity: true },
+      });
+      const deliveredBySet: Record<string, Record<string, number>> = {};
+      for (const row of deliverySetItems) {
+        const setId = row.deliverySetId;
+        const itemId = row.scaffoldingItemId ?? '';
+        if (!itemId) continue;
+        if (!deliveredBySet[setId]) deliveredBySet[setId] = {};
+        deliveredBySet[setId][itemId] = (deliveredBySet[setId][itemId] ?? 0) + row.quantity;
+      }
+
+      // Already returned per set per item (from existing return requests referencing these sets)
+      // Use only deliverySetId in Prisma query (deliverySetIds may not be in generated client); fetch deliverySetIds via raw.
+      const existingReturns = await prisma.returnRequest.findMany({
+        where: { deliverySetId: { in: setIds } },
+        select: {
+          id: true,
+          deliverySetId: true,
+          items: { select: { scaffoldingItemId: true, quantity: true } },
+        },
+      });
+      const rrIds = existingReturns.map((r) => r.id);
+      type RawRow = { id: string; deliverySetIds: string | unknown };
+      const rawDeliverySetIds: RawRow[] = rrIds.length > 0
+        ? await prisma.$queryRaw<RawRow[]>`
+            SELECT id, deliverySetIds FROM returnrequest WHERE id IN (${Prisma.join(rrIds)})
+          `
+        : [];
+      const deliverySetIdsByRrId = new Map<string, string[]>();
+      for (const row of rawDeliverySetIds) {
+        if (row.deliverySetIds == null) continue;
+        const parsed: unknown =
+          typeof row.deliverySetIds === 'string' ? (JSON.parse(row.deliverySetIds) as unknown) : row.deliverySetIds;
+        deliverySetIdsByRrId.set(
+          row.id,
+          Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
+        );
+      }
+      const returnedBySet: Record<string, Record<string, number>> = {};
+      for (const rr of existingReturns) {
+        const idsFromJson = deliverySetIdsByRrId.get(rr.id);
+        const refSetIds: string[] =
+          Array.isArray(idsFromJson) && idsFromJson.length > 0
+            ? idsFromJson.filter((id: string) => setIds.includes(id))
+            : (rr.deliverySetId && setIds.includes(rr.deliverySetId) ? [rr.deliverySetId] : []);
+        for (const setId of refSetIds) {
+          if (!returnedBySet[setId]) returnedBySet[setId] = {};
+          for (const ri of rr.items) {
+            const itemId = ri.scaffoldingItemId ?? '';
+            if (!itemId) continue;
+            returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] ?? 0) + ri.quantity;
+          }
+        }
+      }
+
+      // Total returnable per item (sum over linked sets of max(0, delivered - returned))
+      const totalReturnable: Record<string, number> = {};
+      for (const setId of setIds) {
+        const delivered = deliveredBySet[setId] ?? {};
+        const returned = returnedBySet[setId] ?? {};
+        for (const itemId of Object.keys(delivered)) {
+          const returnable = Math.max(0, (delivered[itemId] ?? 0) - (returned[itemId] ?? 0));
+          totalReturnable[itemId] = (totalReturnable[itemId] ?? 0) + returnable;
+        }
+      }
+
+      // Normalize request items: sum quantities per scaffoldingItemId (handle duplicates)
+      const itemsByItemId = new Map<string, { name: string; quantity: number; scaffoldingItemId: string }>();
+      for (const item of items as Array<{ name: string; quantity: number; scaffoldingItemId?: string }>) {
+        const id = (item.scaffoldingItemId ?? '').trim();
+        const qty = Math.max(1, Math.floor(Number(item.quantity)) || 1);
+        if (itemsByItemId.has(id)) {
+          const existing = itemsByItemId.get(id)!;
+          existing.quantity += qty;
+        } else {
+          itemsByItemId.set(id, {
+            name: item.name ?? 'Item',
+            quantity: qty,
+            scaffoldingItemId: id,
+          });
+        }
+      }
+
+      for (const [, entry] of itemsByItemId) {
+        const itemId = entry.scaffoldingItemId;
+        if (!itemId) continue; // skip quantity validation when no scaffoldingItemId
+        const allowed = totalReturnable[itemId] ?? 0;
+        if (allowed < 1) {
+          return NextResponse.json(
+            { success: false, message: `Item "${entry.name}" is not delivered in any selected set or has no quantity left to return` },
+            { status: 400 }
+          );
+        }
+        if (entry.quantity > allowed) {
+          return NextResponse.json(
+            { success: false, message: `Quantity for item "${entry.name}" (${entry.quantity}) exceeds returnable amount (${allowed}) across the selected set(s)` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    // Create the return request with items (deliverySetIds set separately - Prisma create input may not include Json)
     const newRequest = await prisma.returnRequest.create({
       data: {
         requestId,
@@ -255,12 +387,12 @@ export async function POST(request: NextRequest) {
         returnType,
         collectionMethod,
         status: collectionMethod === 'self-return' ? 'Agreed' : 'Requested',
-        deliverySetId: deliverySetId || null,
+        ...(deliverySetId ? { deliverySet: { connect: { id: deliverySetId } } } : {}),
         items: items ? {
           create: items.map((item: { name: string; quantity: number; quantityReturned?: number; scaffoldingItemId?: string }) => ({
             name: item.name,
-            quantity: item.quantity,
-            quantityReturned: item.quantityReturned ?? item.quantity,
+            quantity: Math.max(1, Math.floor(Number(item.quantity))),
+            quantityReturned: Math.max(1, Math.floor(Number(item.quantityReturned ?? item.quantity))),
             scaffoldingItemId: item.scaffoldingItemId || null,
           })),
         } : undefined,
@@ -270,15 +402,28 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Set deliverySetIds via raw update if present (column exists; avoids Prisma create input type gap)
+    if (Array.isArray(deliverySetIds) && deliverySetIds.length > 0) {
+      const jsonValue = JSON.stringify(deliverySetIds);
+      await prisma.$executeRaw`
+        UPDATE returnrequest SET deliverySetIds = ${jsonValue}
+        WHERE id = ${newRequest.id}
+      `;
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Return request created successfully',
-      returnRequest: newRequest,
+      returnRequest: {
+        ...newRequest,
+        deliverySetIds: Array.isArray(deliverySetIds) && deliverySetIds.length > 0 ? deliverySetIds : null,
+      },
     });
   } catch (error) {
     console.error('Create return request error:', error);
+    const message = error instanceof Error ? error.message : 'An error occurred while creating the return request';
     return NextResponse.json(
-      { success: false, message: 'An error occurred while creating the return request' },
+      { success: false, message },
       { status: 500 }
     );
   }
