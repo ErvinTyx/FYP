@@ -335,7 +335,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: emailSent 
         ? 'User created successfully. A password setup email has been sent.'
-        : 'User created but failed to send email. Please contact support.',
+        : 'User created but failed to send email. Please contact admin.',
       emailSent,
       user: {
         id: newUser.id,
