@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, Truck, FileSpreadsheet, Loader2, Play } from 'lucide-react';
+import { Download, Truck, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import {
@@ -18,7 +18,14 @@ import { generateDeliveryLogisticsExcel, downloadExcel } from '@/lib/report-exce
 import type { ReportFilters } from './ReportGenerationEnhanced';
 import { ReportTablePagination } from './ReportTablePagination';
 
-export function DeliveryLogisticsReport({ filters }: { filters: ReportFilters }) {
+export interface DeliveryLogisticsReportProps {
+  filters: ReportFilters;
+  requestGeneration?: number;
+  onRowsPerPageChange?: (rowsPerPage: number) => void;
+  onLoadingChange?: (loading: boolean) => void;
+}
+
+export function DeliveryLogisticsReport({ filters, requestGeneration = 0, onRowsPerPageChange, onLoadingChange }: DeliveryLogisticsReportProps) {
   const [data, setData] = useState<DeliveryPerformanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +50,7 @@ export function DeliveryLogisticsReport({ filters }: { filters: ReportFilters })
     if (!validateFilters()) return;
     try {
       setLoading(true);
+      onLoadingChange?.(true);
       setError(null);
       const params = new URLSearchParams();
       if (filters.dateFrom) params.set('dateFrom', filters.dateFrom.toISOString());
@@ -58,8 +66,15 @@ export function DeliveryLogisticsReport({ filters }: { filters: ReportFilters })
       toast.error('Failed to load delivery logistics data');
     } finally {
       setLoading(false);
+      onLoadingChange?.(false);
     }
   };
+
+  useEffect(() => {
+    if (requestGeneration > 0) {
+      generateReport();
+    }
+  }, [requestGeneration]);
 
   const exportToExcel = () => {
     if (!data) return;
@@ -110,18 +125,6 @@ export function DeliveryLogisticsReport({ filters }: { filters: ReportFilters })
           </Button>
         </div>
       </div>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Report Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-sm text-gray-600 mb-3">Select date range or month above, then generate.</p>
-          <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={loading}>
-            {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
-          </Button>
-        </CardContent>
-      </Card>
 
       {!hasGenerated ? (
         <Card>
@@ -174,6 +177,7 @@ export function DeliveryLogisticsReport({ filters }: { filters: ReportFilters })
                 rowsPerPage={rowsPerPage}
                 currentPage={currentPage}
                 onPageChange={setCurrentPage}
+                onRowsPerPageChange={onRowsPerPageChange}
               />
               <Table>
                 <TableHeader>

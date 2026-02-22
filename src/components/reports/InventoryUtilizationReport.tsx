@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Download, Search, Package, TrendingUp, AlertCircle, BarChart3, FileSpreadsheet, Loader2, Play
+  Download, Search, Package, TrendingUp, AlertCircle, BarChart3, FileSpreadsheet
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -21,7 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
-import { Label } from '../ui/label';
 import { toast } from 'sonner';
 import {
   BarChart,
@@ -44,7 +43,14 @@ import { ReportTablePagination } from './ReportTablePagination';
 
 const COLORS = ['#F15929', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
 
-export function InventoryUtilizationReport({ filters }: { filters: ReportFilters }) {
+export interface InventoryUtilizationReportProps {
+  filters: ReportFilters;
+  requestGeneration?: number;
+  onRowsPerPageChange?: (rowsPerPage: number) => void;
+  onLoadingChange?: (loading: boolean) => void;
+}
+
+export function InventoryUtilizationReport({ filters, requestGeneration = 0, onRowsPerPageChange, onLoadingChange }: InventoryUtilizationReportProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [utilizationFilter, setUtilizationFilter] = useState<string>('all');
@@ -74,6 +80,7 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilters
     if (!validateFilters()) return;
     try {
       setLoading(true);
+      onLoadingChange?.(true);
       setError(null);
       const params = new URLSearchParams();
       if (filters.dateFrom) params.set('dateFrom', filters.dateFrom.toISOString());
@@ -90,8 +97,15 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilters
       toast.error('Failed to load inventory utilization data');
     } finally {
       setLoading(false);
+      onLoadingChange?.(false);
     }
   };
+
+  useEffect(() => {
+    if (requestGeneration > 0) {
+      generateReport();
+    }
+  }, [requestGeneration]);
 
   const filteredData = (data?.data ?? [])
     .filter(item => {
@@ -176,34 +190,6 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilters
           </Button>
         </div>
       </div>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Report Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-sm text-gray-600 mb-3">Select date range or month above.</p>
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={loading}>
-              {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
 
       {!hasGenerated ? (
         <Card>
@@ -317,6 +303,7 @@ export function InventoryUtilizationReport({ filters }: { filters: ReportFilters
                     rowsPerPage={rowsPerPage}
                     currentPage={currentPage}
                     onPageChange={setCurrentPage}
+                    onRowsPerPageChange={onRowsPerPageChange}
                   />
                   <Table>
                     <TableHeader>

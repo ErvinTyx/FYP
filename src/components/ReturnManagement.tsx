@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { 
-  Package, Calendar as CalendarIcon, CheckCircle2, AlertCircle, Eye,
-  AlertTriangle, ClipboardCheck, ArrowRight, Plus, PackageCheck, Truck,
-  MoreVertical, Edit, FileText, Loader2, Search
+  Package, Calendar as CalendarIcon, AlertCircle, Eye,
+  ClipboardCheck, ArrowRight, Plus, PackageCheck, Truck,
+  MoreVertical, Edit, FileText, Loader2, Search, Filter,
+  FileSpreadsheet, Download
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
+import { ReportPDFGenerator, downloadPDF } from "../lib/report-pdf-generator";
+import { generateTableExcel, downloadExcel } from "../lib/report-excel-generator";
+import { ReportTablePagination } from "./reports/ReportTablePagination";
 import {
   Table,
   TableBody,
@@ -34,6 +38,19 @@ import { format } from "date-fns";
 import { ReturnWorkflow, Return, ReturnItem } from "./return/ReturnWorkflow";
 import { ReturnDetails } from "./return/ReturnDetails";
 
+// Filter options: only statuses set in Return Management page workflow (ReturnWorkflow). Excludes Requested, Driver Recording (step only; saved as In Transit), Dispute Raised (not set in this flow).
+const RETURN_PROCESS_STATUSES: Return['status'][] = [
+  'Pending',
+  'Pickup Scheduled',
+  'Pickup Confirmed',
+  'In Transit',
+  'Received at Warehouse',
+  'Under Inspection',
+  'Sorting Complete',
+  'Customer Notified',
+  'Completed',
+];
+
 export function ReturnManagement() {
   const [returns, setReturns] = useState<Return[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'workflow' | 'details'>('list');
@@ -41,6 +58,12 @@ export function ReturnManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, statusFilter]);
 
   // Fetch returns from API
   const fetchReturns = useCallback(async () => {
@@ -154,7 +177,8 @@ export function ReturnManagement() {
       'GRN Generated': 'Under Inspection',
       'Cancelled': 'Completed',
       // Direct workflow statuses
-      'Approved': 'Approved',
+      'Approved': 'Pending',
+      'Pending': 'Pending',
       'Pickup Scheduled': 'Pickup Scheduled',
       'Pickup Confirmed': 'Pickup Confirmed',
       'Driver Recording': 'Driver Recording',
@@ -229,7 +253,7 @@ export function ReturnManagement() {
   const getReturnStatusBadge = (status: Return['status']) => {
     const statusConfig = {
       'Requested': { color: 'bg-[#3B82F6] hover:bg-[#2563EB]', text: 'Requested' },
-      'Approved': { color: 'bg-[#10B981] hover:bg-[#059669]', text: 'Approved' },
+      'Pending': { color: 'bg-[#10B981] hover:bg-[#059669]', text: 'Pending' },
       'Pickup Scheduled': { color: 'bg-[#8B5CF6] hover:bg-[#7C3AED]', text: 'Pickup Scheduled' },
       'Pickup Confirmed': { color: 'bg-[#8B5CF6] hover:bg-[#7C3AED]', text: 'Pickup Confirmed' },
       'Driver Recording': { color: 'bg-[#F59E0B] hover:bg-[#D97706]', text: 'Driver Recording' },
@@ -280,14 +304,6 @@ export function ReturnManagement() {
     setSelectedReturn(null);
   };
 
-  // Stats
-  const requestedReturns = returns.filter(r => r.status === 'Requested').length;
-  const inProgressReturns = returns.filter(r => 
-    r.status !== 'Requested' && r.status !== 'Completed'
-  ).length;
-  const completedReturns = returns.filter(r => r.status === 'Completed').length;
-  const disputeReturns = returns.filter(r => r.status === 'Dispute Raised').length;
-
   // Filter returns based on search term and status filter
   const filteredReturns = returns.filter(returnItem => {
     const matchesSearch = 
@@ -300,21 +316,39 @@ export function ReturnManagement() {
     return matchesSearch && matchesStatus;
   });
 
-  // Get unique statuses for filter dropdown
-  const statusOptions: Return['status'][] = [
-    'Requested',
-    'Approved',
-    'Pickup Scheduled',
-    'Pickup Confirmed',
-    'Driver Recording',
-    'In Transit',
-    'Received at Warehouse',
-    'Under Inspection',
-    'Sorting Complete',
-    'Customer Notified',
-    'Dispute Raised',
-    'Completed',
-  ];
+  const paginatedReturns = filteredReturns.slice((page - 1) * pageSize, page * pageSize);
+  const dateStr = new Date().toISOString().split('T')[0];
+
+  const exportToPDF = () => {
+    const headers = ['Return ID', 'Customer', 'Type', 'Transportation', 'Scheduled Date', 'Status'];
+    const rows = filteredReturns.map(r => [
+      r.orderId || r.id,
+      r.customer,
+      r.returnType,
+      r.transportationType === 'Transportation Needed' ? 'Transport' : 'Self Return',
+      r.pickupDate ? format(new Date(r.pickupDate), 'PP') : (r.requestDate ? format(new Date(r.requestDate), 'PP') : ''),
+      r.status,
+    ]);
+    const generator = new ReportPDFGenerator();
+    const blob = generator.generateSimpleTableReport({ title: 'Return Management' }, headers, rows);
+    downloadPDF(blob, `Return_Management_${dateStr}.pdf`);
+    toast.success('Exported to PDF');
+  };
+
+  const exportToExcel = () => {
+    const headers = ['Return ID', 'Customer', 'Type', 'Transportation', 'Scheduled Date', 'Status'];
+    const rows = filteredReturns.map(r => [
+      r.orderId || r.id,
+      r.customer,
+      r.returnType,
+      r.transportationType === 'Transportation Needed' ? 'Transport' : 'Self Return',
+      r.pickupDate ? format(new Date(r.pickupDate), 'PP') : (r.requestDate ? format(new Date(r.requestDate), 'PP') : ''),
+      r.status,
+    ]);
+    const blob = generateTableExcel(headers, rows, { title: 'Return Management' });
+    downloadExcel(blob, `Return_Management_${dateStr}.xlsx`);
+    toast.success('Exported to Excel');
+  };
 
   // Show workflow view
   if (viewMode === 'workflow') {
@@ -340,130 +374,54 @@ export function ReturnManagement() {
 
   // Show list view
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="space-y-2">
-        <h1>Return Management</h1>
-        <p className="text-[#374151]">Comprehensive return processing with GRN & RCF generation</p>
+      <div>
+        <h1 className="text-[#231F20]">Return Management</h1>
+        <p className="text-gray-600">Comprehensive return processing with GRN & RCF generation</p>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="border-[#E5E7EB]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-[14px] text-[#6B7280]">Requested Returns</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-[#3B82F6]" />
-              <p className="text-[#111827]">{requestedReturns}</p>
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by Return ID or Customer..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#E5E7EB]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-[14px] text-[#6B7280]">In Progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Truck className="h-5 w-5 text-[#F59E0B]" />
-              <p className="text-[#111827]">{inProgressReturns}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#E5E7EB]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-[14px] text-[#6B7280]">Completed</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-[#059669]" />
-              <p className="text-[#111827]">{completedReturns}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[#E5E7EB]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-[14px] text-[#6B7280]">Disputes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-[#DC2626]" />
-              <p className="text-[#111827]">{disputeReturns}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 size-4" />
-          <Input
-            type="text"
-            placeholder="Search by Return ID or Customer..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[200px]">
-            <SelectValue placeholder="Filter by Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            {statusOptions.map((status) => (
-              <SelectItem key={status} value={status}>
-                {status}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full md:w-64">
+                <Filter className="size-4 mr-2" />
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                {RETURN_PROCESS_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {status}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" onClick={exportToExcel} disabled={filteredReturns.length === 0}>
+              <FileSpreadsheet className="size-4 mr-2" /> Export to Excel
+            </Button>
+            <Button className="bg-[#F15929] hover:bg-[#d94d1f]" onClick={exportToPDF} disabled={filteredReturns.length === 0}>
+              <Download className="size-4 mr-2" /> Export to PDF
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Returns Table */}
-      <Card className="border-[#E5E7EB]">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>All Returns</CardTitle>
-          {(searchTerm || statusFilter !== 'all') && (
-            <span className="text-sm text-gray-500">
-              Showing {filteredReturns.length} of {returns.length} returns
-            </span>
-          )}
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="size-8 animate-spin text-[#F15929]" />
-              <span className="ml-3 text-gray-600">Loading returns...</span>
-            </div>
-          ) : returns.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <Package className="size-12 text-gray-400 mx-auto mb-4" />
-              <p>No returns found</p>
-              <p className="text-sm">Returns will appear here once they are agreed upon in Delivery & Return Management</p>
-            </div>
-          ) : filteredReturns.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <Search className="size-12 text-gray-400 mx-auto mb-4" />
-              <p>No matching returns found</p>
-              <p className="text-sm">Try adjusting your search or filter criteria</p>
-              <Button 
-                variant="outline" 
-                className="mt-4"
-                onClick={() => {
-                  setSearchTerm('');
-                  setStatusFilter('all');
-                }}
-              >
-                Clear Filters
-              </Button>
-            </div>
-          ) : (
+      <Card>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -477,74 +435,125 @@ export function ReturnManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredReturns.map((returnItem) => (
-                <TableRow key={returnItem.id}>
-                  <TableCell className="text-[#231F20] font-mono text-sm">{returnItem.orderId || returnItem.id}</TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="text-[#231F20]">{returnItem.customer}</p>
-                      {returnItem.customerContact && (
-                        <p className="text-sm text-[#6B7280]">{returnItem.customerContact}</p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={returnItem.returnType === 'Full' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}>
-                      {returnItem.returnType}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {returnItem.transportationType === 'Transportation Needed' ? (
-                        <Truck className="size-4 text-[#F59E0B]" />
-                      ) : (
-                        <PackageCheck className="size-4 text-[#10B981]" />
-                      )}
-                      <span className="text-sm text-[#6B7280]">
-                        {returnItem.transportationType === 'Transportation Needed' ? 'Transport' : 'Self Return'}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-[#6B7280]">
-                    <div>
-                      <p>{format(new Date(returnItem.pickupDate || returnItem.requestDate), 'PP')}</p>
-                      {returnItem.pickupDate && returnItem.pickupTimeSlot && (
-                        <p className="text-xs text-[#6B7280]">{returnItem.pickupTimeSlot}</p>
-                      )}
-                      {!returnItem.pickupDate && (
-                        <p className="text-xs text-amber-500">Pending schedule</p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>{getReturnStatusBadge(returnItem.status)}</TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                        >
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleViewDetails(returnItem)}>
-                          <Eye className="size-4 mr-2" />
-                          View Details
-                        </DropdownMenuItem>
-                        {returnItem.status !== 'Completed' && (
-                          <DropdownMenuItem onClick={() => handleProcessReturn(returnItem)}>
-                            <Edit className="size-4 mr-2" />
-                            Process
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-12">
+                    <Loader2 className="size-8 animate-spin text-[#F15929] mx-auto mb-4" />
+                    <span className="text-gray-600">Loading returns...</span>
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : returns.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-12">
+                    <Package className="size-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">No returns found</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Returns will appear here once they are agreed upon in Delivery & Return Management
+                    </p>
+                  </TableCell>
+                </TableRow>
+              ) : filteredReturns.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-12">
+                    <Search className="size-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">No matching returns found</p>
+                    <p className="text-sm text-gray-500 mt-2">Try adjusting your filters</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => {
+                        setSearchTerm('');
+                        setStatusFilter('all');
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedReturns.map((returnItem) => (
+                  <TableRow key={returnItem.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <FileText className="size-4 text-gray-400" />
+                        <span className="text-[#231F20] font-mono text-sm">{returnItem.orderId || returnItem.id}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="text-[#231F20]">{returnItem.customer}</p>
+                        {returnItem.customerContact && (
+                          <p className="text-sm text-[#6B7280]">{returnItem.customerContact}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={returnItem.returnType === 'Full' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}>
+                        {returnItem.returnType}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {returnItem.transportationType === 'Transportation Needed' ? (
+                          <Truck className="size-4 text-[#F59E0B]" />
+                        ) : (
+                          <PackageCheck className="size-4 text-[#10B981]" />
+                        )}
+                        <span className="text-sm text-[#6B7280]">
+                          {returnItem.transportationType === 'Transportation Needed' ? 'Transport' : 'Self Return'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="text-[#231F20]">{format(new Date(returnItem.pickupDate || returnItem.requestDate), 'PP')}</p>
+                        {returnItem.pickupDate && returnItem.pickupTimeSlot && (
+                          <p className="text-sm text-gray-500">{returnItem.pickupTimeSlot}</p>
+                        )}
+                        {!returnItem.pickupDate && (
+                          <p className="text-xs text-amber-500">Pending schedule</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{getReturnStatusBadge(returnItem.status)}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                          >
+                            <MoreVertical className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleViewDetails(returnItem)}>
+                            <Eye className="size-4 mr-2" />
+                            View
+                          </DropdownMenuItem>
+                          {returnItem.status !== 'Completed' && (
+                            <DropdownMenuItem onClick={() => handleProcessReturn(returnItem)}>
+                              <Edit className="size-4 mr-2" />
+                              Process
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
+          {filteredReturns.length > 0 && (
+            <ReportTablePagination
+              totalRows={filteredReturns.length}
+              rowsPerPage={pageSize}
+              currentPage={page}
+              onPageChange={setPage}
+              onRowsPerPageChange={(n) => { setPageSize(n); setPage(1); }}
+            />
           )}
         </CardContent>
       </Card>

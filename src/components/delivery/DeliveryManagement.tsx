@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Truck, Package, CheckCircle2, Clock, AlertCircle, Plus, 
+  Truck, Package, CheckCircle2, AlertCircle, Plus, 
   Search, Filter, Eye, FileText, Download, ClipboardCheck,
   PackageCheck, MapPin, Calendar as CalendarIcon, User,
-  Warehouse, MoreVertical, Edit, Loader2
+  Warehouse, MoreVertical, Edit, Loader2, FileSpreadsheet
 } from 'lucide-react';
 import { formatRfqDate } from '../../lib/rfqDate';
+import { ReportPDFGenerator, downloadPDF } from '../../lib/report-pdf-generator';
+import { generateTableExcel, downloadExcel } from '../../lib/report-excel-generator';
+import { ReportTablePagination } from '../reports/ReportTablePagination';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -163,6 +166,16 @@ export interface DeliveryOrder {
   notes?: string;
 }
 
+// Filter options: only statuses set in Delivery Management page workflow (DeliveryWorkflow)
+const DELIVERY_PROCESS_STATUSES: DeliveryOrder['status'][] = [
+  'Pending',
+  'Packing List Issued',
+  'Stock Checked',
+  'Packing & Loading',
+  'In Transit',
+  'Ready for Pickup',
+  'Completed',
+];
 
 export function DeliveryManagement() {
   const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
@@ -172,6 +185,13 @@ export function DeliveryManagement() {
   const [viewMode, setViewMode] = useState<'list' | 'workflow' | 'details'>('list');
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Fetch delivery orders from API (only those with DO Generated status)
   const fetchDeliveryOrders = useCallback(async () => {
@@ -595,13 +615,36 @@ export function DeliveryManagement() {
     return <Badge className={`${bg} ${text}`}>{label}</Badge>;
   };
 
-  const stats = {
-    total: deliveries.length,
-    pending: deliveries.filter(d => d.status === 'Pending' || d.status === 'Packing List Issued').length,
-    inProgress: deliveries.filter(d => 
-      d.status === 'Stock Checked' || d.status === 'Packing & Loading' || d.status === 'In Transit' || d.status === 'Ready for Pickup'
-    ).length,
-    completed: deliveries.filter(d => d.status === 'Completed').length,
+  const paginatedDeliveries = filteredDeliveries.slice((page - 1) * pageSize, page * pageSize);
+  const dateStr = new Date().toISOString().split('T')[0];
+
+  const exportToPDF = () => {
+    const headers = ['DO Number', 'Customer Name', 'Scheduled Date', 'Type', 'Status'];
+    const rows = filteredDeliveries.map(d => [
+      d.doNumber,
+      d.customerName,
+      d.scheduledDate ? formatRfqDate(d.scheduledDate) : 'Not scheduled',
+      d.type === 'delivery' ? 'Delivery' : 'Pickup',
+      d.status,
+    ]);
+    const generator = new ReportPDFGenerator();
+    const blob = generator.generateSimpleTableReport({ title: 'Delivery Management' }, headers, rows);
+    downloadPDF(blob, `Delivery_Management_${dateStr}.pdf`);
+    toast.success('Exported to PDF');
+  };
+
+  const exportToExcel = () => {
+    const headers = ['DO Number', 'Customer Name', 'Scheduled Date', 'Type', 'Status'];
+    const rows = filteredDeliveries.map(d => [
+      d.doNumber,
+      d.customerName,
+      d.scheduledDate ? formatRfqDate(d.scheduledDate) : 'Not scheduled',
+      d.type === 'delivery' ? 'Delivery' : 'Pickup',
+      d.status,
+    ]);
+    const blob = generateTableExcel(headers, rows, { title: 'Delivery Management' });
+    downloadExcel(blob, `Delivery_Management_${dateStr}.xlsx`);
+    toast.success('Exported to Excel');
   };
 
   if (viewMode === 'workflow') {
@@ -632,54 +675,6 @@ export function DeliveryManagement() {
         <p className="text-gray-600">Manage delivery orders, packing, and dispatch</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <Package className="size-4" />
-              Total Orders
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <Clock className="size-4" />
-              Pending
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{stats.pending}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <Truck className="size-4" />
-              In Progress
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{stats.inProgress}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600 flex items-center gap-2">
-              <CheckCircle2 className="size-4" />
-              Completed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{stats.completed}</div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
@@ -700,15 +695,19 @@ export function DeliveryManagement() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="Pending">Pending</SelectItem>
-                <SelectItem value="Packing List Issued">Packing List Issued</SelectItem>
-                <SelectItem value="Stock Checked">Stock Checked</SelectItem>
-                <SelectItem value="Packing & Loading">Packing & Loading</SelectItem>
-                <SelectItem value="In Transit">In Transit</SelectItem>
-                <SelectItem value="Ready for Pickup">Ready for Pickup</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
+                {DELIVERY_PROCESS_STATUSES.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {status}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" onClick={exportToExcel} disabled={filteredDeliveries.length === 0}>
+              <FileSpreadsheet className="size-4 mr-2" /> Export to Excel
+            </Button>
+            <Button className="bg-[#F15929] hover:bg-[#d94d1f]" onClick={exportToPDF} disabled={filteredDeliveries.length === 0}>
+              <Download className="size-4 mr-2" /> Export to PDF
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -728,20 +727,44 @@ export function DeliveryManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDeliveries.length === 0 ? (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-12">
+                    <Loader2 className="size-8 animate-spin text-[#F15929] mx-auto mb-4" />
+                    <span className="text-gray-600">Loading delivery orders...</span>
+                  </TableCell>
+                </TableRow>
+              ) : deliveries.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12">
                     <Package className="size-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600">No delivery orders found</p>
                     <p className="text-sm text-gray-500 mt-2">
-                      {searchQuery || statusFilter !== 'all'
-                        ? 'Try adjusting your filters'
-                        : 'Create your first delivery order to get started'}
+                      Create your first delivery order to get started
                     </p>
                   </TableCell>
                 </TableRow>
+              ) : filteredDeliveries.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-12">
+                    <Search className="size-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">No matching delivery orders found</p>
+                    <p className="text-sm text-gray-500 mt-2">Try adjusting your filters</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setStatusFilter('all');
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ) : (
-                filteredDeliveries.map((delivery) => (
+                paginatedDeliveries.map((delivery) => (
                   <TableRow key={delivery.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -802,6 +825,15 @@ export function DeliveryManagement() {
               )}
             </TableBody>
           </Table>
+          {filteredDeliveries.length > 0 && (
+            <ReportTablePagination
+              totalRows={filteredDeliveries.length}
+              rowsPerPage={pageSize}
+              currentPage={page}
+              onPageChange={setPage}
+              onRowsPerPageChange={(n) => { setPageSize(n); setPage(1); }}
+            />
+          )}
         </CardContent>
       </Card>
     </div>

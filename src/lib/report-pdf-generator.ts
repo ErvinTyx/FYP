@@ -465,6 +465,18 @@ export class ReportPDFGenerator {
     this.addFooter();
     return this.doc.output('blob');
   }
+
+  /** Generic table export for management pages (e.g. Delivery, Return). */
+  generateSimpleTableReport(
+    options: PDFGeneratorOptions,
+    headers: string[],
+    rows: (string | number)[][]
+  ): Blob {
+    this.addHeader(options);
+    this.addTable(headers, rows);
+    this.addFooter();
+    return this.doc.output('blob');
+  }
 }
 
 // Utility function to trigger download

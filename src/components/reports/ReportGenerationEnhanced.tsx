@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  FileText, DollarSign, Users, Package, Wrench, Truck, Clock, Shield, Calendar as CalendarIcon
+  FileText, DollarSign, Users, Package, Wrench, Truck, Clock, Shield, Calendar as CalendarIcon, Play, Loader2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import {
@@ -39,7 +39,6 @@ export interface ReportFilters {
   rowsPerPage: number;
 }
 
-const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
@@ -60,6 +59,8 @@ export function ReportGenerationEnhanced() {
     return { month: now.getMonth() + 1, year: now.getFullYear() };
   });
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [requestGeneration, setRequestGeneration] = useState(0);
+  const [reportLoading, setReportLoading] = useState(false);
 
   const effectiveDateRange = useMemo(() => {
     if (dateMode === 'range' && dateFrom && dateTo) return { dateFrom, dateTo };
@@ -98,7 +99,7 @@ export function ReportGenerationEnhanced() {
             <CalendarIcon className="size-5 text-[#F15929]" />
             Report period & display
           </CardTitle>
-          <CardDescription>Select date range or month and how many rows to show per page</CardDescription>
+          <CardDescription>Select date range or month, then generate the report</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-6">
@@ -206,21 +207,18 @@ export function ReportGenerationEnhanced() {
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label>Rows per page</Label>
-              <Select
-                value={String(rowsPerPage)}
-                onValueChange={(v) => setRowsPerPage(Number(v))}
+            <div className="flex items-end">
+              <Button
+                onClick={() => setRequestGeneration((r) => r + 1)}
+                className="bg-[#F15929] hover:bg-[#d94d1f]"
+                disabled={reportLoading}
               >
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROWS_PER_PAGE_OPTIONS.map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {reportLoading ? (
+                  <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</>
+                ) : (
+                  <><Play className="size-4 mr-2" /> Generate Report</>
+                )}
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -319,25 +317,60 @@ export function ReportGenerationEnhanced() {
 
       {/* Render the selected report component */}
       {selectedReport === 'financial-profitability' && (
-        <FinancialProfitabilityReport filters={filters} />
+        <FinancialProfitabilityReport
+          filters={filters}
+          requestGeneration={requestGeneration}
+          onRowsPerPageChange={setRowsPerPage}
+          onLoadingChange={setReportLoading}
+        />
       )}
       {selectedReport === 'customer-behaviour' && (
-        <CustomerBehaviourReport filters={filters} />
+        <CustomerBehaviourReport
+          filters={filters}
+          requestGeneration={requestGeneration}
+          onRowsPerPageChange={setRowsPerPage}
+          onLoadingChange={setReportLoading}
+        />
       )}
       {selectedReport === 'inventory-utilization' && (
-        <InventoryUtilizationReport filters={filters} />
+        <InventoryUtilizationReport
+          filters={filters}
+          requestGeneration={requestGeneration}
+          onRowsPerPageChange={setRowsPerPage}
+          onLoadingChange={setReportLoading}
+        />
       )}
       {selectedReport === 'maintenance-repair' && (
-        <MaintenanceRepairReport filters={filters} />
+        <MaintenanceRepairReport
+          filters={filters}
+          requestGeneration={requestGeneration}
+          onRowsPerPageChange={setRowsPerPage}
+          onLoadingChange={setReportLoading}
+        />
       )}
       {selectedReport === 'delivery-logistics' && (
-        <DeliveryLogisticsReport filters={filters} />
+        <DeliveryLogisticsReport
+          filters={filters}
+          requestGeneration={requestGeneration}
+          onRowsPerPageChange={setRowsPerPage}
+          onLoadingChange={setReportLoading}
+        />
       )}
       {selectedReport === 'rental-duration' && (
-        <RentalDurationReport filters={filters} />
+        <RentalDurationReport
+          filters={filters}
+          requestGeneration={requestGeneration}
+          onRowsPerPageChange={setRowsPerPage}
+          onLoadingChange={setReportLoading}
+        />
       )}
       {selectedReport === 'credit-risk' && (
-        <CreditRiskReport filters={filters} />
+        <CreditRiskReport
+          filters={filters}
+          requestGeneration={requestGeneration}
+          onRowsPerPageChange={setRowsPerPage}
+          onLoadingChange={setReportLoading}
+        />
       )}
     </div>
   );

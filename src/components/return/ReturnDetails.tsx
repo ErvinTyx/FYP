@@ -26,7 +26,7 @@ export function ReturnDetails({ returnOrder, onProcess, onBack }: ReturnDetailsP
   const getStatusBadge = (status: Return['status']) => {
     const config = {
       'Requested': { color: 'bg-blue-500 text-white', label: 'Requested' },
-      'Approved': { color: 'bg-green-500 text-white', label: 'Approved' },
+      'Pending': { color: 'bg-green-500 text-white', label: 'Pending' },
       'Pickup Scheduled': { color: 'bg-purple-500 text-white', label: 'Pickup Scheduled' },
       'Pickup Confirmed': { color: 'bg-purple-600 text-white', label: 'Pickup Confirmed' },
       'Driver Recording': { color: 'bg-amber-500 text-white', label: 'Driver Recording' },

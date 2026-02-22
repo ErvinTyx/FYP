@@ -438,6 +438,20 @@ export function generateCreditRiskExcel(data: CustomerCreditRiskRow[], options: 
   return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 
+// Generic table export for management pages (e.g. Delivery, Return).
+export function generateTableExcel(
+  headers: string[],
+  rows: (string | number)[][],
+  options: ExcelGeneratorOptions
+): Blob {
+  const wb = XLSX.utils.book_new();
+  const sheetData = [[options.title], ['Generated: ' + formatRfqDate(new Date())], [], createHeaderRow(headers), ...rows];
+  const sheet = XLSX.utils.aoa_to_sheet(sheetData);
+  XLSX.utils.book_append_sheet(wb, sheet, 'Sheet1');
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
 // Utility function to trigger download
 export function downloadExcel(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);

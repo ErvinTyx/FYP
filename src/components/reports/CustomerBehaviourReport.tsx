@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, Search, Users, FileSpreadsheet, Loader2, Play } from 'lucide-react';
+import { Download, Search, Users, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -19,7 +19,14 @@ import { generateCustomerBehaviourExcel, downloadExcel } from '@/lib/report-exce
 import type { ReportFilters } from './ReportGenerationEnhanced';
 import { ReportTablePagination } from './ReportTablePagination';
 
-export function CustomerBehaviourReport({ filters }: { filters: ReportFilters }) {
+export interface CustomerBehaviourReportProps {
+  filters: ReportFilters;
+  requestGeneration?: number;
+  onRowsPerPageChange?: (rowsPerPage: number) => void;
+  onLoadingChange?: (loading: boolean) => void;
+}
+
+export function CustomerBehaviourReport({ filters, requestGeneration = 0, onRowsPerPageChange, onLoadingChange }: CustomerBehaviourReportProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [data, setData] = useState<CustomerRentalBehaviourResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +52,7 @@ export function CustomerBehaviourReport({ filters }: { filters: ReportFilters })
     if (!validateFilters()) return;
     try {
       setLoading(true);
+      onLoadingChange?.(true);
       setError(null);
       const params = new URLSearchParams();
       if (filters.dateFrom) params.set('dateFrom', filters.dateFrom.toISOString());
@@ -60,8 +68,15 @@ export function CustomerBehaviourReport({ filters }: { filters: ReportFilters })
       toast.error('Failed to load customer behaviour data');
     } finally {
       setLoading(false);
+      onLoadingChange?.(false);
     }
   };
+
+  useEffect(() => {
+    if (requestGeneration > 0) {
+      generateReport();
+    }
+  }, [requestGeneration]);
 
   const exportToExcel = () => {
     if (!data) return;
@@ -114,24 +129,6 @@ export function CustomerBehaviourReport({ filters }: { filters: ReportFilters })
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Report Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-sm text-gray-600 mb-3">Select date range or month above, then generate.</p>
-          <div className="flex gap-4 items-end">
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-              <Input placeholder="Search customer..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
-            </div>
-            <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={loading}>
-              {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {!hasGenerated ? (
         <Card>
           <CardContent className="py-16">
@@ -148,11 +145,18 @@ export function CustomerBehaviourReport({ filters }: { filters: ReportFilters })
             <CardTitle>Customer Rental Behaviour</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="flex gap-4 items-center mb-4">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+                <Input placeholder="Search customer..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+              </div>
+            </div>
             <ReportTablePagination
               totalRows={filteredRows.length}
               rowsPerPage={rowsPerPage}
               currentPage={currentPage}
               onPageChange={setCurrentPage}
+              onRowsPerPageChange={onRowsPerPageChange}
             />
             <Table>
               <TableHeader>

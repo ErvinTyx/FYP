@@ -69,7 +69,7 @@ export interface Return {
   requestDate: string;
   status: 
     | 'Requested' 
-    | 'Approved' 
+    | 'Pending' 
     | 'Pickup Scheduled'
     | 'Pickup Confirmed'
     | 'Driver Recording'
@@ -186,7 +186,7 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       
       const statusToStep: Record<Return['status'], number> = {
         'Requested': 1,
-        'Approved': isTransportNeeded ? 2 : 2,
+        'Pending': isTransportNeeded ? 2 : 2,
         'Pickup Scheduled': 2,
         'Pickup Confirmed': 3,
         'Driver Recording': 3,
@@ -371,14 +371,14 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
     } else {
       const updatedData = {
         ...formData,
-        status: 'Approved' as const,
+        status: 'Pending' as const,
       };
       setFormData(updatedData);
       
       setIsSaving(true);
       try {
         await onSave(updatedData as Return); // Save to database
-        toast.success('Return approved - awaiting customer self-return');
+        toast.success('Return pending - awaiting customer self-return');
         setCurrentStep(2);
       } catch {
         toast.error('Failed to save. Please try again.');

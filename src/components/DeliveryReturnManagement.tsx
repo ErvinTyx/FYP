@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Plus, FileText, Truck, Package, CheckCircle, Clock, XCircle, Phone, Mail, MapPin, Calendar as CalendarIcon, User, ArrowRight, Download, Upload, Check, X, Loader, AlertCircle } from 'lucide-react';
+import { Search, Plus, FileText, Truck, Package, CheckCircle, Clock, XCircle, Phone, Mail, MapPin, Calendar as CalendarIcon, User, ArrowRight, Download, Upload, Check, X, Loader, AlertCircle, Filter } from 'lucide-react';
 import DeliveryOrderGeneration from './DeliveryOrderGeneration';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Card, CardContent } from './ui/card';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { format } from 'date-fns';
 import { z } from 'zod';
 import { toast } from 'sonner';
@@ -238,6 +241,7 @@ export default function DeliveryReturnManagement({
   const [activeTab, setActiveTab] = useState<'delivery' | 'return'>('delivery');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterReturnStatus, setFilterReturnStatus] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<DeliveryRequest | null>(null);
   const [selectedSet, setSelectedSet] = useState<DeliverySet | null>(null);
   const [showQuotationModal, setShowQuotationModal] = useState(false);
@@ -1773,30 +1777,128 @@ export default function DeliveryReturnManagement({
     return isQuoted && isAgreed && isDoGenerated;
   };
 
+  // Delivery flow stages in order (full DeliveryStatus so filter matches request flow)
+  const DELIVERY_FLOW_ORDER: string[] = [
+    'Pending', 'Quoted', 'Confirmed', 'DO Generated',
+    'Packing List Issued', 'Stock Checked', 'Packing & Loading', 'Driver Acknowledged',
+    'In Transit', 'Ready for Pickup', 'Delivered', 'Customer Confirmed', 'Completed', 'Cancelled',
+  ];
+  // Step-style labels matching the request flow (Quote, Generate DO, Pending, ...)
+  const deliveryStatusLabel: Record<string, string> = {
+    all: 'All Status',
+    ready: 'Ready for Delivery',
+    Pending: 'Pending',
+    Quoted: 'Quote',
+    Confirmed: 'Agreed',
+    'DO Generated': 'Generate DO',
+    'Packing List Issued': 'Packing List',
+    'Stock Checked': 'Stock Checked',
+    'Packing & Loading': 'Packing & Loading',
+    'Driver Acknowledged': 'Driver Acknowledged',
+    'In Transit': 'In Transit',
+    'Ready for Pickup': 'Ready for Pickup',
+    Delivered: 'Delivered',
+    'Customer Confirmed': 'Customer Confirmed',
+    Completed: 'Completed',
+    Cancelled: 'Cancelled',
+  };
+
+  // Step-style labels for return request flow
+  const returnStatusLabel: Record<string, string> = {
+    all: 'All Status',
+    Requested: 'Pending',
+    Quoted: 'Quote',
+    Agreed: 'Agreed',
+    Approved: 'Agreed',
+    Scheduled: 'Scheduled',
+    'Pickup Scheduled': 'Pickup Scheduled',
+    'Pickup Confirmed': 'Pickup Confirmed',
+    'Driver Recording': 'Driver Recording',
+    'In Transit': 'In Transit',
+    Received: 'Received',
+    'Received at Warehouse': 'Received',
+    'Under Inspection': 'Under Inspection',
+    'GRN Generated': 'GRN Generated',
+    'Sorting Complete': 'Sorting Complete',
+    'Customer Notified': 'Customer Notified',
+    'Dispute Raised': 'Dispute Raised',
+    Completed: 'Completed',
+    Cancelled: 'Cancelled',
+  };
+
+  // Delivery filter: only statuses that appear in the request data (request stage status only), in flow order
+  const deliveryStatusesInUse = React.useMemo(() => {
+    const setStatuses = new Set<string>();
+    let hasReady = false;
+    for (const req of deliveryRequests) {
+      for (const set of req.sets) {
+        if (set?.status != null) setStatuses.add(String(set.status).trim());
+        if (isSetReadyForDelivery(set)) hasReady = true;
+      }
+    }
+    const ordered = DELIVERY_FLOW_ORDER.filter(s => setStatuses.has(s));
+    const extra = Array.from(setStatuses).filter(s => !DELIVERY_FLOW_ORDER.includes(s)).sort();
+    return ['all', ...(hasReady ? ['ready'] : []), ...ordered, ...extra];
+  }, [deliveryRequests]);
+
+  // Return flow stages in order (include both frontend and API/DB variants so filter matches request flow)
+  const RETURN_FLOW_ORDER: string[] = [
+    'Requested', 'Quoted', 'Agreed', 'Approved',
+    'Scheduled', 'Pickup Scheduled', 'Pickup Confirmed', 'Driver Recording',
+    'In Transit', 'Received', 'Received at Warehouse', 'Under Inspection', 'GRN Generated', 'Sorting Complete',
+    'Customer Notified', 'Dispute Raised', 'Completed', 'Cancelled',
+  ];
+
+  // Return filter: only statuses that appear in the request data (request stage status only), in flow order
+  const returnStatusesInUse = React.useMemo(() => {
+    const statuses = new Set(
+      returnRequests.map(req => req?.status).filter((s): s is string => !!s).map(s => String(s).trim())
+    );
+    const ordered = RETURN_FLOW_ORDER.filter(s => statuses.has(s));
+    const extra = Array.from(statuses).filter(s => !RETURN_FLOW_ORDER.includes(s)).sort();
+    return ['all', ...ordered, ...extra];
+  }, [returnRequests]);
+
+  // Reset filter when selected value is no longer in the options
+  useEffect(() => {
+    if (filterStatus !== 'all' && !deliveryStatusesInUse.includes(filterStatus)) {
+      setFilterStatus('all');
+    }
+  }, [filterStatus, deliveryStatusesInUse]);
+  useEffect(() => {
+    if (filterReturnStatus !== 'all' && !returnStatusesInUse.includes(filterReturnStatus)) {
+      setFilterReturnStatus('all');
+    }
+  }, [filterReturnStatus, returnStatusesInUse]);
+
+  // Ensure Select always gets a value that exists in options (correct display)
+  const effectiveDeliveryFilter = deliveryStatusesInUse.includes(filterStatus) ? filterStatus : 'all';
+  const effectiveReturnFilter = returnStatusesInUse.includes(filterReturnStatus) ? filterReturnStatus : 'all';
+
   const filteredDeliveryRequests = deliveryRequests.filter(req => {
     // Search filter
-    const matchesSearch = 
+    const matchesSearch =
       req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.requestId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.agreementNo.toLowerCase().includes(searchTerm.toLowerCase());
-    
     if (!matchesSearch) return false;
-    
-    // Status filter
-    if (filterStatus === 'all') return true;
-    if (filterStatus === 'ready') {
-      // Only show requests where at least one set is ready for delivery (quoted + agreed + DO generated)
+    // Status filter (use effective value so display and filter stay in sync)
+    if (effectiveDeliveryFilter === 'all') return true;
+    if (effectiveDeliveryFilter === 'ready') {
       return req.sets.some(set => isSetReadyForDelivery(set));
     }
-    // Filter by specific set status
-    return req.sets.some(set => set.status === filterStatus);
+    return req.sets.some(set => set.status === effectiveDeliveryFilter);
   });
 
-  const filteredReturnRequests = returnRequests.filter(req =>
-    req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.requestId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.agreementNo.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredReturnRequests = returnRequests.filter(req => {
+    const matchesSearch =
+      req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.requestId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.agreementNo.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+    if (effectiveReturnFilter === 'all') return true;
+    return req.status === effectiveReturnFilter;
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -1852,32 +1954,59 @@ export default function DeliveryReturnManagement({
       </div>
 
       {/* Search and Filter */}
-      <div className="flex items-center space-x-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 size-5" />
-          <input
-            type="text"
-            placeholder="Search by customer, request ID, or agreement..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929]"
-          />
-        </div>
-        {activeTab === 'delivery' && (
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] bg-white"
-          >
-            <option value="all">All Status</option>
-            <option value="ready">Ready for Delivery (Quoted + Agreed + DO)</option>
-            <option value="Pending">Pending</option>
-            <option value="Quoted">Quoted</option>
-            <option value="Confirmed">Confirmed (Agreed)</option>
-            <option value="DO Generated">DO Generated</option>
-          </select>
-        )}
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by customer, request ID, or agreement..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {activeTab === 'delivery' ? (
+              <Select value={effectiveDeliveryFilter} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-full md:w-64">
+                  <Filter className="size-4 mr-2" />
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {deliveryStatusesInUse.length > 0 ? (
+                    deliveryStatusesInUse.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {deliveryStatusLabel[value] ?? value}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="all">{deliveryStatusLabel.all}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={effectiveReturnFilter} onValueChange={setFilterReturnStatus}>
+                <SelectTrigger className="w-full md:w-64">
+                  <Filter className="size-4 mr-2" />
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {returnStatusesInUse.length > 0 ? (
+                    returnStatusesInUse.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {returnStatusLabel[value] ?? value}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="all">{returnStatusLabel.all}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Delivery Requests Tab */}
       {activeTab === 'delivery' && (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, Shield, FileSpreadsheet, Loader2, Play } from 'lucide-react';
+import { Download, Shield, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import {
@@ -18,7 +18,14 @@ import { generateCreditRiskExcel, downloadExcel } from '@/lib/report-excel-gener
 import type { ReportFilters } from './ReportGenerationEnhanced';
 import { ReportTablePagination } from './ReportTablePagination';
 
-export function CreditRiskReport({ filters }: { filters: ReportFilters }) {
+export interface CreditRiskReportProps {
+  filters: ReportFilters;
+  requestGeneration?: number;
+  onRowsPerPageChange?: (rowsPerPage: number) => void;
+  onLoadingChange?: (loading: boolean) => void;
+}
+
+export function CreditRiskReport({ filters, requestGeneration = 0, onRowsPerPageChange, onLoadingChange }: CreditRiskReportProps) {
   const [data, setData] = useState<CustomerCreditRiskResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +50,7 @@ export function CreditRiskReport({ filters }: { filters: ReportFilters }) {
     if (!validateFilters()) return;
     try {
       setLoading(true);
+      onLoadingChange?.(true);
       setError(null);
       const params = new URLSearchParams();
       if (filters.dateFrom) params.set('dateFrom', filters.dateFrom.toISOString());
@@ -58,8 +66,15 @@ export function CreditRiskReport({ filters }: { filters: ReportFilters }) {
       toast.error('Failed to load credit risk data');
     } finally {
       setLoading(false);
+      onLoadingChange?.(false);
     }
   };
+
+  useEffect(() => {
+    if (requestGeneration > 0) {
+      generateReport();
+    }
+  }, [requestGeneration]);
 
   const exportToExcel = () => {
     if (!data) return;
@@ -122,18 +137,6 @@ export function CreditRiskReport({ filters }: { filters: ReportFilters }) {
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Report Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-sm text-gray-600 mb-3">Select date range or month in the &quot;Report period & display&quot; section above, then generate.</p>
-          <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={loading}>
-            {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
-          </Button>
-        </CardContent>
-      </Card>
-
       {!hasGenerated ? (
         <Card>
           <CardContent className="py-16">
@@ -177,6 +180,7 @@ export function CreditRiskReport({ filters }: { filters: ReportFilters }) {
                 rowsPerPage={rowsPerPage}
                 currentPage={currentPage}
                 onPageChange={setCurrentPage}
+                onRowsPerPageChange={onRowsPerPageChange}
               />
               <Table>
                 <TableHeader>

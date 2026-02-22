@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, DollarSign, FileSpreadsheet, Loader2, Play } from 'lucide-react';
+import { Download, DollarSign, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import {
@@ -18,7 +18,14 @@ import { generateFinancialProfitabilityExcel, downloadExcel } from '@/lib/report
 import type { ReportFilters } from './ReportGenerationEnhanced';
 import { ReportTablePagination } from './ReportTablePagination';
 
-export function FinancialProfitabilityReport({ filters }: { filters: ReportFilters }) {
+export interface FinancialProfitabilityReportProps {
+  filters: ReportFilters;
+  requestGeneration?: number;
+  onRowsPerPageChange?: (rowsPerPage: number) => void;
+  onLoadingChange?: (loading: boolean) => void;
+}
+
+export function FinancialProfitabilityReport({ filters, requestGeneration = 0, onRowsPerPageChange, onLoadingChange }: FinancialProfitabilityReportProps) {
   const [data, setData] = useState<ProjectFinancialReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +53,7 @@ export function FinancialProfitabilityReport({ filters }: { filters: ReportFilte
     if (!validateFilters()) return;
     try {
       setLoading(true);
+      onLoadingChange?.(true);
       setError(null);
       const params = new URLSearchParams();
       if (dateFrom) params.set('dateFrom', dateFrom.toISOString());
@@ -61,8 +69,15 @@ export function FinancialProfitabilityReport({ filters }: { filters: ReportFilte
       toast.error('Failed to load financial profitability data');
     } finally {
       setLoading(false);
+      onLoadingChange?.(false);
     }
   };
+
+  useEffect(() => {
+    if (requestGeneration > 0) {
+      generateReport();
+    }
+  }, [requestGeneration]);
 
   const exportToExcel = () => {
     if (!data) return;
@@ -120,18 +135,6 @@ export function FinancialProfitabilityReport({ filters }: { filters: ReportFilte
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Report Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-sm text-gray-600 mb-3">Select date range or month in the &quot;Report period & display&quot; section above, then generate.</p>
-          <Button onClick={generateReport} className="bg-[#F15929] hover:bg-[#d94d1f]" disabled={loading}>
-            {loading ? <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</> : <><Play className="size-4 mr-2" /> Generate Report</>}
-          </Button>
-        </CardContent>
-      </Card>
-
       {!hasGenerated ? (
         <Card>
           <CardContent className="py-16">
@@ -183,6 +186,7 @@ export function FinancialProfitabilityReport({ filters }: { filters: ReportFilte
                 rowsPerPage={rowsPerPage}
                 currentPage={currentPage}
                 onPageChange={setCurrentPage}
+                onRowsPerPageChange={onRowsPerPageChange}
               />
               <Table>
                 <TableHeader>
