@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     if (new Date() > setupToken.expiresAt) {
       return NextResponse.json(
-        { success: false, message: 'This link has expired. Please contact your administrator.' },
+        { success: false, message: 'This link has expired. Please contact admin.' },
         { status: 400 }
       );
     }
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
 
     if (new Date() > setupToken.expiresAt) {
       return NextResponse.json(
-        { success: false, message: 'This link has expired. Please contact your administrator.' },
+        { success: false, message: 'This link has expired. Please contact admin.' },
         { status: 400 }
       );
     }
