@@ -801,7 +801,7 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
       if (data.emailSent) {
         toast.success("User created! Password setup email has been sent.");
       } else {
-        toast.warning("User created but email failed to send. Please contact support.");
+        toast.warning("User created but email failed to send. Please contact admin.");
       }
       
       setIsAddDialogOpen(false);
