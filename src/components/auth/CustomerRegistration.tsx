@@ -1465,10 +1465,6 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                   Verify Email
                 </Button>
               </div>
-
-              <p className="text-xs text-center text-gray-500 pt-2">
-                Demo: Use code <span className="font-mono bg-gray-100 px-2 py-1 rounded">123456</span> to verify
-              </p>
             </div>
           </>
         )}
