@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         errorCode: 'ACCOUNT_INACTIVE',
-        message: 'Your account is inactive. Please contact support to reactivate your account.',
+        message: 'Your account is inactive. Please contact admin to reactivate your account.',
       }, { status: 401 });
     }
 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         errorCode: 'ACCOUNT_REJECTED',
-        message: 'Your account registration was not approved. Please contact support for assistance.',
+        message: 'Your account registration was not approved. Please contact admin for assistance.',
       }, { status: 401 });
     }
 

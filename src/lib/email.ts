@@ -154,12 +154,12 @@ export async function sendPasswordSetupEmail(
               <div style="background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 16px; margin: 0 0 25px 0;">
                 <p style="color: #92400E; margin: 0; font-size: 14px;">
                   <strong>⏰ This link expires in 15 minutes.</strong><br>
-                  If you don't set up your password within this time, please contact your administrator.
+                  If you don't set up your password within this time, please contact admin.
                 </p>
               </div>
               <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
               <p style="color: #9CA3AF; font-size: 12px; margin: 0; text-align: center;">
-                This is an automated message from Power Metal & Steel. If you didn't expect this email, please contact your administrator.
+                This is an automated message from Power Metal & Steel. If you didn't expect this email, please contact admin.
               </p>
             </div>
           </div>
@@ -175,9 +175,9 @@ Your account has been created by an administrator. Please visit the link below t
 
 ${setupUrl}
 
-This link expires in 15 minutes. If you don't set up your password within this time, please contact your administrator.
+This link expires in 15 minutes. If you don't set up your password within this time, please contact admin.
 
-If you didn't expect this email, please contact your administrator.
+If you didn't expect this email, please contact admin.
     `.trim(),
   };
 
@@ -357,7 +357,7 @@ Your ${typeLabel} account has been approved. You can now log in and start using 
 
 Log in at: ${loginUrl}
 
-If you have any questions, please contact our support team.
+If you have any questions, please contact admin.
     `.trim(),
   };
 
@@ -432,7 +432,7 @@ export async function sendRegistrationRejectionEmail(
               </div>
               
               <p style="color: #6B7280; line-height: 1.6; margin: 0 0 15px 0; font-size: 14px;">
-                If you have any questions, please contact our support team.
+                If you have any questions, please contact admin.
               </p>
               
               <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
@@ -457,7 +457,7 @@ ${rejectionReason}
 You are welcome to register again with corrected information. Please visit:
 ${registerUrl}
 
-If you have any questions, please contact our support team.
+If you have any questions, please contact admin.
     `.trim(),
   };
 
@@ -555,7 +555,7 @@ export async function sendDepositRejectionEmail(
               </div>
               
               <p style="color: #6B7280; line-height: 1.6; margin: 0 0 15px 0; font-size: 14px;">
-                If you have any questions or need assistance, please contact our support team.
+                If you have any questions or need assistance, please contact admin.
               </p>
               
               <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
@@ -585,7 +585,7 @@ ${depositUrl}
 
 Important: Please ensure your payment proof clearly shows the transaction details including the reference number, amount, and date.
 
-If you have any questions or need assistance, please contact our support team.
+If you have any questions or need assistance, please contact admin.
     `.trim(),
   };
 
@@ -683,7 +683,7 @@ export async function sendMonthlyRentalRejectionEmail(
               </div>
               
               <p style="color: #6B7280; line-height: 1.6; margin: 0 0 15px 0; font-size: 14px;">
-                If you have any questions or need assistance, please contact our support team.
+                If you have any questions or need assistance, please contact admin.
               </p>
               
               <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
@@ -713,7 +713,7 @@ ${invoiceUrl}
 
 Important: Please ensure your payment proof clearly shows the transaction details including the reference number, amount, and date. Late payments may incur additional interest charges as per your rental agreement.
 
-If you have any questions or need assistance, please contact our support team.
+If you have any questions or need assistance, please contact admin.
     `.trim(),
   };
 
@@ -786,7 +786,7 @@ export async function sendDeliveryOTPEmail(
               
               <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
               <p style="color: #9CA3AF; font-size: 12px; margin: 0; text-align: center;">
-                This is an automated message from Power Metal & Steel. If you did not request this delivery, please contact us immediately.
+                This is an automated message from Power Metal & Steel. If you did not request this delivery, please contact admin immediately.
               </p>
             </div>
           </div>
@@ -810,7 +810,7 @@ Important: This code is valid for 10 minutes. Do not share this code with anyone
 
 By providing this code, you confirm that you have received the items in the delivery order and agree to the terms of the rental agreement.
 
-If you did not request this delivery, please contact us immediately.
+If you did not request this delivery, please contact admin immediately.
     `.trim(),
   };
 
