@@ -5,7 +5,7 @@
 
 */
 -- AlterTable
-ALTER TABLE `damageinvoice` DROP COLUMN `tax`;
+ALTER TABLE `DamageInvoice` DROP COLUMN `tax`;
 
 -- CreateTable
 CREATE TABLE `ProjectFinancialReport` (
