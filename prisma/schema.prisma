@@ -657,6 +657,7 @@ model ReturnRequestItem {
   quantityReturned  Int                    @default(0) // Total quantity being returned
   notes             String?
   scaffoldingItemId String?
+  deliverySetId     String?                // Which set this row belongs to (multi-set returns); null = legacy/single-set
   returnRequestId   String
   returnRequest     ReturnRequest          @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
   conditions        ReturnItemCondition[]  // Normalized breakdown by condition status (Good, Damaged, Replace)

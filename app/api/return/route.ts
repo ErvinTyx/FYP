@@ -162,6 +162,7 @@ export async function GET(request: NextRequest) {
               statusBreakdown,
               notes: item.notes,
               scaffoldingItemId: item.scaffoldingItemId || null,
+              deliverySetId: item.deliverySetId || null,
             };
           }),
         };
@@ -242,9 +243,9 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const qty = item?.quantity;
-      if (qty == null || typeof qty !== 'number' || Number.isNaN(qty) || !Number.isInteger(qty) || qty < 1) {
+      if (qty == null || typeof qty !== 'number' || Number.isNaN(qty) || !Number.isInteger(qty) || qty < 0) {
         return NextResponse.json(
-          { success: false, message: `Item "${(item?.name ?? 'item')}" must have a valid quantity (whole number, at least 1)` },
+          { success: false, message: `Item "${(item?.name ?? 'item')}" must have a valid quantity (whole number, 0 or more)` },
           { status: 400 }
         );
       }
@@ -337,11 +338,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Normalize request items: sum quantities per scaffoldingItemId (handle duplicates)
+      // Normalize request items: sum quantities per scaffoldingItemId (handle duplicates); allow 0, ignore negative
       const itemsByItemId = new Map<string, { name: string; quantity: number; scaffoldingItemId: string }>();
       for (const item of items as Array<{ name: string; quantity: number; scaffoldingItemId?: string }>) {
         const id = (item.scaffoldingItemId ?? '').trim();
-        const qty = Math.max(1, Math.floor(Number(item.quantity)) || 1);
+        const qty = Math.max(0, Math.floor(Number(item.quantity)) || 0);
+        if (qty <= 0) continue;
         if (itemsByItemId.has(id)) {
           const existing = itemsByItemId.get(id)!;
           existing.quantity += qty;
@@ -373,6 +375,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Only create rows for items with quantity > 0 (0 is allowed but not stored as a row)
+    const itemsToCreate = (items as Array<{ name: string; quantity: number; quantityReturned?: number; scaffoldingItemId?: string; deliverySetId?: string }>)
+      ?.filter(item => Math.max(0, Math.floor(Number(item.quantity))) > 0) ?? [];
+    if (itemsToCreate.length === 0) {
+      return NextResponse.json(
+        { success: false, message: 'At least one item with quantity greater than 0 is required' },
+        { status: 400 }
+      );
+    }
+
     // Create the return request with items (deliverySetIds set separately - Prisma create input may not include Json)
     const newRequest = await prisma.returnRequest.create({
       data: {
@@ -388,14 +400,18 @@ export async function POST(request: NextRequest) {
         collectionMethod,
         status: collectionMethod === 'self-return' ? 'Agreed' : 'Requested',
         ...(deliverySetId ? { deliverySet: { connect: { id: deliverySetId } } } : {}),
-        items: items ? {
-          create: items.map((item: { name: string; quantity: number; quantityReturned?: number; scaffoldingItemId?: string }) => ({
-            name: item.name,
-            quantity: Math.max(1, Math.floor(Number(item.quantity))),
-            quantityReturned: Math.max(1, Math.floor(Number(item.quantityReturned ?? item.quantity))),
-            scaffoldingItemId: item.scaffoldingItemId || null,
-          })),
-        } : undefined,
+        items: {
+          create: itemsToCreate.map((item) => {
+            const qty = Math.max(0, Math.floor(Number(item.quantity)));
+            return {
+              name: item.name,
+              quantity: qty,
+              quantityReturned: Math.max(0, Math.floor(Number(item.quantityReturned ?? item.quantity))),
+              scaffoldingItemId: item.scaffoldingItemId || null,
+              deliverySetId: item.deliverySetId || null,
+            };
+          }),
+        },
       },
       include: {
         items: true,

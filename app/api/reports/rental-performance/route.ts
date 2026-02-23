@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Get return data for duration calculation
+    // Get return data for duration calculation (include delivery set for actual delivery→return duration)
     const returnItems = await prisma.returnRequestItem.findMany({
       where: {
         scaffoldingItemId: { not: null },
@@ -79,9 +79,14 @@ export async function GET(request: NextRequest) {
       },
       include: {
         returnRequest: {
-          select: {
-            createdAt: true,
-            requestDate: true,
+          include: {
+            deliverySet: {
+              include: {
+                completion: true,
+                schedule: true,
+              },
+            },
+            schedule: true,
           },
         },
       },
@@ -124,20 +129,42 @@ export async function GET(request: NextRequest) {
       itemDataMap.set(item.scaffoldingItemId, existing);
     }
 
-    // Calculate average duration from return requests
+    // Calculate average duration from return requests (actual delivery→return when deliverySet is linked)
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
     for (const item of returnItems) {
       if (!item.scaffoldingItemId) continue;
       const existing = itemDataMap.get(item.scaffoldingItemId);
-      if (existing && item.returnRequest.requestDate) {
-        // Estimate duration: assume rental started 30 days before return
-        const returnDate = new Date(item.returnRequest.requestDate);
-        const startDate = new Date(returnDate);
-        startDate.setDate(startDate.getDate() - 30); // Default estimate
-        const duration = Math.ceil((returnDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        existing.totalDuration += duration;
-        existing.durationCount += 1;
-        itemDataMap.set(item.scaffoldingItemId, existing);
+      if (!existing) continue;
+
+      const returnEnd =
+        item.returnRequest.schedule?.scheduledDate != null
+          ? new Date(item.returnRequest.schedule.scheduledDate)
+          : item.returnRequest.requestDate != null
+            ? new Date(item.returnRequest.requestDate)
+            : null;
+      if (!returnEnd || isNaN(returnEnd.getTime())) continue;
+
+      const ds = item.returnRequest.deliverySet;
+      const deliveryStart =
+        ds?.completion?.deliveredAt != null
+          ? new Date(ds.completion.deliveredAt)
+          : ds?.schedule?.scheduledDate != null
+            ? new Date(ds.schedule.scheduledDate)
+            : ds?.createdAt != null
+              ? new Date(ds.createdAt)
+              : null;
+
+      let duration: number;
+      if (deliveryStart && !isNaN(deliveryStart.getTime()) && returnEnd > deliveryStart) {
+        duration = Math.ceil((returnEnd.getTime() - deliveryStart.getTime()) / MS_PER_DAY);
+      } else {
+        // Fallback: no linked delivery set or invalid dates – use 30-day estimate
+        duration = 30;
       }
+
+      existing.totalDuration += duration;
+      existing.durationCount += 1;
+      itemDataMap.set(item.scaffoldingItemId, existing);
     }
 
     // Build response data

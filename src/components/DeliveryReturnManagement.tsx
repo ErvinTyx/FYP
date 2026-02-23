@@ -155,7 +155,7 @@ interface ReturnRequest {
   customerName: string;
   agreementNo: string;
   setName: string;
-  items: { name: string; quantity: number; scaffoldingItemId?: string }[];
+  items: { name: string; quantity: number; scaffoldingItemId?: string; deliverySetId?: string | null }[];
   requestDate: string;
   scheduledDate?: string;
   status: ReturnStatus;
@@ -770,8 +770,8 @@ export default function DeliveryReturnManagement({
         if (Number.isNaN(qty) || !Number.isFinite(qty)) {
           itemError.quantity = 'Quantity must be a valid number';
           isValid = false;
-        } else if (!Number.isInteger(qty) || qty < 1) {
-          itemError.quantity = 'Quantity must be a whole number (at least 1)';
+        } else if (!Number.isInteger(qty) || qty < 0) {
+          itemError.quantity = 'Quantity must be a whole number (0 or more)';
           isValid = false;
         }
 
@@ -783,7 +783,7 @@ export default function DeliveryReturnManagement({
           itemError.quantity = `Quantity cannot exceed returnable amount (${returnable})`;
           isValid = false;
         }
-        if (returnable < 1 && (doItem != null)) {
+        if (returnable < 1 && (doItem != null) && qty > 0) {
           if (!itemError.quantity) itemError.quantity = 'No quantity left to return for this item';
           isValid = false;
         }
@@ -893,33 +893,43 @@ export default function DeliveryReturnManagement({
         }
       }
 
-      // Build one combined return request: one entry per product, quantity = min(sum requested, total returnable)
-      const itemMap = new Map<string, { name: string; quantity: number; scaffoldingItemId: string }>();
+      // Do not combine the same item from different sets: send one entry per set per item (separate quantities).
+      // Quantity can be 0 (do not send 0-quantity rows); negative is invalid.
+      const itemsToSend: Array<{ name: string; quantity: number; scaffoldingItemId: string; deliverySetId: string }> = [];
       for (const setData of selectedReturnSets) {
         const validItems = setData.items.filter(item => item.scaffoldingItemId?.trim());
         for (const item of validItems) {
-          const id = item.scaffoldingItemId!;
-          const existing = itemMap.get(id);
-          const qty = Math.max(1, Math.floor(Number(item.quantity)) || 1);
-          if (existing) {
-            existing.quantity += qty;
-          } else {
-            itemMap.set(id, {
-              name: item.name,
-              quantity: qty,
-              scaffoldingItemId: id,
-            });
-          }
+          const qtyThisSet = Math.max(0, Math.floor(Number(item.quantity)) || 0);
+          if (qtyThisSet <= 0) continue;
+          itemsToSend.push({
+            name: item.name,
+            quantity: qtyThisSet,
+            scaffoldingItemId: item.scaffoldingItemId!,
+            deliverySetId: setData.setId,
+          });
         }
       }
-      const combinedItems = Array.from(itemMap.values())
-        .map(entry => {
-          const cap = totalReturnable[entry.scaffoldingItemId] ?? 0;
-          const quantity = Math.min(entry.quantity, Math.max(1, cap));
-          return { ...entry, quantity };
-        })
-        .filter(entry => entry.quantity >= 1);
-      if (combinedItems.length === 0) {
+      // Validate total per product does not exceed total returnable (sum across sets)
+      const sumByItemId = new Map<string, number>();
+      for (const entry of itemsToSend) {
+        sumByItemId.set(entry.scaffoldingItemId, (sumByItemId.get(entry.scaffoldingItemId) || 0) + entry.quantity);
+      }
+      for (const [itemId, sum] of sumByItemId) {
+        const allowed = totalReturnable[itemId] ?? 0;
+        if (allowed < 1) {
+          setReturnFormErrors({ general: `Item has no quantity left to return in the selected set(s).` });
+          setIsCreating(false);
+          createReturnSubmittingRef.current = false;
+          return;
+        }
+        if (sum > allowed) {
+          setReturnFormErrors({ general: `Total quantity for one or more items exceeds returnable amount (${allowed}) across the selected set(s).` });
+          setIsCreating(false);
+          createReturnSubmittingRef.current = false;
+          return;
+        }
+      }
+      if (itemsToSend.length === 0) {
         setReturnFormErrors({ general: 'No valid items to return. Ensure each item has a product selected.' });
         setIsCreating(false);
         createReturnSubmittingRef.current = false;
@@ -950,10 +960,11 @@ export default function DeliveryReturnManagement({
           collectionMethod: newReturnForm.collectionMethod,
           deliverySetId: firstSetId,
           deliverySetIds: deliverySetIds.length > 1 ? deliverySetIds : undefined,
-          items: combinedItems.map(item => ({
+          items: itemsToSend.map(item => ({
             name: item.name,
             quantity: item.quantity,
             scaffoldingItemId: item.scaffoldingItemId,
+            deliverySetId: item.deliverySetId,
           })),
         }),
       });
@@ -1005,17 +1016,18 @@ export default function DeliveryReturnManagement({
   useEffect(() => {
     if (selectedReturnSets.length === 0 || selectedDONumbers.length === 0) return;
 
-    // Calculate already-returned quantities per delivery set (support multi-set returns via deliverySetIds)
+    // Calculate already-returned quantities per delivery set.
+    // When an item has deliverySetId, attribute only to that set; else (legacy) attribute to all sets in the return.
     const returnedBySet: Record<string, Record<string, number>> = {};
     returnRequests.forEach(rr => {
       const setIds = rr.deliverySetIds?.length ? rr.deliverySetIds : (rr.deliverySetId ? [rr.deliverySetId] : []);
-      setIds.forEach((setId: string) => {
-        if (!returnedBySet[setId]) returnedBySet[setId] = {};
-        rr.items.forEach(ri => {
-          if (ri.scaffoldingItemId) {
-            const itemId = ri.scaffoldingItemId;
-            returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] || 0) + ri.quantity;
-          }
+      rr.items.forEach(ri => {
+        if (!ri.scaffoldingItemId) return;
+        const itemId = ri.scaffoldingItemId;
+        const targetSetIds = ri.deliverySetId && setIds.includes(ri.deliverySetId) ? [ri.deliverySetId] : setIds;
+        targetSetIds.forEach((setId: string) => {
+          if (!returnedBySet[setId]) returnedBySet[setId] = {};
+          returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] || 0) + ri.quantity;
         });
       });
     });
@@ -1918,7 +1930,7 @@ export default function DeliveryReturnManagement({
   // Return filter: only statuses that appear in the request data (request stage status only), in flow order
   const returnStatusesInUse = React.useMemo(() => {
     const statuses = new Set(
-      returnRequests.map(req => req?.status).filter((s): s is string => !!s).map(s => String(s).trim())
+      returnRequests.map(req => req?.status).filter((s): s is ReturnStatus => !!s).map(s => String(s).trim())
     );
     const ordered = RETURN_FLOW_ORDER.filter(s => statuses.has(s));
     const extra = Array.from(statuses).filter(s => !RETURN_FLOW_ORDER.includes(s)).sort();
@@ -3004,17 +3016,18 @@ export default function DeliveryReturnManagement({
                 // Derive available DOs: delivery sets with a DO number and delivered/completed status
                 const completedStatuses = ['Completed', 'Customer Confirmed', 'Delivered'];
                 
-                // Calculate already-returned quantities per delivery set (support multi-set returns via deliverySetIds)
+                // Calculate already-returned quantities per delivery set.
+                // When an item has deliverySetId, attribute only to that set; else (legacy) attribute to all sets in the return.
                 const returnedBySet: Record<string, Record<string, number>> = {};
                 returnRequests.forEach(rr => {
                   const setIds = rr.deliverySetIds?.length ? rr.deliverySetIds : (rr.deliverySetId ? [rr.deliverySetId] : []);
-                  setIds.forEach((setId: string) => {
-                    if (!returnedBySet[setId]) returnedBySet[setId] = {};
-                    rr.items.forEach(ri => {
-                      if (ri.scaffoldingItemId) {
-                        const itemId = ri.scaffoldingItemId;
-                        returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] || 0) + ri.quantity;
-                      }
+                  rr.items.forEach(ri => {
+                    if (!ri.scaffoldingItemId) return;
+                    const itemId = ri.scaffoldingItemId;
+                    const targetSetIds = ri.deliverySetId && setIds.includes(ri.deliverySetId) ? [ri.deliverySetId] : setIds;
+                    targetSetIds.forEach((setId: string) => {
+                      if (!returnedBySet[setId]) returnedBySet[setId] = {};
+                      returnedBySet[setId][itemId] = (returnedBySet[setId][itemId] || 0) + ri.quantity;
                     });
                   });
                 });
@@ -3401,26 +3414,34 @@ export default function DeliveryReturnManagement({
                                   const itemError = returnFormErrors.itemErrors?.[`${setIndex}-${itemErrorKey}`];
                                   
                                   return (
-                                    <div key={item.scaffoldingItemId || itemIndex} className="flex items-center space-x-2">
+                                    <div key={`${setData.setId}-${item.scaffoldingItemId ?? itemIndex}`} className="flex items-center space-x-2">
                                       <div className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700">
                                         {item.name || 'Unknown item'}
                                         <span className="text-xs text-gray-500 ml-2">(Returnable: {returnable} / {delivered})</span>
                                       </div>
                                       <input
                                         type="number"
-                                        min="1"
-                                        max={returnable || 1}
+                                        min="0"
+                                        max={returnable ?? 0}
                                         value={currentQuantity}
                                         onChange={(e) => {
                                           const raw = parseInt(e.target.value, 10);
-                                          const qty = Number.isNaN(raw) || raw < 1 ? 1 : Math.min(Math.floor(raw), Math.max(1, returnable));
-                                          const updated = [...selectedReturnSets];
-                                          const itemIdx = updated[setIndex].items.findIndex(i => i.scaffoldingItemId === item.scaffoldingItemId);
-                                          if (itemIdx >= 0) {
-                                            updated[setIndex].items[itemIdx].quantity = qty;
-                                            setSelectedReturnSets(updated);
-                                            clearReturnItemError(`${setIndex}-${itemIdx}`);
-                                          }
+                                          const qty = Number.isNaN(raw) || raw < 0 ? 0 : Math.min(Math.floor(raw), Math.max(0, returnable));
+                                          const itemIdx = setData.items.findIndex(i => i.scaffoldingItemId === item.scaffoldingItemId);
+                                          if (itemIdx < 0) return;
+                                          setSelectedReturnSets(prev =>
+                                            prev.map((s, i) =>
+                                              i !== setIndex
+                                                ? s
+                                                : {
+                                                    ...s,
+                                                    items: s.items.map((it, j) =>
+                                                      j === itemIdx ? { ...it, quantity: qty } : it
+                                                    ),
+                                                  }
+                                            )
+                                          );
+                                          clearReturnItemError(`${setIndex}-${itemIdx}`);
                                         }}
                                         className={`w-24 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] text-sm text-center disabled:bg-gray-100 ${
                                           itemError?.quantity ? 'border-red-500 bg-red-50' : 'border-gray-300'
