@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `returnrequestitem` ADD COLUMN `deliverySetId` VARCHAR(191) NULL;
+ALTER TABLE `ReturnRequestItem` ADD COLUMN `deliverySetId` VARCHAR(191) NULL;
