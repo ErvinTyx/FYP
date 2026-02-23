@@ -76,6 +76,14 @@ export async function PATCH(
       data,
     });
 
+    // When project closure is approved, update the related RentalAgreement status to "Completed"
+    if (status === 'approved') {
+      await prisma.rentalAgreement.update({
+        where: { id: existing.agreementId },
+        data: { status: 'Completed' },
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: {

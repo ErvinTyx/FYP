@@ -73,6 +73,59 @@ interface ValidationCheck {
   noShortageDetected: boolean;
 }
 
+interface ReturnCompletionInfo {
+  totalDelivered: number;
+  totalReturned: number;
+  isComplete: boolean;
+  percentage: number;
+  itemsRemaining: Array<{ name: string; remaining: number }>;
+}
+
+interface MonthlyRentalInvoiceInfo {
+  invoiceNumber: string;
+  status: string;
+  billingMonth: number;
+  billingYear: number;
+}
+
+interface DepositInfo {
+  depositNumber: string;
+  status: string;
+}
+
+interface AdditionalChargeInfo {
+  invoiceNo: string;
+  status: string;
+  totalCharges: number;
+}
+
+interface PaymentStatus {
+  monthlyRental: {
+    expectedMonths: number;
+    paidCount: number;
+    pendingCount: number;
+    isComplete: boolean;
+    invoices: MonthlyRentalInvoiceInfo[];
+  };
+  deposit: {
+    exists: boolean;
+    status: string | null;
+    isComplete: boolean;
+    deposits: DepositInfo[];
+  };
+  additionalCharges: {
+    hasDamage: boolean;
+    totalDamagedItems: number;
+    totalRepairItems: number;
+    hasUnprocessedDamage: boolean;
+    totalCount: number;
+    approvedCount: number;
+    isComplete: boolean;
+    charges: AdditionalChargeInfo[];
+  };
+  isAllComplete: boolean;
+}
+
 interface ClosureRequest {
   id: string; // row key (agreementId)
   agreementId: string;
@@ -89,6 +142,8 @@ interface ClosureRequest {
   actualRentalPeriodDays: number | null; // parsed from termOfHire for validation
   returnStatus: "completed" | "pending" | "in-progress";
   returnRequestStatus?: string | null; // ReturnRequest.status (Requested, Quoted, Completed, etc.)
+  returnCompletion?: ReturnCompletionInfo | null; // Detailed return completion info
+  paymentStatus?: PaymentStatus | null; // Detailed payment status info
   additionalChargeStatus?: string | null; // AdditionalCharge.status for shortage/payment badge
   monthlyRentalPaymentStatus?: string | null; // MonthlyRentalInvoice summary: Paid | Pending Payment
   depositStatus?: string | null; // Deposit.status: Paid | Pending Payment
@@ -123,20 +178,25 @@ interface ProjectClosureRow {
     approvedAt?: string | null;
   } | null;
   returnRequestStatus: string | null; // from ReturnRequest.status (e.g. Requested, Quoted, Completed)
+  returnCompletion?: ReturnCompletionInfo | null; // Detailed return completion info
+  paymentStatus?: PaymentStatus | null; // Detailed payment status info
   additionalChargeStatus?: string | null; // from AdditionalCharge.status (pending_payment, pending_approval, approved)
 }
 
 const MINIMUM_RENTAL_PERIOD_DAYS = 30;
 
 function rowToClosureRequest(row: ProjectClosureRow): ClosureRequest {
-  const { agreement, closureRequest, returnRequestStatus } = row;
+  const { agreement, closureRequest, returnRequestStatus, returnCompletion, paymentStatus } = row;
   const requestDate = closureRequest
     ? format(new Date(closureRequest.requestDate), "yyyy-MM-dd")
     : "";
   const status = (closureRequest?.status ?? "active") as ClosureStatus;
-  const returnProcessComplete = returnRequestStatus === "Completed";
+  // Use returnCompletion.isComplete if available, otherwise fall back to old logic
+  const returnProcessComplete = returnCompletion?.isComplete ?? (returnRequestStatus === "Completed");
   const actualRentalPeriodDays = parseDaysFromTermOfHireString(agreement.termOfHire);
   const rentalPeriodMet = actualRentalPeriodDays !== null && actualRentalPeriodDays >= MINIMUM_RENTAL_PERIOD_DAYS;
+  // Payment status complete check
+  const paymentComplete = paymentStatus?.isAllComplete ?? false;
   return {
     id: agreement.id,
     agreementId: agreement.id,
@@ -153,6 +213,8 @@ function rowToClosureRequest(row: ProjectClosureRow): ClosureRequest {
     actualRentalPeriodDays,
     returnStatus: returnProcessComplete ? "completed" : "pending",
     returnRequestStatus: returnRequestStatus ?? undefined,
+    returnCompletion: returnCompletion ?? undefined,
+    paymentStatus: paymentStatus ?? undefined,
     additionalChargeStatus: agreement.additionalChargeStatus ?? undefined,
     monthlyRentalPaymentStatus: agreement.monthlyRentalPaymentStatus ?? undefined,
     depositStatus: agreement.depositStatus ?? undefined,
@@ -165,7 +227,7 @@ function rowToClosureRequest(row: ProjectClosureRow): ClosureRequest {
     validationChecks: {
       rentalPeriodMet,
       returnProcessComplete,
-      noShortageDetected: true,
+      noShortageDetected: paymentComplete,
     },
   };
 }
@@ -324,7 +386,8 @@ export function ProjectClosureManagement() {
       !!request.closureRequestId &&
       request.status === "pending" &&
       request.validationChecks.rentalPeriodMet &&
-      request.validationChecks.returnProcessComplete
+      request.validationChecks.returnProcessComplete &&
+      (request.paymentStatus?.isAllComplete ?? false)
     );
   };
 
@@ -448,28 +511,50 @@ export function ProjectClosureManagement() {
                             <TooltipTrigger>
                               {request.validationChecks.returnProcessComplete ? (
                                 <CheckCircle2 className="h-5 w-5 text-[#10B981]" />
+                              ) : request.returnCompletion && request.returnCompletion.percentage > 0 ? (
+                                <AlertCircle className="h-5 w-5 text-[#F59E0B]" />
                               ) : (
                                 <XCircle className="h-5 w-5 text-[#EF4444]" />
                               )}
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>Return Process Status</p>
+                              {request.returnCompletion && (
+                                <p className="text-xs mt-1">
+                                  {request.returnCompletion.isComplete
+                                    ? "All items returned"
+                                    : request.returnCompletion.totalDelivered === 0
+                                    ? "No deliveries yet"
+                                    : `${request.returnCompletion.percentage}% returned (${request.returnCompletion.totalReturned}/${request.returnCompletion.totalDelivered})`}
+                                </p>
+                              )}
                             </TooltipContent>
                           </Tooltip>
                           <Tooltip>
                             <TooltipTrigger>
-                              {request.monthlyRentalPaymentStatus === "Paid" && request.depositStatus === "Paid" ? (
+                              {request.paymentStatus?.isAllComplete ? (
                                 <CheckCircle2 className="h-5 w-5 text-[#10B981]" />
-                              ) : request.monthlyRentalPaymentStatus === "Pending Payment" || request.depositStatus === "Pending Payment" ? (
+                              ) : request.paymentStatus ? (
                                 <XCircle className="h-5 w-5 text-[#EF4444]" />
-                              ) : request.monthlyRentalPaymentStatus === "Pending Approval" || request.depositStatus === "Pending Approval" ? (
-                                <AlertCircle className="h-5 w-5 text-[#F59E0B]" />
                               ) : (
                                 <AlertCircle className="h-5 w-5 text-[#9CA3AF]" />
                               )}
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Scaffolding Shortage Detection</p>
+                              <p>Payment Status</p>
+                              {request.paymentStatus && (
+                                <div className="text-xs mt-1 space-y-0.5">
+                                  <p>Monthly Rental: {request.paymentStatus.monthlyRental.paidCount}/{request.paymentStatus.monthlyRental.expectedMonths} Paid</p>
+                                  <p>Deposit: {!request.paymentStatus.deposit.exists ? 'N/A' : request.paymentStatus.deposit.isComplete ? 'Paid' : request.paymentStatus.deposit.status}</p>
+                                  <p>Damage/Repair: {
+                                    !request.paymentStatus.additionalCharges.hasDamage 
+                                      ? 'N/A' 
+                                      : request.paymentStatus.additionalCharges.hasUnprocessedDamage
+                                        ? 'Unprocessed'
+                                        : `${request.paymentStatus.additionalCharges.approvedCount}/${request.paymentStatus.additionalCharges.totalCount} approved`
+                                  }</p>
+                                </div>
+                              )}
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -640,19 +725,65 @@ export function ProjectClosureManagement() {
                         <RotateCcw className="h-4 w-4 text-[#6B7280]" />
                         <p className="text-[#231F20]">Return Process Status</p>
                       </div>
-                      {selectedRequest.returnRequestStatus === "Completed" ? (
+                      {selectedRequest.returnCompletion ? (
                         <>
-                          <p className="text-[14px] text-[#10B981] font-medium">
-                            Current Status: Completed
-                          </p>
-                          <Badge className="bg-[#10B981] text-white mt-2">
-                            Return Process Completed
-                          </Badge>
+                          {selectedRequest.returnCompletion.isComplete ? (
+                            <>
+                              <p className="text-[14px] text-[#10B981] font-medium">
+                                All Items Returned ({selectedRequest.returnCompletion.totalReturned}/{selectedRequest.returnCompletion.totalDelivered})
+                              </p>
+                              <Badge className="bg-[#10B981] text-white mt-2">
+                                Return Process Completed - 100%
+                              </Badge>
+                            </>
+                          ) : selectedRequest.returnCompletion.totalDelivered === 0 ? (
+                            <>
+                              <p className="text-[14px] text-[#6B7280] font-medium">
+                                No deliveries recorded yet
+                              </p>
+                              <Badge className="bg-[#6B7280] text-white mt-2">
+                                Awaiting Delivery
+                              </Badge>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-[14px] text-[#F59E0B] font-medium">
+                                Returned: {selectedRequest.returnCompletion.totalReturned}/{selectedRequest.returnCompletion.totalDelivered} items ({selectedRequest.returnCompletion.percentage}%)
+                              </p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                                <div
+                                  className="bg-[#F59E0B] h-2 rounded-full transition-all"
+                                  style={{ width: `${selectedRequest.returnCompletion.percentage}%` }}
+                                />
+                              </div>
+                              {selectedRequest.returnCompletion.itemsRemaining.length > 0 && (
+                                <div className="mt-3 space-y-1">
+                                  <p className="text-[12px] text-[#6B7280] font-medium">Items remaining to return:</p>
+                                  <ul className="text-[12px] text-[#374151] space-y-0.5 max-h-24 overflow-y-auto">
+                                    {selectedRequest.returnCompletion.itemsRemaining.slice(0, 5).map((item, idx) => (
+                                      <li key={idx} className="flex justify-between">
+                                        <span>{item.name}</span>
+                                        <span className="text-[#F59E0B] font-medium">{item.remaining} remaining</span>
+                                      </li>
+                                    ))}
+                                    {selectedRequest.returnCompletion.itemsRemaining.length > 5 && (
+                                      <li className="text-[#6B7280] italic">
+                                        ...and {selectedRequest.returnCompletion.itemsRemaining.length - 5} more items
+                                      </li>
+                                    )}
+                                  </ul>
+                                </div>
+                              )}
+                              <Badge className="bg-[#F59E0B] text-white mt-2">
+                                Return In Progress
+                              </Badge>
+                            </>
+                          )}
                         </>
                       ) : (
                         <>
                           <p className="text-[14px] text-[#F59E0B] font-medium">
-                            Current Status: Pending
+                            Current Status: {selectedRequest.returnRequestStatus || "Pending"}
                           </p>
                           <Badge className="bg-[#F59E0B] text-white mt-2">
                             Return Process Pending
@@ -663,50 +794,173 @@ export function ProjectClosureManagement() {
                   </div>
                 </div>
 
-                {/* Shortage Detection Check */}
+                {/* Payment Status Check */}
                 <div className="border rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    <Package className="h-5 w-5 text-[#6B7280] mt-0.5" />
-                    <div className="flex-1 space-y-1">
+                    {selectedRequest.paymentStatus?.isAllComplete ? (
+                      <CheckCircle2 className="h-5 w-5 text-[#10B981] mt-0.5" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-[#F59E0B] mt-0.5" />
+                    )}
+                    <div className="flex-1 space-y-3">
                       <div className="flex items-center gap-2">
-                        <p className="text-[#231F20]">Scaffolding Shortage Detection</p>
+                        <Package className="h-4 w-4 text-[#6B7280]" />
+                        <p className="text-[#231F20]">Payment Status</p>
                       </div>
-                      {/* Monthly Rental Invoice status */}
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {selectedRequest.monthlyRentalPaymentStatus === "Paid" && (
-                          <Badge className="bg-[#10B981] text-white">
-                            Monthly Rental Payment Completed
-                          </Badge>
-                        )}
-                        {selectedRequest.monthlyRentalPaymentStatus === "Pending Approval" && (
-                          <Badge className="bg-[#F59E0B] text-white">
-                            Pending Monthly Rental Approval
-                          </Badge>
-                        )}
-                        {selectedRequest.monthlyRentalPaymentStatus === "Pending Payment" && (
-                          <Badge className="bg-[#EF4444] text-white">
-                            Pending Monthly Rental Payment
-                          </Badge>
-                        )}
-                      </div>
-                      {/* Deposit status (below monthly rental) */}
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {selectedRequest.depositStatus === "Paid" && (
-                          <Badge className="bg-[#10B981] text-white">
-                            Deposit Payment Completed
-                          </Badge>
-                        )}
-                        {selectedRequest.depositStatus === "Pending Approval" && (
-                          <Badge className="bg-[#F59E0B] text-white">
-                            Pending Deposit Payment Approval
-                          </Badge>
-                        )}
-                        {selectedRequest.depositStatus === "Pending Payment" && (
-                          <Badge className="bg-[#EF4444] text-white">
-                            Pending Deposit Payment
-                          </Badge>
-                        )}
-                      </div>
+
+                      {selectedRequest.paymentStatus ? (
+                        <div className="space-y-4">
+                          {/* Monthly Rental Section */}
+                          <div className="border-l-2 border-gray-200 pl-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-[#231F20]">Monthly Rental</span>
+                              {selectedRequest.paymentStatus.monthlyRental.isComplete ? (
+                                <Badge className="bg-[#10B981] text-white text-xs">
+                                  {selectedRequest.paymentStatus.monthlyRental.paidCount}/{selectedRequest.paymentStatus.monthlyRental.expectedMonths} Paid
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-[#F59E0B] text-white text-xs">
+                                  {selectedRequest.paymentStatus.monthlyRental.paidCount}/{selectedRequest.paymentStatus.monthlyRental.expectedMonths} Paid
+                                </Badge>
+                              )}
+                            </div>
+                            {selectedRequest.paymentStatus.monthlyRental.invoices.length > 0 ? (
+                              <ul className="mt-2 space-y-1 text-xs">
+                                {selectedRequest.paymentStatus.monthlyRental.invoices.map((inv, idx) => (
+                                  <li key={idx} className="flex justify-between items-center">
+                                    <span className="text-gray-600">{inv.invoiceNumber}</span>
+                                    <Badge className={inv.status === 'Paid' ? 'bg-[#10B981] text-white text-xs' : 'bg-[#EF4444] text-white text-xs'}>
+                                      {inv.status}
+                                    </Badge>
+                                  </li>
+                                ))}
+                                {selectedRequest.paymentStatus.monthlyRental.expectedMonths > selectedRequest.paymentStatus.monthlyRental.invoices.length && (
+                                  <li className="text-gray-400 italic">
+                                    ({selectedRequest.paymentStatus.monthlyRental.expectedMonths - selectedRequest.paymentStatus.monthlyRental.invoices.length} invoice(s) not yet generated)
+                                  </li>
+                                )}
+                              </ul>
+                            ) : (
+                              <p className="mt-1 text-xs text-gray-400 italic">No invoices generated yet</p>
+                            )}
+                          </div>
+
+                          {/* Deposit Section */}
+                          <div className="border-l-2 border-gray-200 pl-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-[#231F20]">Deposit</span>
+                              {!selectedRequest.paymentStatus.deposit.exists ? (
+                                <Badge className="bg-[#6B7280] text-white text-xs">N/A</Badge>
+                              ) : selectedRequest.paymentStatus.deposit.isComplete ? (
+                                <Badge className="bg-[#10B981] text-white text-xs">Paid</Badge>
+                              ) : (
+                                <Badge className="bg-[#EF4444] text-white text-xs">
+                                  {selectedRequest.paymentStatus.deposit.status}
+                                </Badge>
+                              )}
+                            </div>
+                            {selectedRequest.paymentStatus.deposit.deposits.length > 0 ? (
+                              <ul className="mt-2 space-y-1 text-xs">
+                                {selectedRequest.paymentStatus.deposit.deposits.map((dep, idx) => (
+                                  <li key={idx} className="flex justify-between items-center">
+                                    <span className="text-gray-600">{dep.depositNumber}</span>
+                                    <Badge className={dep.status === 'Paid' ? 'bg-[#10B981] text-white text-xs' : 'bg-[#EF4444] text-white text-xs'}>
+                                      {dep.status}
+                                    </Badge>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="mt-1 text-xs text-gray-400 italic">No deposit required</p>
+                            )}
+                          </div>
+
+                          {/* Damage/Repair Charges Section */}
+                          <div className="border-l-2 border-gray-200 pl-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-[#231F20]">Damage/Repair Charges</span>
+                              {!selectedRequest.paymentStatus.additionalCharges.hasDamage ? (
+                                <Badge className="bg-[#6B7280] text-white text-xs">N/A</Badge>
+                              ) : selectedRequest.paymentStatus.additionalCharges.isComplete ? (
+                                <Badge className="bg-[#10B981] text-white text-xs">
+                                  {selectedRequest.paymentStatus.additionalCharges.approvedCount}/{selectedRequest.paymentStatus.additionalCharges.totalCount} Approved
+                                </Badge>
+                              ) : selectedRequest.paymentStatus.additionalCharges.hasUnprocessedDamage ? (
+                                <Badge className="bg-[#F59E0B] text-white text-xs">
+                                  Unprocessed Damage
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-[#EF4444] text-white text-xs">
+                                  {selectedRequest.paymentStatus.additionalCharges.approvedCount}/{selectedRequest.paymentStatus.additionalCharges.totalCount} Approved
+                                </Badge>
+                              )}
+                            </div>
+                            
+                            {/* Show damage summary if there's damage */}
+                            {selectedRequest.paymentStatus.additionalCharges.hasDamage && (
+                              <div className="mt-2 text-xs text-gray-600">
+                                {selectedRequest.paymentStatus.additionalCharges.totalDamagedItems > 0 && (
+                                  <p>Damaged items: {selectedRequest.paymentStatus.additionalCharges.totalDamagedItems}</p>
+                                )}
+                                {selectedRequest.paymentStatus.additionalCharges.totalRepairItems > 0 && (
+                                  <p>Items needing repair: {selectedRequest.paymentStatus.additionalCharges.totalRepairItems}</p>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Show unprocessed damage warning */}
+                            {selectedRequest.paymentStatus.additionalCharges.hasUnprocessedDamage && (
+                              <p className="mt-2 text-xs text-[#F59E0B] font-medium">
+                                ⚠️ Damage detected but repair slip or charge not yet created
+                              </p>
+                            )}
+                            
+                            {/* Show charges list */}
+                            {selectedRequest.paymentStatus.additionalCharges.charges.length > 0 ? (
+                              <ul className="mt-2 space-y-1 text-xs">
+                                {selectedRequest.paymentStatus.additionalCharges.charges.map((charge, idx) => {
+                                  const statusLower = charge.status.toLowerCase();
+                                  const isApproved = statusLower === 'approved';
+                                  const isPaid = statusLower === 'paid';
+                                  const isPendingApproval = statusLower === 'pending_approval';
+                                  const isPendingPayment = statusLower === 'pending_payment';
+                                  const isRejected = statusLower === 'rejected';
+                                  
+                                  let badgeColor = 'bg-[#EF4444]'; // default red
+                                  let displayStatus = charge.status;
+                                  
+                                  if (isApproved || isPaid) {
+                                    badgeColor = 'bg-[#10B981]'; // green
+                                    displayStatus = isPaid ? 'Paid' : 'Approved';
+                                  } else if (isPendingApproval) {
+                                    badgeColor = 'bg-[#F59E0B]'; // yellow
+                                    displayStatus = 'Pending Approval';
+                                  } else if (isPendingPayment) {
+                                    badgeColor = 'bg-[#F59E0B]'; // yellow
+                                    displayStatus = 'Pending Payment';
+                                  } else if (isRejected) {
+                                    badgeColor = 'bg-[#EF4444]'; // red
+                                    displayStatus = 'Rejected';
+                                  }
+                                  
+                                  return (
+                                    <li key={idx} className="flex justify-between items-center">
+                                      <span className="text-gray-600">{charge.invoiceNo}</span>
+                                      <Badge className={`${badgeColor} text-white text-xs`}>
+                                        {displayStatus}
+                                      </Badge>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            ) : !selectedRequest.paymentStatus.additionalCharges.hasDamage ? (
+                              <p className="mt-1 text-xs text-gray-400 italic">No damage/repair detected</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">Loading payment status...</p>
+                      )}
                     </div>
                   </div>
                 </div>

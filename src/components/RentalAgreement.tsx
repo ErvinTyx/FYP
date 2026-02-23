@@ -109,7 +109,7 @@ interface RentalAgreement {
   signedDocumentUploadedAt?: string;
   signedDocumentUploadedBy?: string;
   signedStatus?: string | null;
-  status: 'Draft' | 'Active' | 'Expired' | 'Terminated';
+  status: 'Draft' | 'Active' | 'Expired' | 'Terminated' | 'Completed';
   currentVersion: number;
   versions: AgreementVersion[];
   createdAt: string;
@@ -230,6 +230,8 @@ export function RentalAgreement() {
         return <Badge className="bg-[#F59E0B] hover:bg-[#D97706]">Expired</Badge>;
       case 'Terminated':
         return <Badge className="bg-[#DC2626] hover:bg-[#B91C1C]">Terminated</Badge>;
+      case 'Completed':
+        return <Badge className="bg-[#3B82F6] hover:bg-[#2563EB]">Completed</Badge>;
     }
   };
 
