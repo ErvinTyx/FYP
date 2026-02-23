@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `returnrequest` ADD COLUMN `deliverySetIds` JSON NULL;
+ALTER TABLE `ReturnRequest` ADD COLUMN `deliverySetIds` JSON NULL;

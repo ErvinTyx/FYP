@@ -14,17 +14,9 @@ import { Label } from '../ui/label';
 import { RentalPerformanceReport } from './RentalPerformanceReport';
 import { InventoryUtilizationReport } from './InventoryUtilizationReport';
 import { FinancialReport } from './FinancialReport';
+import type { ReportFilters } from './ReportGenerationEnhanced';
 
 type ReportType = 'rental-performance' | 'inventory-utilization' | 'financial';
-
-interface ReportFilters {
-  reportType: string;
-  searchQuery: string;
-  category?: string;
-  dateFrom?: Date;
-  dateTo?: Date;
-  status?: string;
-}
 
 export function ReportGeneration() {
   const [selectedReport, setSelectedReport] = useState<ReportType>('rental-performance');
@@ -32,7 +24,9 @@ export function ReportGeneration() {
     reportType: 'rental-performance',
     searchQuery: '',
     category: 'all',
-    status: 'all'
+    status: 'all',
+    dateMode: 'range',
+    rowsPerPage: 25
   });
 
   return (

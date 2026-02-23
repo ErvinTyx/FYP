@@ -1098,9 +1098,23 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
 
                 {/* Identity Document Upload */}
                 <div className="space-y-2">
+                <div className="flex items-center gap-2">
                   <Label>
                     Upload Identity Supporting Document <span className="text-red-500">*</span>
                   </Label>
+                  <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="text-gray-400 hover:text-gray-600">
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 text-sm bg-white">
+                        <img src="/samples/bussness-registration.png" alt="Business Registration Document" className="w-full h-auto" />
+                        <p className="text-sm text-gray-600">Click to upload business registration document</p>
+                        <p className="text-xs text-gray-500 mt-1">PDF, JPG, PNG up to 10MB</p>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                   <div
                     className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-[#1E40AF] transition-colors ${
                       businessErrors.identityDocument ? 'border-red-500' : 'border-gray-300'
@@ -1451,10 +1465,6 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
                   Verify Email
                 </Button>
               </div>
-
-              <p className="text-xs text-center text-gray-500 pt-2">
-                Demo: Use code <span className="font-mono bg-gray-100 px-2 py-1 rounded">123456</span> to verify
-              </p>
             </div>
           </>
         )}
@@ -1634,9 +1644,37 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
 
               {/* Identity Document Upload */}
               <div className="space-y-2">
+              <div className="flex items-center gap-2">
                 <Label>
                   Upload Identity Supporting Document <span className="text-red-500">*</span>
                 </Label>
+                <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="text-gray-400 hover:text-gray-600">
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 text-sm bg-white">
+                        {formData.idType === 'NRIC' ? (
+                          <>
+                            <img src="/samples/nric.png" alt="NRIC" className="w-full h-auto" />
+                            <p className="text-sm text-gray-600">Click to upload NRIC document</p>
+                          </>
+                        ) : formData.idType === 'PASSPORT' ? (
+                          <>
+                          <img src="/samples/passport.png" alt="Passport" className="w-full h-auto" />
+                          <p className="text-sm text-gray-600">Click to upload passport document</p>
+                          </>
+                        ) : (
+                          <>
+                            <img src="/samples/army-id.png" alt="Army ID" className="w-full h-auto" />
+                            <p className="text-sm text-gray-600">Click to upload army ID document</p>
+                          </>
+                        ) }
+                        <p className="text-xs text-gray-500 mt-1">PDF, JPG, PNG up to 10MB</p>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 <div
                   className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-[#059669] transition-colors ${
                     errors.identityDocument ? 'border-red-500' : 'border-gray-300'
