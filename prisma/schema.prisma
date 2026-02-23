@@ -1175,6 +1175,7 @@ model RentalDuration {
   @@index([rental_id])
   @@index([item_id])
   @@index([project_id])
+  @@map("RentalDuration")
 }
 
 model CustomerCreditRisk {
