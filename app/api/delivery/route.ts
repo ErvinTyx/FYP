@@ -1135,6 +1135,13 @@ export async function PUT(request: NextRequest) {
       if (updateData.driverName !== undefined || updateData.driverContact !== undefined ||
           updateData.vehicleNumber !== undefined || updateData.driverSignature !== undefined ||
           updateData.driverAcknowledgedAt !== undefined || updateData.dispatchedAt !== undefined) {
+        if (updateData.driverName !== undefined && updateData.driverName !== null &&
+            !/^[a-zA-Z\s]+$/.test(updateData.driverName.trim())) {
+          return NextResponse.json(
+            { success: false, message: 'Driver name must contain only letters and spaces' },
+            { status: 400 }
+          );
+        }
         await prisma.deliveryDispatch.upsert({
           where: { deliverySetId: setId },
           create: {

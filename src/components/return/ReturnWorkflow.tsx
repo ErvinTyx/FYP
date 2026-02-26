@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { ScrollableTimePicker } from '../ui/scrollable-time-picker';
 import { Checkbox } from '../ui/checkbox';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, startOfDay, isBefore } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -320,11 +320,25 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
       if (!pickupDate) {
         errors.pickupDate = 'Please select a pickup date';
         isValid = false;
+      } else {
+        const todayStart = startOfDay(new Date());
+        if (startOfDay(pickupDate) < todayStart) {
+          errors.pickupDate = 'Schedule date cannot be in the past. Please select today or a future date.';
+          isValid = false;
+        }
       }
-      
+
       if (!pickupTimeSlot) {
         errors.pickupTimeSlot = 'Please select a pickup time';
         isValid = false;
+      } else if (pickupDate && startOfDay(pickupDate).getTime() === startOfDay(new Date()).getTime()) {
+        const [hours, minutes] = pickupTimeSlot.split(':').map(Number);
+        const scheduledDateTime = new Date(pickupDate);
+        scheduledDateTime.setHours(hours, minutes, 0, 0);
+        if (isBefore(scheduledDateTime, new Date())) {
+          errors.pickupTimeSlot = 'Schedule time cannot be in the past. Please select a later time.';
+          isValid = false;
+        }
       }
     }
 
@@ -396,6 +410,9 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
 
     if (!formData.pickupDriver?.trim()) {
       errors.pickupDriver = 'Driver name is required';
+      isValid = false;
+    } else if (!/^[a-zA-Z\s]+$/.test(formData.pickupDriver.trim())) {
+      errors.pickupDriver = 'Driver name must contain only letters and spaces';
       isValid = false;
     }
 
@@ -1060,39 +1077,30 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
 
             {formData.transportationType === 'Transportation Needed' && (
               <>
-                <div className="space-y-2">
+                <div className={`p-4 rounded-lg ${step1Errors.pickupDate ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-200'}`}>
                   <Label className={step1Errors.pickupDate ? 'text-red-600' : ''}>Pickup Date *</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="date"
-                      value={pickupDate ? format(pickupDate, 'yyyy-MM-dd') : ''}
-                      onChange={(e) => {
-                        setPickupDate(e.target.value ? new Date(e.target.value) : undefined);
-                        if (e.target.value) clearStep1Error('pickupDate');
-                      }}
-                      className={`flex-1 ${step1Errors.pickupDate ? 'border-red-500 bg-red-50' : ''}`}
-                    />
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="icon" type="button">
-                          <CalendarIcon className="size-4" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={pickupDate}
-                          onSelect={(date) => {
-                            setPickupDate(date);
-                            if (date) clearStep1Error('pickupDate');
-                          }}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal mt-1">
+                        <CalendarIcon className="mr-2 size-4" />
+                        {pickupDate ? format(pickupDate, 'PPP') : 'Select date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={pickupDate}
+                        onSelect={(date) => {
+                          setPickupDate(date);
+                          if (date) clearStep1Error('pickupDate');
+                        }}
+                        disabled={(date) => startOfDay(date) < startOfDay(new Date())}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                   {step1Errors.pickupDate && (
-                    <p className="text-xs text-red-600 flex items-center">
+                    <p className="text-xs text-red-600 mt-1 flex items-center">
                       <AlertCircle className="size-3 mr-1" />
                       {step1Errors.pickupDate}
                     </p>
@@ -1156,10 +1164,11 @@ export function ReturnWorkflow({ returnOrder, onSave, onBack }: ReturnWorkflowPr
               <Input
                 value={formData.pickupDriver || ''}
                 onChange={(e) => {
-                  setFormData({ ...formData, pickupDriver: e.target.value });
-                  if (e.target.value.trim()) clearStep2Error('pickupDriver');
+                  const v = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+                  setFormData({ ...formData, pickupDriver: v });
+                  if (v.trim()) clearStep2Error('pickupDriver');
                 }}
-                placeholder="Enter driver name"
+                placeholder="Enter driver name (letters and spaces only)"
                 className={step2Errors.pickupDriver ? 'border-red-500 bg-red-50' : ''}
               />
               {step2Errors.pickupDriver && (

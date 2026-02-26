@@ -326,7 +326,7 @@ export function ReturnManagement() {
       r.customer,
       r.returnType,
       r.transportationType === 'Transportation Needed' ? 'Transport' : 'Self Return',
-      r.pickupDate ? format(new Date(r.pickupDate), 'PP') : (r.requestDate ? format(new Date(r.requestDate), 'PP') : ''),
+      r.pickupDate ? format(new Date(r.pickupDate), 'dd-MM-yyyy') : (r.requestDate ? format(new Date(r.requestDate), 'dd-MM-yyyy') : ''),
       r.status,
     ]);
     const generator = new ReportPDFGenerator();
@@ -342,7 +342,7 @@ export function ReturnManagement() {
       r.customer,
       r.returnType,
       r.transportationType === 'Transportation Needed' ? 'Transport' : 'Self Return',
-      r.pickupDate ? format(new Date(r.pickupDate), 'PP') : (r.requestDate ? format(new Date(r.requestDate), 'PP') : ''),
+      r.pickupDate ? format(new Date(r.pickupDate), 'dd-MM-yyyy') : (r.requestDate ? format(new Date(r.requestDate), 'dd-MM-yyyy') : ''),
       r.status,
     ]);
     const blob = generateTableExcel(headers, rows, { title: 'Return Management' });
@@ -507,7 +507,7 @@ export function ReturnManagement() {
                     </TableCell>
                     <TableCell>
                       <div>
-                        <p className="text-[#231F20]">{format(new Date(returnItem.pickupDate || returnItem.requestDate), 'PP')}</p>
+                        <p className="text-[#231F20]">{format(new Date(returnItem.pickupDate || returnItem.requestDate), 'dd-MM-yyyy')}</p>
                         {returnItem.pickupDate && returnItem.pickupTimeSlot && (
                           <p className="text-sm text-gray-500">{returnItem.pickupTimeSlot}</p>
                         )}

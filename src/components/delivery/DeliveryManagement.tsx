@@ -38,7 +38,7 @@ import { DeliveryWorkflow } from './DeliveryWorkflow';
 import { DeliveryDetails } from './DeliveryDetails';
 import { toast } from 'sonner';
 
-// Compute default scheduled date: 1 day before the required date (from scheduledPeriod string)
+// Default scheduled date is the required date (from scheduledPeriod string)
 const getDefaultScheduledDate = (scheduledPeriod: string | undefined): string | undefined => {
   if (!scheduledPeriod) return undefined;
 
@@ -51,7 +51,6 @@ const getDefaultScheduledDate = (scheduledPeriod: string | undefined): string | 
       // Fallback to Date parsing if format doesn't match
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return undefined;
-      date.setDate(date.getDate() - 1);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     }
     
@@ -66,9 +65,8 @@ const getDefaultScheduledDate = (scheduledPeriod: string | undefined): string | 
     const monthNum = monthMap[monthName];
     if (!monthNum) return undefined;
     
-    // Create date in UTC, subtract 1 day, format as YYYY-MM-DD
+    // Create date in UTC, format as YYYY-MM-DD (required date = scheduled date)
     const date = new Date(Date.UTC(yearNum, monthNum - 1, dayNum));
-    date.setUTCDate(date.getUTCDate() - 1);
     return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
   } catch {
     return undefined;

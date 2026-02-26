@@ -187,7 +187,7 @@ interface DeliveryRequest {
   pickupTime?: string;
 }
 
-// Calculate scheduled date: 1 day before the required date
+// Scheduled date is the required date (same day)
 const calculateScheduledDateFromPeriod = (period: string): string | undefined => {
   if (!period) return undefined;
   try {
@@ -195,8 +195,6 @@ const calculateScheduledDateFromPeriod = (period: string): string | undefined =>
     const dateStr = period.split(' - ')[0].trim();
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return undefined;
-    // Subtract 1 day
-    date.setDate(date.getDate() - 1);
     return date.toISOString();
   } catch {
     return undefined;
@@ -1418,6 +1416,9 @@ export default function DeliveryReturnManagement({
 
     if (!driverName?.trim()) {
       errors.driverName = 'Driver name is required';
+      isValid = false;
+    } else if (!/^[a-zA-Z\s]+$/.test(driverName.trim())) {
+      errors.driverName = 'Driver name must contain only letters and spaces';
       isValid = false;
     }
 
@@ -3648,13 +3649,14 @@ export default function DeliveryReturnManagement({
                   type="text"
                   value={driverName}
                   onChange={(e) => {
-                    setDriverName(e.target.value);
-                    if (e.target.value.trim()) setDriverAckModalErrors(prev => ({ ...prev, driverName: undefined }));
+                    const v = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+                    setDriverName(v);
+                    if (v.trim()) setDriverAckModalErrors(prev => ({ ...prev, driverName: undefined }));
                   }}
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F15929] ${
                     driverAckModalErrors.driverName ? 'border-red-500 bg-red-50' : 'border-gray-300'
                   }`}
-                  placeholder="Enter driver name"
+                  placeholder="Enter driver name (letters and spaces only)"
                 />
                 {driverAckModalErrors.driverName && (
                   <p className="text-xs text-red-600 mt-1 flex items-center">

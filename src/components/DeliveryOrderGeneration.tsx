@@ -17,7 +17,7 @@ interface DeliveryOrderProps {
   onClose: () => void;
 }
 
-// Parse period string and get 1 day before start date
+// Scheduled date is the required date (period start date)
 const calculateScheduledDate = (scheduledPeriod: string | undefined, fallbackDate: string): string => {
   if (!scheduledPeriod) return fallbackDate;
   
@@ -30,8 +30,6 @@ const calculateScheduledDate = (scheduledPeriod: string | undefined, fallbackDat
       return fallbackDate;
     }
     
-    // Subtract 1 day
-    startDate.setDate(startDate.getDate() - 1);
     return startDate.toISOString().split('T')[0];
   } catch {
     return fallbackDate;
@@ -54,7 +52,7 @@ export default function DeliveryOrderGeneration({
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [showPreview, setShowPreview] = useState(false);
 
-  // Auto-calculate scheduled date: 1 day before period start
+  // Scheduled date is the required date (period start)
   const scheduledDeliveryDate = calculateScheduledDate(scheduledPeriod, deliveryDate);
 
   const handleGenerateDO = () => {

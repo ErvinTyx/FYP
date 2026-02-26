@@ -25,7 +25,7 @@ import {
 } from '../ui/select';
 import { ScrollableTimePicker } from '../ui/scrollable-time-picker';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, startOfDay, isBefore } from 'date-fns';
 import { DeliveryOrder, DeliveryItem } from './DeliveryManagement';
 import {
   Dialog,
@@ -329,17 +329,35 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
     if (!scheduledDate) {
       errors.scheduledDate = 'Scheduled date is required';
       isValid = false;
+    } else {
+      const todayStart = startOfDay(new Date());
+      if (startOfDay(scheduledDate) < todayStart) {
+        errors.scheduledDate = 'Schedule date cannot be in the past. Please select today or a future date.';
+        isValid = false;
+      }
     }
 
     if (!scheduleTimeSlot) {
       errors.timeSlot = 'Please select a delivery/pickup time';
       isValid = false;
+    } else if (scheduledDate && startOfDay(scheduledDate).getTime() === startOfDay(new Date()).getTime()) {
+      // Selected date is today: ensure time is not in the past
+      const [hours, minutes] = scheduleTimeSlot.split(':').map(Number);
+      const scheduledDateTime = new Date(scheduledDate);
+      scheduledDateTime.setHours(hours, minutes, 0, 0);
+      if (isBefore(scheduledDateTime, new Date())) {
+        errors.timeSlot = 'Schedule time cannot be in the past. Please select a later time.';
+        isValid = false;
+      }
     }
 
     // For complete loading (not just start packing), validate driver details for delivery type
     if (!isStartPacking && formData.type === 'delivery') {
       if (!formData.driverName?.trim()) {
         errors.driverName = 'Driver name is required';
+        isValid = false;
+      } else if (!/^[a-zA-Z\s]+$/.test(formData.driverName.trim())) {
+        errors.driverName = 'Driver name must contain only letters and spaces';
         isValid = false;
       }
 
@@ -976,6 +994,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                       setScheduledDate(date);
                       if (date) clearStep3Error('scheduledDate');
                     }}
+                    disabled={(date) => startOfDay(date) < startOfDay(new Date())}
                     initialFocus
                   />
                 </PopoverContent>
@@ -1013,10 +1032,11 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
                   <Input
                     value={formData.driverName || ''}
                     onChange={(e) => {
-                      setFormData({ ...formData, driverName: e.target.value });
-                      if (e.target.value.trim()) clearStep3Error('driverName');
+                      const v = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+                      setFormData({ ...formData, driverName: v });
+                      if (v.trim()) clearStep3Error('driverName');
                     }}
-                    placeholder="Enter driver name"
+                    placeholder="Enter driver name (letters and spaces only)"
                     className={step3Errors.driverName ? 'border-red-500 bg-red-50' : ''}
                   />
                   {step3Errors.driverName && (

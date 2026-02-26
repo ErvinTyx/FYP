@@ -427,6 +427,14 @@ export async function POST(request: NextRequest) {
       `;
     }
 
+    // Scheduled date = request return date: when the return request is created, set schedule to request date
+    await prisma.returnSchedule.create({
+      data: {
+        returnRequestId: newRequest.id,
+        scheduledDate: newRequest.requestDate,
+      },
+    });
+
     return NextResponse.json({
       success: true,
       message: 'Return request created successfully',
