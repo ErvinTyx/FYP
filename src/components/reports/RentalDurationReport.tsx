@@ -12,6 +12,19 @@ import {
 } from '../ui/table';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
 import type { RentalDurationResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateRentalDurationExcel, downloadExcel } from '@/lib/report-excel-generator';
@@ -162,6 +175,70 @@ export function RentalDurationReport({ filters, requestGeneration = 0, onRowsPer
                 </CardHeader>
                 <CardContent>
                   <div className="text-[#231F20] text-2xl font-bold">{summary.extensionRate}%</div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Rental Duration Distribution</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart
+                      data={[
+                        { range: '1-30 days', count: rows.filter((r) => r.rental_days <= 30).length },
+                        { range: '31-60 days', count: rows.filter((r) => r.rental_days > 30 && r.rental_days <= 60).length },
+                        { range: '61-90 days', count: rows.filter((r) => r.rental_days > 60 && r.rental_days <= 90).length },
+                        { range: '91+ days', count: rows.filter((r) => r.rental_days > 90).length },
+                      ].filter((d) => d.count > 0)}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="range" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="#3B82F6" name="Rentals" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Early Return vs Full Term</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Early Return', value: rows.filter((r) => r.early_return === 'Yes').length, color: '#F59E0B' },
+                          { name: 'Full Term', value: rows.filter((r) => r.early_return === 'No').length, color: '#10B981' },
+                        ].filter((d) => d.value > 0)}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={4}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {[
+                          { name: 'Early Return', value: rows.filter((r) => r.early_return === 'Yes').length, color: '#F59E0B' },
+                          { name: 'Full Term', value: rows.filter((r) => r.early_return === 'No').length, color: '#10B981' },
+                        ]
+                          .filter((d) => d.value > 0)
+                          .map((entry) => (
+                            <Cell key={entry.name} fill={entry.color} />
+                          ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </CardContent>
               </Card>
             </div>

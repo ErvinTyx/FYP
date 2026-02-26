@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
           include: {
             completion: true,
             schedule: true,
-            deliveryRequest: { select: { rfqId: true } },
+            deliveryRequest: { select: { rfqId: true, requestDate: true } },
             returnRequests: {
               include: { schedule: true },
             },
@@ -40,12 +40,15 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const getRentalStart = (dsi: typeof deliverySetItems[0]) =>
+      dsi.deliverySet.completion?.deliveredAt ?? dsi.deliverySet.schedule?.scheduledDate ?? dsi.deliverySet.deliveryRequest?.requestDate ?? dsi.deliverySet.createdAt;
+
     const data: RentalDurationRow[] = [];
 
     for (const dsi of deliverySetItems) {
       if (!dsi.scaffoldingItemId) continue;
 
-      const rental_start = dsi.deliverySet.completion?.deliveredAt ?? dsi.deliverySet.schedule?.scheduledDate ?? dsi.deliverySet.createdAt;
+      const rental_start = getRentalStart(dsi);
       const returnReq = dsi.deliverySet.returnRequests[0];
       const rental_end = returnReq?.schedule?.scheduledDate ?? returnReq?.requestDate ?? new Date();
       const startDate = new Date(rental_start);

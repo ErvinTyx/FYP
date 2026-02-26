@@ -12,6 +12,19 @@ import {
 } from '../ui/table';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
 import type { MaintenanceRecordResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateMaintenanceRepairExcel, downloadExcel } from '@/lib/report-excel-generator';
@@ -154,6 +167,72 @@ export function MaintenanceRepairReport({ filters, requestGeneration = 0, onRows
                 </CardHeader>
                 <CardContent>
                   <div className="text-[#231F20] text-2xl font-bold">RM {summary.totalCost.toLocaleString()}</div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Repair Cost by Damage Type</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart
+                      data={Object.entries(
+                        rows.reduce<Record<string, number>>((acc, r) => {
+                          acc[r.damage_type] = (acc[r.damage_type] ?? 0) + r.repair_cost;
+                          return acc;
+                        }, {})
+                      ).map(([type, cost]) => ({ type, cost }))}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 60 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="type" angle={-25} textAnchor="end" height={60} tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={(v) => `RM ${v}`} tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v: number) => [`RM ${v.toLocaleString()}`, 'Cost']} />
+                      <Bar dataKey="cost" fill="#F15929" name="Repair Cost" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Repairs by Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={Object.entries(
+                          rows.reduce<Record<string, number>>((acc, r) => {
+                            acc[r.repair_status] = (acc[r.repair_status] ?? 0) + 1;
+                            return acc;
+                          }, {})
+                        ).map(([name, value]) => ({ name, value, color: name === 'completed' ? '#10B981' : name === 'in-progress' ? '#F59E0B' : '#6B7280' }))}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={4}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {Object.entries(
+                          rows.reduce<Record<string, number>>((acc, r) => {
+                            acc[r.repair_status] = (acc[r.repair_status] ?? 0) + 1;
+                            return acc;
+                          }, {})
+                        ).map(([name], i) => (
+                          <Cell key={name} fill={['#10B981', '#F59E0B', '#6B7280'][i % 3]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </CardContent>
               </Card>
             </div>

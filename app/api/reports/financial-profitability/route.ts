@@ -8,24 +8,32 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
 
-    const dateFilter: { gte?: Date; lte?: Date } = {};
-    if (dateFrom) dateFilter.gte = new Date(dateFrom);
-    if (dateTo) dateFilter.lte = new Date(dateTo);
-
     const agreements = await prisma.rentalAgreement.findMany({
-      where: {
-        status: { in: ['Signed', 'Active', 'Completed'] },
-        ...(Object.keys(dateFilter).length > 0 && { createdAt: dateFilter }),
-      },
+      where: { status: { in: ['Signed', 'Active', 'Completed'] } },
       include: {
         rfq: true,
         monthlyInvoices: true,
       },
     });
 
+    // When date range is provided, filter by project activity (invoice billing period) instead of agreement createdAt
+    const dateFromObj = dateFrom ? new Date(dateFrom) : null;
+    const dateToObj = dateTo ? new Date(dateTo) : null;
+    const filteredAgreements =
+      dateFromObj && dateToObj
+        ? agreements.filter((ag) => {
+            const hasInvoiceInRange = ag.monthlyInvoices.some((inv) => {
+              const start = new Date(inv.billingStartDate);
+              const end = new Date(inv.billingEndDate);
+              return end >= dateFromObj && start <= dateToObj;
+            });
+            return hasInvoiceInRange;
+          })
+        : agreements;
+
     const data: ProjectFinancialReportRow[] = [];
 
-    for (const agreement of agreements) {
+    for (const agreement of filteredAgreements) {
       const totalRentalRevenue = agreement.monthlyInvoices.reduce(
         (sum, inv) => sum + Number(inv.totalAmount),
         0

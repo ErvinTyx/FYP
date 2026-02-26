@@ -13,6 +13,19 @@ import {
 } from '../ui/table';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
 import type { CustomerRentalBehaviourResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateCustomerBehaviourExcel, downloadExcel } from '@/lib/report-excel-generator';
@@ -140,12 +153,81 @@ export function CustomerBehaviourReport({ filters, requestGeneration = 0, onRows
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer Rental Behaviour</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 items-center mb-4">
+        <>
+          {filteredRows.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Total Rental Value by Customer (Top 10)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart
+                      data={[...filteredRows]
+                        .sort((a, b) => b.total_rental_value - a.total_rental_value)
+                        .slice(0, 10)
+                        .map((r) => ({ name: r.customer_name.slice(0, 12), value: r.total_rental_value }))}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 60 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" angle={-25} textAnchor="end" height={60} tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={(v) => `RM ${v}`} tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v: number) => [`RM ${v.toLocaleString()}`, 'Value']} />
+                      <Bar dataKey="value" fill="#3B82F6" name="Rental Value" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Rentals by Industry</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={(() => {
+                          const byIndustry = filteredRows.reduce<Record<string, number>>((acc, r) => {
+                            acc[r.industry_type] = (acc[r.industry_type] ?? 0) + 1;
+                            return acc;
+                          }, {});
+                          const colors = ['#F15929', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6'];
+                          return Object.entries(byIndustry).map(([name, value], i) => ({ name, value, color: colors[i % colors.length] }));
+                        })()}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={4}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {(() => {
+                          const byIndustry = filteredRows.reduce<Record<string, number>>((acc, r) => {
+                            acc[r.industry_type] = (acc[r.industry_type] ?? 0) + 1;
+                            return acc;
+                          }, {});
+                          const colors = ['#F15929', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6'];
+                          return Object.entries(byIndustry).map(([name], i) => (
+                            <Cell key={name} fill={colors[i % colors.length]} />
+                          ));
+                        })()}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Customer Rental Behaviour</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-4 items-center mb-4">
               <div className="relative flex-1 max-w-xs">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
                 <Input placeholder="Search customer..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
@@ -192,6 +274,7 @@ export function CustomerBehaviourReport({ filters, requestGeneration = 0, onRows
             </Table>
           </CardContent>
         </Card>
+        </>
       )}
     </div>
   );

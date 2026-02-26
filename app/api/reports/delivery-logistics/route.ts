@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
     const deliverySets = await prisma.deliverySet.findMany({
       include: {
-        deliveryRequest: { select: { rfqId: true } },
+        deliveryRequest: { select: { rfqId: true, requestDate: true } },
         schedule: true,
         completion: true,
         dispatch: true,
@@ -24,15 +24,18 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const getDeliveryDate = (ds: typeof deliverySets[0]) =>
+      ds.completion?.deliveredAt ?? ds.schedule?.scheduledDate ?? ds.deliveryRequest?.requestDate ?? ds.createdAt;
+
     const data: DeliveryPerformanceRow[] = [];
 
     for (const ds of deliverySets) {
       if (dateFrom && dateTo) {
-        const deliveryDate = ds.completion?.deliveredAt ?? ds.schedule?.scheduledDate ?? ds.createdAt;
+        const deliveryDate = getDeliveryDate(ds);
         const d = new Date(deliveryDate);
         if (d < dateFrom || d > dateTo) continue;
       }
-      const deliveryDate = ds.completion?.deliveredAt ?? ds.schedule?.scheduledDate ?? ds.createdAt;
+      const deliveryDate = getDeliveryDate(ds);
       const pickupDate = ds.returnRequests[0]?.schedule?.scheduledDate ?? ds.returnRequests[0]?.requestDate ?? deliveryDate;
       const deliveryDateObj = new Date(deliveryDate);
       const pickupDateObj = new Date(pickupDate);

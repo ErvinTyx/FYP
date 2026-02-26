@@ -12,6 +12,19 @@ import {
 } from '../ui/table';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
 import type { CustomerCreditRiskResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateCreditRiskExcel, downloadExcel } from '@/lib/report-excel-generator';
@@ -165,6 +178,70 @@ export function CreditRiskReport({ filters, requestGeneration = 0, onRowsPerPage
                 </CardHeader>
                 <CardContent>
                   <div className="text-[#231F20] text-2xl font-bold">RM {summary.totalOutstanding.toLocaleString()}</div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Risk Level Distribution</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Low', value: rows.filter((r) => r.risk_level === 'Low').length, color: '#10B981' },
+                          { name: 'Medium', value: rows.filter((r) => r.risk_level === 'Medium').length, color: '#F59E0B' },
+                          { name: 'High', value: rows.filter((r) => r.risk_level === 'High').length, color: '#EF4444' },
+                        ].filter((d) => d.value > 0)}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={4}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {[
+                          { name: 'Low', value: rows.filter((r) => r.risk_level === 'Low').length, color: '#10B981' },
+                          { name: 'Medium', value: rows.filter((r) => r.risk_level === 'Medium').length, color: '#F59E0B' },
+                          { name: 'High', value: rows.filter((r) => r.risk_level === 'High').length, color: '#EF4444' },
+                        ]
+                          .filter((d) => d.value > 0)
+                          .map((entry) => (
+                            <Cell key={entry.name} fill={entry.color} />
+                          ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Outstanding Balance by Customer (Top 10)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart
+                      data={[...rows]
+                        .sort((a, b) => b.outstanding_balance - a.outstanding_balance)
+                        .slice(0, 10)
+                        .map((r) => ({ name: r.customer_id.slice(0, 10), value: r.outstanding_balance }))}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 60 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" angle={-25} textAnchor="end" height={60} tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={(v) => `RM ${v}`} tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v: number) => [`RM ${v.toLocaleString()}`, 'Outstanding']} />
+                      <Bar dataKey="value" fill="#EF4444" name="Outstanding" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </CardContent>
               </Card>
             </div>

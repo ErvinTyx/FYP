@@ -12,6 +12,19 @@ import {
 } from '../ui/table';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
 import type { DeliveryPerformanceResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateDeliveryLogisticsExcel, downloadExcel } from '@/lib/report-excel-generator';
@@ -162,6 +175,72 @@ export function DeliveryLogisticsReport({ filters, requestGeneration = 0, onRows
                 </CardHeader>
                 <CardContent>
                   <div className="text-[#231F20] text-2xl font-bold">RM {summary.totalCost.toLocaleString()}</div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {rows.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Transport Cost by Driver</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart
+                      data={Object.entries(
+                        rows.reduce<Record<string, number>>((acc, r) => {
+                          acc[r.driver_id] = (acc[r.driver_id] ?? 0) + r.transportation_cost;
+                          return acc;
+                        }, {})
+                      ).map(([driver, cost]) => ({ driver, cost }))}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 60 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="driver" angle={-25} textAnchor="end" height={60} tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={(v) => `RM ${v}`} tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v: number) => [`RM ${v.toLocaleString()}`, 'Cost']} />
+                      <Bar dataKey="cost" fill="#F15929" name="Transport Cost" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Delay Days Distribution</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'On time (0 days)', value: rows.filter((r) => r.delay_days === 0).length, color: '#10B981' },
+                          { name: '1–5 days late', value: rows.filter((r) => r.delay_days >= 1 && r.delay_days <= 5).length, color: '#F59E0B' },
+                          { name: '6+ days late', value: rows.filter((r) => r.delay_days > 5).length, color: '#EF4444' },
+                        ].filter((d) => d.value > 0)}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={4}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {[
+                          { name: 'On time (0 days)', value: rows.filter((r) => r.delay_days === 0).length, color: '#10B981' },
+                          { name: '1–5 days late', value: rows.filter((r) => r.delay_days >= 1 && r.delay_days <= 5).length, color: '#F59E0B' },
+                          { name: '6+ days late', value: rows.filter((r) => r.delay_days > 5).length, color: '#EF4444' },
+                        ]
+                          .filter((d) => d.value > 0)
+                          .map((entry, i) => (
+                            <Cell key={entry.name} fill={entry.color} />
+                          ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </CardContent>
               </Card>
             </div>

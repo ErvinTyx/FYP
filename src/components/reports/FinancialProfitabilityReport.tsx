@@ -12,6 +12,16 @@ import {
 } from '../ui/table';
 import { toast } from 'sonner';
 import { endOfDay } from 'date-fns';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 import type { ProjectFinancialReportResponse } from '@/types/report';
 import { ReportPDFGenerator, downloadPDF } from '@/lib/report-pdf-generator';
 import { generateFinancialProfitabilityExcel, downloadExcel } from '@/lib/report-excel-generator';
@@ -174,6 +184,36 @@ export function FinancialProfitabilityReport({ filters, requestGeneration = 0, o
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {rows.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Revenue vs Costs by Project (Top 10)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart
+                    data={rows.slice(0, 10).map((r) => ({
+                      name: r.project_id.slice(0, 8),
+                      revenue: r.total_rental_revenue,
+                      costs: r.total_repair_cost + r.total_damage_cost + r.transportation_cost,
+                      profit: r.net_profit,
+                    }))}
+                    margin={{ top: 10, right: 20, left: 10, bottom: 30 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tickFormatter={(v) => `RM ${v}`} tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: number) => [`RM ${v.toLocaleString()}`, '']} labelFormatter={(l) => `Project: ${l}`} />
+                    <Legend />
+                    <Bar dataKey="revenue" fill="#10B981" name="Revenue" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="costs" fill="#EF4444" name="Costs" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="profit" fill="#F15929" name="Net Profit" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
           )}
 
           <Card>

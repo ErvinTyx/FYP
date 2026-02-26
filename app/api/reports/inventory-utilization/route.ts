@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get delivered items (currently rented out - delivered but may not yet be returned)
+    // Use deliveryRequest.requestDate as fallback when completion/schedule are missing (e.g. seed data)
     const activeDeliveryItemsRaw = await prisma.deliverySetItem.findMany({
       where: {
         scaffoldingItemId: { not: null },
@@ -35,13 +36,18 @@ export async function GET(request: NextRequest) {
             completion: { select: { deliveredAt: true } },
             schedule: { select: { scheduledDate: true } },
             createdAt: true,
+            deliveryRequest: { select: { requestDate: true } },
           },
         },
       },
     });
+    const getDeliveryDate = (item: typeof activeDeliveryItemsRaw[0]) => {
+      const ds = item.deliverySet;
+      return ds.completion?.deliveredAt ?? ds.schedule?.scheduledDate ?? ds.deliveryRequest?.requestDate ?? ds.createdAt;
+    };
     const activeDeliveryItems = dateFrom && dateTo
       ? activeDeliveryItemsRaw.filter((item) => {
-          const d = item.deliverySet.completion?.deliveredAt ?? item.deliverySet.schedule?.scheduledDate ?? item.deliverySet.createdAt;
+          const d = getDeliveryDate(item);
           const date = new Date(d);
           return date >= dateFrom && date <= dateTo;
         })
