@@ -389,6 +389,8 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
           onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
           onView={handleView}
           onUploadProof={handleSubmitPayment}
+          onApprove={handleApprove}
+          onReject={handleReject}
           onResetDueDate={handleResetDueDate}
           onMarkExpired={handleMarkExpired}
           userRole={userRole}
