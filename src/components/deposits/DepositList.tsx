@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Eye, FileText, Calendar, DollarSign, AlertCircle, MoreVertical, Upload, CalendarClock, XCircle, Ban } from "lucide-react";
+import { Search, Eye, FileText, Calendar, DollarSign, AlertCircle, MoreVertical, Upload, CalendarClock, XCircle, Ban, CheckCircle } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -44,6 +44,8 @@ import {
 } from "../ui/pagination";
 import { DepositStatusBadge } from "./DepositStatusBadge";
 import { UploadProofModal } from "./UploadProofModal";
+import { ApprovalModal } from "./ApprovalModal";
+import { RejectionModal } from "./RejectionModal";
 import { Deposit } from "../../types/deposit";
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
@@ -60,17 +62,23 @@ interface DepositListProps {
   onOrderByChange?: (orderBy: OrderBy) => void;
   onView: (id: string) => void;
   onUploadProof?: (depositId: string, file: File) => void;
+  onApprove?: (depositId: string, referenceNumber: string) => void;
+  onReject?: (depositId: string, reason: string) => void;
   onResetDueDate?: (depositId: string, newDueDate: string) => void;
   onMarkExpired?: (depositId: string) => void;
   userRole: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
   isProcessing?: boolean;
 }
 
-export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, onView, onUploadProof, onResetDueDate, onMarkExpired, userRole, isProcessing }: DepositListProps) {
+export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, onView, onUploadProof, onApprove, onReject, onResetDueDate, onMarkExpired, userRole, isProcessing }: DepositListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedDepositForUpload, setSelectedDepositForUpload] = useState<Deposit | null>(null);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [selectedDepositForApproval, setSelectedDepositForApproval] = useState<Deposit | null>(null);
+  const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
+  const [selectedDepositForRejection, setSelectedDepositForRejection] = useState<Deposit | null>(null);
   const [resetDueDateModalOpen, setResetDueDateModalOpen] = useState(false);
   const [selectedDepositForReset, setSelectedDepositForReset] = useState<Deposit | null>(null);
   const [newDueDate, setNewDueDate] = useState("");
@@ -102,6 +110,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
   const expiredCount = deposits.filter((d) => d.status === "Expired").length;
   
   const canManageDeposits = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
+  const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
 
   const handleResetDueDate = () => {
     if (selectedDepositForReset && onResetDueDate && newDueDate) {
@@ -117,6 +126,32 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
       onMarkExpired(selectedDepositForExpire.id);
       setConfirmExpireModalOpen(false);
       setSelectedDepositForExpire(null);
+    }
+  };
+
+  const handleApproveClick = (deposit: Deposit) => {
+    setSelectedDepositForApproval(deposit);
+    setApprovalModalOpen(true);
+  };
+
+  const handleRejectClick = (deposit: Deposit) => {
+    setSelectedDepositForRejection(deposit);
+    setRejectionModalOpen(true);
+  };
+
+  const handleApprove = (referenceId: string) => {
+    if (selectedDepositForApproval && onApprove) {
+      onApprove(selectedDepositForApproval.id, referenceId);
+      setApprovalModalOpen(false);
+      setSelectedDepositForApproval(null);
+    }
+  };
+
+  const handleReject = (reason: string) => {
+    if (selectedDepositForRejection && onReject) {
+      onReject(selectedDepositForRejection.id, reason);
+      setRejectionModalOpen(false);
+      setSelectedDepositForRejection(null);
     }
   };
 
@@ -334,6 +369,31 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
                               </DropdownMenuItem>
                             )}
                             
+                            {/* Approve/Reject actions for Pending Approval */}
+                            {canApproveReject && deposit.status === "Pending Approval" && (onApprove || onReject) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                {onApprove && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleApproveClick(deposit)}
+                                    disabled={isProcessing}
+                                  >
+                                    <CheckCircle className="mr-2 h-4 w-4 text-[#10B981]" />
+                                    Approve
+                                  </DropdownMenuItem>
+                                )}
+                                {onReject && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleRejectClick(deposit)}
+                                    disabled={isProcessing}
+                                  >
+                                    <XCircle className="mr-2 h-4 w-4 text-[#DC2626]" />
+                                    Reject
+                                  </DropdownMenuItem>
+                                )}
+                              </>
+                            )}
+                            
                             {/* Admin actions for Overdue deposits */}
                             {canManageDeposits && deposit.status === "Overdue" && (
                               <>
@@ -425,6 +485,34 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
           }}
           depositInvoiceNo={selectedDepositForUpload.invoiceNo || selectedDepositForUpload.depositNumber || ''}
           isReupload={selectedDepositForUpload.status === "Rejected"}
+        />
+      )}
+
+      {/* Approval Modal */}
+      {approvalModalOpen && selectedDepositForApproval && onApprove && (
+        <ApprovalModal
+          isOpen={approvalModalOpen}
+          onClose={() => {
+            setApprovalModalOpen(false);
+            setSelectedDepositForApproval(null);
+          }}
+          onApprove={handleApprove}
+          depositId={selectedDepositForApproval.depositNumber || selectedDepositForApproval.depositId || selectedDepositForApproval.id}
+          customerName={selectedDepositForApproval.customerName || selectedDepositForApproval.agreement?.hirer || 'Unknown'}
+          amount={selectedDepositForApproval.depositAmount}
+        />
+      )}
+
+      {/* Rejection Modal */}
+      {rejectionModalOpen && selectedDepositForRejection && onReject && (
+        <RejectionModal
+          isOpen={rejectionModalOpen}
+          onClose={() => {
+            setRejectionModalOpen(false);
+            setSelectedDepositForRejection(null);
+          }}
+          onReject={handleReject}
+          depositId={selectedDepositForRejection.depositNumber || selectedDepositForRejection.depositId || selectedDepositForRejection.id}
         />
       )}
 
