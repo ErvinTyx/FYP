@@ -246,7 +246,10 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
             onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
             onView={handleView}
             onEditPayment={handleEditPayment}
+            onApprove={handleApprove}
+            onReject={handleReject}
             userRole={userRole}
+            isProcessing={isProcessing}
           />
         </>
       )}
