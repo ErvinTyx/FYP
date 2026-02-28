@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Eye, AlertCircle, Calendar, TrendingUp, FileText, MoreVertical, Edit, DollarSign } from 'lucide-react';
+import { Search, Eye, AlertCircle, Calendar, TrendingUp, FileText, MoreVertical, Edit, DollarSign, CheckCircle, XCircle } from 'lucide-react';
 import { formatRfqDate } from '../../lib/rfqDate';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -24,6 +24,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import {
@@ -34,6 +35,8 @@ import {
   PaginationPrevious,
 } from '../ui/pagination';
 import { MonthlyRentalInvoice } from '../../types/monthly-rental';
+import { ApprovalModal } from './ApprovalModal';
+import { RejectionModal } from './RejectionModal';
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
 type OrderBy = 'latest' | 'earliest';
@@ -49,12 +52,56 @@ interface MonthlyRentalInvoiceListProps {
   onOrderByChange?: (orderBy: OrderBy) => void;
   onView: (id: string) => void;
   onEditPayment?: (id: string) => void;
+  onApprove?: (invoiceId: string, referenceNumber: string) => void;
+  onReject?: (invoiceId: string, reason: string) => void;
   userRole: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  isProcessing?: boolean;
 }
 
-export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSize = 10, orderBy = 'latest', onPageChange, onPageSizeChange, onOrderByChange, onView, onEditPayment, userRole }: MonthlyRentalInvoiceListProps) {
+export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSize = 10, orderBy = 'latest', onPageChange, onPageSizeChange, onOrderByChange, onView, onEditPayment, onApprove, onReject, userRole, isProcessing }: MonthlyRentalInvoiceListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<MonthlyRentalInvoice | null>(null);
+  
+  const canApproveReject = (userRole === 'super_user' || userRole === 'Admin' || userRole === 'Finance');
+  
+  const handleApproveClick = (invoice: MonthlyRentalInvoice) => {
+    setSelectedInvoice(invoice);
+    setIsApprovalModalOpen(true);
+  };
+  
+  const handleRejectClick = (invoice: MonthlyRentalInvoice) => {
+    setSelectedInvoice(invoice);
+    setIsRejectionModalOpen(true);
+  };
+  
+  const handleApprove = (referenceNumber: string) => {
+    if (selectedInvoice && onApprove) {
+      onApprove(selectedInvoice.id, referenceNumber);
+      setIsApprovalModalOpen(false);
+      setSelectedInvoice(null);
+    }
+  };
+  
+  const handleReject = (reason: string) => {
+    if (selectedInvoice && onReject) {
+      onReject(selectedInvoice.id, reason);
+      setIsRejectionModalOpen(false);
+      setSelectedInvoice(null);
+    }
+  };
+  
+  const handleApprovalModalClose = () => {
+    setIsApprovalModalOpen(false);
+    setSelectedInvoice(null);
+  };
+  
+  const handleRejectionModalClose = () => {
+    setIsRejectionModalOpen(false);
+    setSelectedInvoice(null);
+  };
 
   const filteredInvoices = invoices.filter(invoice => {
     const deliveryRequestId = invoice.deliveryRequest?.requestId || '';
@@ -267,7 +314,7 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-[#F3F4F6]">
+                            <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-[#F3F4F6]" disabled={isProcessing}>
                               <MoreVertical className="h-4 w-4 text-[#6B7280]" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -276,13 +323,41 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
+                            
+                            {/* Upload proof for Pending Payment, Overdue, or Rejected */}
                             {(invoice.status === 'Pending Payment' || invoice.status === 'Rejected' || invoice.status === 'Overdue') && onEditPayment && (
                               <DropdownMenuItem
                                 onClick={() => onEditPayment(invoice.id)}
+                                disabled={isProcessing}
                               >
                                 <Edit className="mr-2 h-4 w-4" />
                                 {invoice.status === 'Rejected' ? 'Re-Upload Proof' : 'Upload Proof'}
                               </DropdownMenuItem>
+                            )}
+                            
+                            {/* Approve/Reject actions for Pending Approval */}
+                            {canApproveReject && invoice.status === 'Pending Approval' && (onApprove || onReject) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                {onApprove && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleApproveClick(invoice)}
+                                    disabled={isProcessing}
+                                  >
+                                    <CheckCircle className="mr-2 h-4 w-4 text-[#10B981]" />
+                                    Approve
+                                  </DropdownMenuItem>
+                                )}
+                                {onReject && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleRejectClick(invoice)}
+                                    disabled={isProcessing}
+                                  >
+                                    <XCircle className="mr-2 h-4 w-4 text-[#DC2626]" />
+                                    Reject
+                                  </DropdownMenuItem>
+                                )}
+                              </>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -324,6 +399,28 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
           })()}
         </CardContent>
       </Card>
+
+      {/* Approval Modal */}
+      {selectedInvoice && (
+        <ApprovalModal
+          isOpen={isApprovalModalOpen}
+          onClose={handleApprovalModalClose}
+          onApprove={handleApprove}
+          invoiceNumber={selectedInvoice.invoiceNumber}
+          customerName={selectedInvoice.customerName}
+          amount={selectedInvoice.totalAmount}
+        />
+      )}
+
+      {/* Rejection Modal */}
+      {selectedInvoice && (
+        <RejectionModal
+          isOpen={isRejectionModalOpen}
+          onClose={handleRejectionModalClose}
+          onReject={handleReject}
+          invoiceNumber={selectedInvoice.invoiceNumber}
+        />
+      )}
     </div>
   );
 }

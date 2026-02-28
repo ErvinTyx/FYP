@@ -1,11 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Upload, Check, CheckCircle, X, XCircle, FileText, AlertCircle, Calendar, Info, ExternalLink, Loader2, Printer, Download, ChevronDown, ChevronUp, CreditCard } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Upload, Check, CheckCircle, X, XCircle, FileText, AlertCircle, Calendar, Info, ExternalLink, Loader2, Download, ChevronDown, ChevronUp, CreditCard } from 'lucide-react';
 import { formatRfqDate } from '../../lib/rfqDate';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
 import { MonthlyRentalStatusBadge } from './MonthlyRentalStatusBadge';
 import {
   Table,
@@ -26,14 +25,10 @@ import {
 } from '../ui/alert-dialog';
 import { MonthlyRentalInvoice } from '../../types/monthly-rental';
 import { toast } from 'sonner';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { useCreditNotesForSource } from '../../hooks/useCreditNotesForSource';
+import { ApprovalModal } from './ApprovalModal';
+import { RejectionModal } from './RejectionModal';
 
 interface MonthlyRentalInvoiceDetailsProps {
   invoice: MonthlyRentalInvoice;
@@ -42,6 +37,7 @@ interface MonthlyRentalInvoiceDetailsProps {
   onApprove: (invoiceId: string, referenceNumber: string) => void;
   onReject: (invoiceId: string, reason: string) => void;
   onMarkAsReturned: (invoiceId: string) => void;
+  onPrintReceipt?: (invoiceId: string) => void;
   userRole: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
   isProcessing?: boolean;
 }
@@ -53,6 +49,7 @@ export function MonthlyRentalInvoiceDetails({
   onApprove,
   onReject,
   onMarkAsReturned,
+  onPrintReceipt,
   userRole,
   isProcessing = false,
 }: MonthlyRentalInvoiceDetailsProps) {
@@ -60,24 +57,7 @@ export function MonthlyRentalInvoiceDetails({
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [referenceNumber, setReferenceNumber] = useState('');
-  const [referenceNumberError, setReferenceNumberError] = useState('');
-  const [rejectionReasonError, setRejectionReasonError] = useState('');
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [autoPrint, setAutoPrint] = useState(false);
   const [showCalculation, setShowCalculation] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (showPrintModal && autoPrint) {
-      const t = setTimeout(() => {
-        window.print();
-        setAutoPrint(false);
-      }, 300);
-      return () => clearTimeout(t);
-    }
-  }, [showPrintModal, autoPrint]);
 
   const {
     creditNotes: appliedCreditNotes,
@@ -137,44 +117,12 @@ export function MonthlyRentalInvoiceDetails({
     onSubmitPayment(invoice.id, paymentFile);
   };
 
-  const handleApprove = () => {
-    if (!referenceNumber.trim()) {
-      setReferenceNumberError('Bank reference number is required');
-      return;
-    }
-
-    setReferenceNumberError('');
-    setIsApprovalModalOpen(false);
-    onApprove(invoice.id, referenceNumber);
-    setReferenceNumber('');
+  const handleApprove = (referenceId: string) => {
+    onApprove(invoice.id, referenceId);
   };
 
-  const handleApprovalModalClose = (open: boolean) => {
-    setIsApprovalModalOpen(open);
-    if (!open) {
-      setReferenceNumberError('');
-      setReferenceNumber('');
-    }
-  };
-
-  const handleRejectionModalClose = (open: boolean) => {
-    setIsRejectionModalOpen(open);
-    if (!open) {
-      setRejectionReasonError('');
-      setRejectionReason('');
-    }
-  };
-
-  const handleReject = () => {
-    if (!rejectionReason.trim()) {
-      setRejectionReasonError('Rejection reason is required');
-      return;
-    }
-
-    setRejectionReasonError('');
-    setIsRejectionModalOpen(false);
-    onReject(invoice.id, rejectionReason);
-    setRejectionReason('');
+  const handleReject = (reason: string) => {
+    onReject(invoice.id, reason);
   };
 
   const handleMarkAsReturned = () => {
@@ -244,24 +192,6 @@ export function MonthlyRentalInvoiceDetails({
               Last updated: {new Date(invoice.updatedAt || invoice.createdAt).toLocaleString()}
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}
-            className="h-10 px-4"
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            View Document
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}
-            className="h-10 px-4"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Download Receipt
-          </Button>
         </div>
       </div>
 
@@ -871,6 +801,15 @@ export function MonthlyRentalInvoiceDetails({
                     </p>
                   </div>
                 </div>
+                {onPrintReceipt && (
+                  <Button
+                    onClick={() => onPrintReceipt(invoice.id)}
+                    className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    View Receipt
+                  </Button>
+                )}
               </div>
               {invoice.referenceNumber && (
                 <div className="bg-white rounded-lg border border-[#BBF7D0] p-4">
@@ -886,85 +825,22 @@ export function MonthlyRentalInvoiceDetails({
       )}
 
       {/* Approval Modal */}
-      <AlertDialog open={isApprovalModalOpen} onOpenChange={handleApprovalModalClose}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Approve Payment</AlertDialogTitle>
-            <AlertDialogDescription>
-              Please enter the bank reference number to approve this payment.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-4">
-            <Label htmlFor="referenceNumber">
-              Bank Reference Number <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="referenceNumber"
-              value={referenceNumber}
-              onChange={(e) => {
-                setReferenceNumber(e.target.value);
-                if (referenceNumberError) setReferenceNumberError('');
-              }}
-              placeholder="Enter bank reference number"
-              className={`mt-2 ${referenceNumberError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-            />
-            {referenceNumberError && (
-              <p className="text-sm text-red-500 mt-1">{referenceNumberError}</p>
-            )}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
-            <Button
-              onClick={handleApprove}
-              className="bg-[#059669] hover:bg-[#047857] text-white"
-              disabled={isProcessing}
-            >
-              Approve
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ApprovalModal
+        isOpen={isApprovalModalOpen}
+        onClose={() => setIsApprovalModalOpen(false)}
+        onApprove={handleApprove}
+        invoiceNumber={invoice.invoiceNumber}
+        customerName={invoice.customerName}
+        amount={invoice.totalAmount}
+      />
 
       {/* Rejection Modal */}
-      <AlertDialog open={isRejectionModalOpen} onOpenChange={handleRejectionModalClose}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reject Payment</AlertDialogTitle>
-            <AlertDialogDescription>
-              Please provide a reason for rejecting this payment. The customer will be notified via email.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-4">
-            <Label htmlFor="rejectionReason">
-              Rejection Reason <span className="text-red-500">*</span>
-            </Label>
-            <Textarea
-              id="rejectionReason"
-              value={rejectionReason}
-              onChange={(e) => {
-                setRejectionReason(e.target.value);
-                if (rejectionReasonError) setRejectionReasonError('');
-              }}
-              placeholder="Enter the reason for rejection"
-              className={`mt-2 ${rejectionReasonError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-              rows={4}
-            />
-            {rejectionReasonError && (
-              <p className="text-sm text-red-500 mt-1">{rejectionReasonError}</p>
-            )}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
-            <Button
-              onClick={handleReject}
-              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white"
-              disabled={isProcessing}
-            >
-              Reject
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RejectionModal
+        isOpen={isRejectionModalOpen}
+        onClose={() => setIsRejectionModalOpen(false)}
+        onReject={handleReject}
+        invoiceNumber={invoice.invoiceNumber}
+      />
 
       {/* Return Modal */}
       <AlertDialog open={isReturnModalOpen} onOpenChange={setIsReturnModalOpen}>
@@ -981,58 +857,6 @@ export function MonthlyRentalInvoiceDetails({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Print / Document Modal */}
-      <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none">
-          <div className="flex justify-between items-center print:hidden mb-4">
-            <DialogHeader>
-              <DialogTitle>Monthly Rental Invoice - Print Preview</DialogTitle>
-            </DialogHeader>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => window.print()}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </Button>
-              <Button variant="outline" onClick={() => setShowPrintModal(false)}>Close</Button>
-            </div>
-          </div>
-          <div ref={printRef} className="space-y-4 p-4 border rounded-lg">
-            <div className="border-b-2 border-[#F15929] pb-4">
-              <h2 className="text-xl font-semibold text-[#231F20]">Power Metal & Steel</h2>
-              <p className="text-sm text-[#6B7280]">Monthly Rental Invoice</p>
-              <p className="text-lg font-medium mt-2">{invoice.invoiceNumber}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <p><span className="text-[#6B7280]">Customer:</span> {invoice.customerName}</p>
-              <p><span className="text-[#6B7280]">Due Date:</span> {formatRfqDate(invoice.dueDate)}</p>
-              <p><span className="text-[#6B7280]">Status:</span> {invoice.status}</p>
-              <p><span className="text-[#6B7280]">Total:</span> RM {invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}</p>
-            </div>
-            {invoice.items && invoice.items.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Unit Rate</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoice.items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.scaffoldingItemName}</TableCell>
-                      <TableCell className="text-right">{item.quantityBilled}</TableCell>
-                      <TableCell className="text-right">RM {Number(item.unitPrice).toFixed(2)}</TableCell>
-                      <TableCell className="text-right">RM {Number(item.lineTotal).toFixed(2)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
