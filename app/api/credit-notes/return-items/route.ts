@@ -1,10 +1,14 @@
 /**
- * GET /api/credit-notes/return-items?customerName=X&invoiceType=monthlyRental
+ * GET /api/credit-notes/return-items?customerName=X&invoiceType=monthlyRental&agreementId=Y
  *
  * Fetches completed return requests for a customer, calculates each returned
  * item's rental duration (deliveredAt → warehouseReceipt.receivedAt), enforces
- * minimum charges from the agreement, and returns line items with calculated
- * amounts using the same billing formula as monthly rental invoices.
+ * minimum charges from the agreement (agreement.minimumCharges only), and returns
+ * line items with calculated amounts using the same billing formula as monthly
+ * rental invoices.
+ *
+ * Optional agreementId: when provided, filters to return requests for that agreement only.
+ * Response always includes agreements array for populating the agreement selector.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -30,6 +34,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const customerName = searchParams.get('customerName')?.trim();
     const invoiceType = searchParams.get('invoiceType') || 'monthlyRental';
+    const agreementIdParam = searchParams.get('agreementId')?.trim();
 
     if (!customerName) {
       return NextResponse.json(
@@ -60,16 +65,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         items: [],
+        agreements: [],
         message: 'No completed return requests found for this customer',
       });
     }
 
     // 2. Collect unique agreement numbers from return requests
-    const agreementNos = [...new Set(returnRequests.map((rr) => rr.agreementNo))];
+    let filteredReturnRequests = returnRequests;
+    if (agreementIdParam) {
+      const selectedAgreement = await prisma.rentalAgreement.findUnique({
+        where: { id: agreementIdParam },
+        select: { agreementNumber: true },
+      });
+      if (selectedAgreement) {
+        filteredReturnRequests = returnRequests.filter(
+          (rr) => rr.agreementNo === selectedAgreement.agreementNumber
+        );
+      }
+    }
+
+    const agreementNos = [...new Set(filteredReturnRequests.map((rr) => rr.agreementNo))];
+    const allAgreementNos = [...new Set(returnRequests.map((rr) => rr.agreementNo))];
 
     // 3. Look up rental agreements with their items and RFQ items
     const agreements = await prisma.rentalAgreement.findMany({
-      where: { agreementNumber: { in: agreementNos } },
+      where: { agreementNumber: { in: allAgreementNos } },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       include: { items: true } as any,
     });
@@ -141,7 +161,7 @@ export async function GET(request: NextRequest) {
       agreementNo: string;
     }> = [];
 
-    for (const rr of returnRequests) {
+    for (const rr of filteredReturnRequests) {
       const agreement = agreementByNumber.get(rr.agreementNo);
       if (!agreement) continue;
 
@@ -169,23 +189,21 @@ export async function GET(request: NextRequest) {
       }
       const totalMonths = [...monthsBySet.values()].reduce((a, b) => a + b, 0);
 
-      // Build agreedMonthlyRate map from AgreementItems by scaffoldingItemId
-      const agreedRateByScaffoldingId = new Map<string, { rate: number; minimumRentalMonths: number }>();
-      const agreedRateByRfqItemId = new Map<string, { rate: number; minimumRentalMonths: number }>();
+      // Build agreedMonthlyRate map from AgreementItems (unit price only; minimum charge comes from agreement)
+      const agreedRateByScaffoldingId = new Map<string, number>();
+      const agreedRateByRfqItemId = new Map<string, number>();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const agItem of ((agreement as any).items || []) as Array<{
         rfqItemId: string | null;
         scaffoldingItemId: string;
         agreedMonthlyRate: unknown;
-        minimumRentalMonths: number;
       }>) {
         const rate = Number(agItem.agreedMonthlyRate) || 0;
-        const minMonths = agItem.minimumRentalMonths ?? 1;
         if (agItem.scaffoldingItemId) {
-          agreedRateByScaffoldingId.set(agItem.scaffoldingItemId, { rate, minimumRentalMonths: minMonths });
+          agreedRateByScaffoldingId.set(agItem.scaffoldingItemId, rate);
         }
         if (agItem.rfqItemId) {
-          agreedRateByRfqItemId.set(agItem.rfqItemId, { rate, minimumRentalMonths: minMonths });
+          agreedRateByRfqItemId.set(agItem.rfqItemId, rate);
         }
       }
 
@@ -210,23 +228,18 @@ export async function GET(request: NextRequest) {
         }
 
         // Determine unit price (agreed rate > RFQ unitPrice > 0)
-        const agreedInfo = agreedRateByScaffoldingId.get(retItem.scaffoldingItemId);
+        const agreedRate = agreedRateByScaffoldingId.get(retItem.scaffoldingItemId);
         let unitPrice = 0;
-        let minimumMonths = globalMinimumCharges;
 
-        if (agreedInfo) {
-          unitPrice = agreedInfo.rate;
-          minimumMonths = agreedInfo.minimumRentalMonths || globalMinimumCharges;
+        if (agreedRate != null && agreedRate > 0) {
+          unitPrice = agreedRate;
         } else if (matchedRfqItem) {
-          // Try by rfqItemId
           const rateByRfqId = agreedRateByRfqItemId.get(matchedRfqItem.id);
-          if (rateByRfqId) {
-            unitPrice = rateByRfqId.rate;
-            minimumMonths = rateByRfqId.minimumRentalMonths || globalMinimumCharges;
-          } else {
-            unitPrice = Number(matchedRfqItem.unitPrice) || 0;
-          }
+          unitPrice = rateByRfqId ?? (Number(matchedRfqItem.unitPrice) || 0);
         }
+
+        // Minimum charge is always from agreement level, not RFQ/AgreementItem
+        const minimumMonths = globalMinimumCharges;
 
         const rentalMonths = matchedRfqItem?.rentalMonths ?? 1;
 
@@ -279,15 +292,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get first agreement id for the credit note
-    const firstAgreement = agreements[0];
-    const agreementId = firstAgreement?.id ?? null;
+    // Build agreements list for selector (all agreements with completed returns)
+    const agreementsForSelector = agreements
+      .filter((a) => allAgreementNos.includes(a.agreementNumber))
+      .map((a) => ({ id: a.id, agreementNumber: a.agreementNumber }));
+
+    // agreementId for credit note: use selected filter, or first agreement when single
+    const resolvedAgreement = agreementIdParam
+      ? agreements.find((a) => a.id === agreementIdParam)
+      : agreements[0];
+    const agreementId = resolvedAgreement?.id ?? null;
 
     return NextResponse.json({
       success: true,
       items: resultItems,
+      agreements: agreementsForSelector,
       agreementId,
-      agreementNo: firstAgreement?.agreementNumber ?? null,
+      agreementNo: resolvedAgreement?.agreementNumber ?? null,
     });
   } catch (error) {
     console.error('[credit-notes/return-items] GET error:', error);
