@@ -12,6 +12,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import {
+  projectNameContainsWord,
+  isWithinWordLimit,
+  isWithinCharLimit,
+  validateRentalMonths,
+  RFQ_VALIDATION,
+} from '@/lib/rfq-validation';
 
 /** Include items and extendedFromRfq for RFQ responses (assertion for Prisma client with extendedFromRfq relation) */
 const rfqInclude = {
@@ -56,12 +63,57 @@ export async function POST(request: NextRequest) {
     console.log('[RFQ API] Items received:', items?.length || 0, 'items');
 
     // Validate required fields
-    if (!customerName || !customerEmail || !projectName || !createdBy) {
+    if (!customerName || !customerEmail || !customerPhone || !projectName || !projectLocation || !createdBy) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Required fields missing: customerName, customerEmail, projectName, createdBy',
+          message: 'Required fields missing: customerName, customerEmail, customerPhone, projectName, projectLocation, createdBy',
         },
+        { status: 400 }
+      );
+    }
+
+    // Project name must contain at least one letter (not only numbers or special characters)
+    if (!projectNameContainsWord(projectName)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Project name must contain at least one letter (cannot be only numbers or special characters)',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Project details: max 50 words each
+    if (!isWithinWordLimit(projectName, RFQ_VALIDATION.MAX_WORDS)) {
+      return NextResponse.json(
+        { success: false, message: `Project name must be ${RFQ_VALIDATION.MAX_WORDS} words or fewer` },
+        { status: 400 }
+      );
+    }
+    if (!isWithinWordLimit(projectLocation, RFQ_VALIDATION.MAX_PROJECT_LOCATION_WORDS)) {
+      return NextResponse.json(
+        { success: false, message: `Project location must be ${RFQ_VALIDATION.MAX_PROJECT_LOCATION_WORDS} words or fewer` },
+        { status: 400 }
+      );
+    }
+    if (notes != null && notes !== '' && !isWithinWordLimit(notes, RFQ_VALIDATION.MAX_WORDS)) {
+      return NextResponse.json(
+        { success: false, message: `Notes must be ${RFQ_VALIDATION.MAX_WORDS} words or fewer` },
+        { status: 400 }
+      );
+    }
+
+    // Project details: max 50 characters each (input limit)
+    if (!isWithinCharLimit(projectName, RFQ_VALIDATION.MAX_CHARS)) {
+      return NextResponse.json(
+        { success: false, message: `Project name must be ${RFQ_VALIDATION.MAX_CHARS} characters or fewer` },
+        { status: 400 }
+      );
+    }
+    if (notes != null && notes !== '' && !isWithinCharLimit(notes, RFQ_VALIDATION.MAX_CHARS)) {
+      return NextResponse.json(
+        { success: false, message: `Notes must be ${RFQ_VALIDATION.MAX_CHARS} characters or fewer` },
         { status: 400 }
       );
     }
@@ -118,6 +170,24 @@ export async function POST(request: NextRequest) {
               success: false,
               message: 'Item requiredDate must be on or after requested date',
             },
+            { status: 400 }
+          );
+        }
+        // Rental duration 1–12 months
+        const months = item.rentalMonths ?? 1;
+        if (!validateRentalMonths(months)) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: `Rental duration must be between ${RFQ_VALIDATION.RENTAL_MONTHS_MIN} and ${RFQ_VALIDATION.RENTAL_MONTHS_MAX} months`,
+            },
+            { status: 400 }
+          );
+        }
+        // Set name max 50 characters
+        if (!isWithinCharLimit(item.setName, RFQ_VALIDATION.MAX_CHARS)) {
+          return NextResponse.json(
+            { success: false, message: `Set name must be ${RFQ_VALIDATION.MAX_CHARS} characters or fewer` },
             { status: 400 }
           );
         }

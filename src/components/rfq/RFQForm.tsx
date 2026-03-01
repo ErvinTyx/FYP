@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
 import { useSession } from 'next-auth/react';
+import { projectNameContainsWord, isWithinCharLimit, isWithinWordLimit, countWords, truncateToWords, RFQ_VALIDATION } from '../../lib/rfq-validation';
 
 interface CustomerSummary {
   id: string;
@@ -287,7 +288,8 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
       if (set.id !== setId) return set;
       const updatedSet = { ...set, [field]: value };
       if (field === 'rentalMonths') {
-        const months = Number(updatedSet.rentalMonths) || 1;
+        const months = Math.min(RFQ_VALIDATION.RENTAL_MONTHS_MAX, Math.max(RFQ_VALIDATION.RENTAL_MONTHS_MIN, Number(updatedSet.rentalMonths) || 1));
+        updatedSet.rentalMonths = months;
         const durationInDays = months * 30;
         updatedSet.items = updatedSet.items.map(item => ({
           ...item,
@@ -432,11 +434,31 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
       toast.error('Please fill in all required fields');
       return;
     }
+    if (!projectNameContainsWord(formData.projectName)) {
+      toast.error('Project name must contain at least one words (cannot be only numbers or special characters)');
+      return;
+    }
+    if (!isWithinCharLimit(formData.projectName, RFQ_VALIDATION.MAX_CHARS)) {
+      toast.error(`Project name must be ${RFQ_VALIDATION.MAX_CHARS} characters or fewer`);
+      return;
+    }
+    if (!isWithinWordLimit(formData.projectLocation, RFQ_VALIDATION.MAX_PROJECT_LOCATION_WORDS)) {
+      toast.error(`Project location must be ${RFQ_VALIDATION.MAX_PROJECT_LOCATION_WORDS} words or fewer`);
+      return;
+    }
+    if (formData.notes && !isWithinCharLimit(formData.notes, RFQ_VALIDATION.MAX_CHARS)) {
+      toast.error(`Notes must be ${RFQ_VALIDATION.MAX_CHARS} characters or fewer`);
+      return;
+    }
     if (uiSets.length === 0) {
       toast.error('Please add at least one set');
       return;
     }
     for (const set of uiSets) {
+      if (!isWithinCharLimit(set.setName, RFQ_VALIDATION.MAX_CHARS)) {
+        toast.error(`Set name must be ${RFQ_VALIDATION.MAX_CHARS} characters or fewer`);
+        return;
+      }
       if (set.items.length === 0) {
         toast.error(`Set "${set.setName}" has no items. Please add items or remove the set.`);
         return;
@@ -456,6 +478,10 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
       }
       if (!set.rentalMonths || set.rentalMonths <= 0) {
         toast.error(`Set "${set.setName}": Please set a valid rental duration`);
+        return;
+      }
+      if (set.rentalMonths > RFQ_VALIDATION.RENTAL_MONTHS_MAX) {
+        toast.error(`Set "${set.setName}": Rental duration cannot exceed ${RFQ_VALIDATION.RENTAL_MONTHS_MAX} months`);
         return;
       }
       if (set.items.some(item => !item.scaffoldingItemId || item.quantity <= 0)) {
@@ -590,11 +616,20 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="projectName" className={mode === 'extend' ? 'text-gray-500' : ''}>Project Name *</Label>
-              <Input id="projectName" value={formData.projectName} onChange={(e) => setFormData({ ...formData, projectName: e.target.value })} placeholder="Enter project name" readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
+              <Input id="projectName" maxLength={RFQ_VALIDATION.MAX_CHARS} value={formData.projectName} onChange={(e) => setFormData({ ...formData, projectName: e.target.value.slice(0, RFQ_VALIDATION.MAX_CHARS) })} placeholder="Enter project name (must contain letters)" readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
+              {formData.projectName.length === RFQ_VALIDATION.MAX_CHARS && (
+                <p className="text-xs text-amber-600">You have reached the limit (only {RFQ_VALIDATION.MAX_CHARS} characters).</p>
+              )}
+              {formData.projectName.length > 0 && formData.projectName.length < RFQ_VALIDATION.MAX_CHARS && (
+                <p className="text-xs text-gray-500">Must contain at least one letter.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="projectLocation" className={mode === 'extend' ? 'text-gray-500' : ''}>Project Location *</Label>
-              <Input id="projectLocation" value={formData.projectLocation} onChange={(e) => setFormData({ ...formData, projectLocation: e.target.value })} placeholder="Enter project location" readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
+              <Input id="projectLocation" value={formData.projectLocation} onChange={(e) => setFormData({ ...formData, projectLocation: truncateToWords(e.target.value, RFQ_VALIDATION.MAX_PROJECT_LOCATION_WORDS) })} placeholder="Enter project location (max 70 words)" readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
+              {countWords(formData.projectLocation) >= RFQ_VALIDATION.MAX_PROJECT_LOCATION_WORDS && (
+                <p className="text-xs text-amber-600">You have reached the limit (only {RFQ_VALIDATION.MAX_PROJECT_LOCATION_WORDS} words).</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="requestedDate" className={mode === 'extend' ? 'text-gray-500' : ''}>Requested Date</Label>
@@ -603,7 +638,10 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="notes" className={mode === 'extend' ? 'text-gray-500' : ''}>Notes</Label>
-              <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional notes or requirements" rows={3} readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
+              <Textarea id="notes" maxLength={RFQ_VALIDATION.MAX_CHARS} value={formData.notes ?? ''} onChange={(e) => setFormData({ ...formData, notes: e.target.value.slice(0, RFQ_VALIDATION.MAX_CHARS) })} placeholder="Additional notes or requirements" rows={3} readOnly={mode === 'extend'} disabled={mode === 'extend'} className={mode === 'extend' ? 'bg-gray-100' : ''} />
+              {(formData.notes || '').length === RFQ_VALIDATION.MAX_CHARS && (
+                <p className="text-xs text-amber-600">You have reached the limit (only {RFQ_VALIDATION.MAX_CHARS} characters).</p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -638,7 +676,10 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
                         <div className="flex-1">
                           <div className="space-y-2">
                             <Label>Set Name *</Label>
-                            <Input value={set.setName} onChange={(e) => updateSet(set.id, 'setName', e.target.value)} placeholder="e.g., Phase 1" />
+                            <Input maxLength={RFQ_VALIDATION.MAX_CHARS} value={set.setName} onChange={(e) => updateSet(set.id, 'setName', e.target.value.slice(0, RFQ_VALIDATION.MAX_CHARS))} placeholder="e.g., Phase 1" />
+                            {set.setName.length === RFQ_VALIDATION.MAX_CHARS && (
+                              <p className="text-xs text-amber-600">You have reached the limit (only {RFQ_VALIDATION.MAX_CHARS} characters).</p>
+                            )}
                           </div>
                         </div>
                         <Button variant="ghost" size="sm" onClick={() => removeSet(set.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
@@ -676,10 +717,11 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
                           )}
                         </div>
                         <div className="space-y-2">
-                          <Label>Rental Duration (month) *</Label>
+                          <Label>Rental Duration (months) *</Label>
                           <Input
                             type="number"
-                            min={1}
+                            min={RFQ_VALIDATION.RENTAL_MONTHS_MIN}
+                            max={RFQ_VALIDATION.RENTAL_MONTHS_MAX}
                             value={rentalDurationEditing?.setId === set.id ? rentalDurationEditing.value : String(set.rentalMonths)}
                             onFocus={() => setRentalDurationEditing({ setId: set.id, value: String(set.rentalMonths) })}
                             onChange={(e) => {
@@ -691,13 +733,15 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
                             onBlur={(e) => {
                               const raw = e.target.value.trim();
                               const num = parseInt(raw, 10);
-                              const committed = raw === '' || Number.isNaN(num) ? 1 : Math.max(1, num);
+                              const committed = raw === '' || Number.isNaN(num)
+                                ? RFQ_VALIDATION.RENTAL_MONTHS_MIN
+                                : Math.min(RFQ_VALIDATION.RENTAL_MONTHS_MAX, Math.max(RFQ_VALIDATION.RENTAL_MONTHS_MIN, num));
                               updateSet(set.id, 'rentalMonths', committed);
                               setRentalDurationEditing(null);
                             }}
-                            placeholder="e.g. 1"
+                            placeholder="1–12"
                           />
-                          <p className="text-xs text-gray-500">Minimum rental duration is 1 month (30 days).</p>
+                          <p className="text-xs text-gray-500">Rental duration: {RFQ_VALIDATION.RENTAL_MONTHS_MIN}–{RFQ_VALIDATION.RENTAL_MONTHS_MAX} months.</p>
                         </div>
                       </div>
                     </div>

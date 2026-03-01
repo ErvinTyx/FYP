@@ -784,7 +784,7 @@ export function RFQManagement() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm text-gray-600">Total RFQs</CardTitle>
@@ -807,22 +807,6 @@ export function RFQManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-[#231F20]">{stats.submitted}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600">Quoted for Item</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{stats['quoted-for-item']}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-600">Quoted for Delivery</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-[#231F20]">{stats['quoted-for-delivery']}</div>
           </CardContent>
         </Card>
         <Card>
@@ -857,8 +841,6 @@ export function RFQManagement() {
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
                 <SelectItem value="submitted">Submitted</SelectItem>
-                <SelectItem value="quoted-for-item">Quoted for Item</SelectItem>
-                <SelectItem value="quoted-for-delivery">Quoted for Delivery</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
                 <SelectItem value="expired">Expired</SelectItem>
@@ -970,18 +952,6 @@ export function RFQManagement() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {rfq.status !== 'quoted-for-item' && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(rfq.id, 'quoted-for-item')}>
-                              <FileCheck className="size-4 mr-2 text-purple-600" />
-                              Mark as Quoted for Item
-                            </DropdownMenuItem>
-                          )}
-                          {rfq.status !== 'quoted-for-delivery' && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(rfq.id, 'quoted-for-delivery')}>
-                              <FileCheck className="size-4 mr-2 text-indigo-600" />
-                              Mark as Quoted for Delivery
-                            </DropdownMenuItem>
-                          )}
                           {rfq.status !== 'approved' && (
                             <DropdownMenuItem onClick={() => handleStatusChange(rfq.id, 'approved')}>
                               <CheckCircle className="size-4 mr-2 text-green-600" />

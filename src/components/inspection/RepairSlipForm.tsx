@@ -16,6 +16,7 @@ import {
   getRepairActionsForItem,
   ScaffoldingRepairAction
 } from '../../types/inspection';
+import { MAX_NOTES_CHARS } from '../../lib/rfq-validation';
 
 // Interface for scaffolding items with damage repairs from database
 interface ScaffoldingDamageRepair {
@@ -60,7 +61,7 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
     priority: repairSlip?.priority || 'medium',
     estimatedCost: repairSlip?.estimatedCost || 0,
     actualCost: repairSlip?.actualCost || 0,
-    repairNotes: repairSlip?.repairNotes || '',
+    repairNotes: (repairSlip?.repairNotes || '').slice(0, MAX_NOTES_CHARS),
     assignedTo: repairSlip?.assignedTo || conditionReport?.inspectedBy || '',
     startDate: repairSlip?.startDate || '',
     createdBy: repairSlip?.createdBy || 'Current User',
@@ -405,6 +406,11 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
       return;
     }
 
+    if (formData.repairNotes && formData.repairNotes.length > MAX_NOTES_CHARS) {
+      toast.error(`Repair notes must be ${MAX_NOTES_CHARS} characters or fewer (about 70 words)`);
+      return;
+    }
+
     const repairSlipData: OpenRepairSlip = {
       id: repairSlip?.id || `repair-${Date.now()}`,
       orpNumber: formData.orpNumber!,
@@ -444,7 +450,13 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>ORP Number</Label>
-              <Input value={formData.orpNumber} onChange={(e) => setFormData({ ...formData, orpNumber: e.target.value })} placeholder="ORP-XXXXX" />
+              <Input
+                value={formData.orpNumber}
+                readOnly
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
+                placeholder="ORP-XXXXX"
+              />
             </div>
             <div className="space-y-2">
               <Label>RCF Number</Label>
@@ -495,7 +507,16 @@ export function RepairSlipForm({ repairSlip, conditionReport, onSave, onCancel }
           </div>
           <div className="space-y-2">
             <Label>Repair Notes</Label>
-            <Textarea value={formData.repairNotes} onChange={(e) => setFormData({ ...formData, repairNotes: e.target.value })} placeholder="Additional notes..." rows={3} />
+            <Textarea
+              maxLength={MAX_NOTES_CHARS}
+              value={(formData.repairNotes ?? '').slice(0, MAX_NOTES_CHARS)}
+              onChange={(e) => setFormData(prev => ({ ...prev, repairNotes: e.target.value.slice(0, MAX_NOTES_CHARS) }))}
+              placeholder="Additional notes (max 500 characters, about 70 words)"
+              rows={3}
+            />
+            {(formData.repairNotes ?? '').length === MAX_NOTES_CHARS && (
+              <p className="text-xs text-amber-600">You have reached the limit ({MAX_NOTES_CHARS} characters, about 70 words).</p>
+            )}
           </div>
         </CardContent>
       </Card>
