@@ -1398,7 +1398,7 @@ async function main() {
         scaffoldingItemId: si.id,
         scaffoldingItemName: si.name,
         quantity: row.quantity,
-        unit: "day",
+        unit: "piece",
         unitPrice,
         totalPrice,
       });
@@ -1646,7 +1646,11 @@ async function main() {
   }
   console.log(`  - Created 50 ReturnRequests with items.`);
 
-  console.log("Creating 50 ConditionReports...");
+  console.log("Creating 50 ConditionReports with InspectionItems...");
+  const scaffItemsForInspection = await prisma.scaffoldingItem.findMany({
+    take: 25,
+    select: { id: true, name: true, price: true },
+  });
   const createdConditionReportIds: string[] = [];
   for (let i = 0; i < 50; i++) {
     const rfq = createdRfqs[i];
@@ -1669,9 +1673,49 @@ async function main() {
         totalRepairCost: 0,
       },
     });
+    let totalItemsInspected = 0;
+    let totalGood = 0;
+    let totalRepair = 0;
+    let totalWriteOff = 0;
+    const numItems = 2 + (i % 4);
+    for (let k = 0; k < numItems && k < scaffItemsForInspection.length; k++) {
+      const si = scaffItemsForInspection[(i + k) % scaffItemsForInspection.length];
+      const qty = 3 + (i + k) % 8;
+      const qGood = Math.floor(qty * 0.6);
+      const qRepair = Math.floor(qty * 0.3);
+      const qWriteOff = qty - qGood - qRepair;
+      totalItemsInspected += qty;
+      totalGood += qGood;
+      totalRepair += qRepair;
+      totalWriteOff += qWriteOff;
+      await prisma.inspectionItem.create({
+        data: {
+          conditionReportId: cr.id,
+          scaffoldingItemId: si.id,
+          scaffoldingItemName: si.name,
+          quantity: qty,
+          quantityGood: qGood,
+          quantityRepair: qRepair,
+          quantityWriteOff: qWriteOff,
+          condition: qWriteOff > 0 ? "major-damage" : qRepair > 0 ? "minor-damage" : "good",
+          originalItemPrice: si.price ?? 0,
+        },
+      });
+    }
+    await prisma.conditionReport.update({
+      where: { id: cr.id },
+      data: {
+        totalItemsInspected,
+        totalGood,
+        totalRepair,
+        totalWriteOff,
+        totalDamaged: totalRepair + totalWriteOff,
+        totalRepairCost: totalRepair * 15,
+      },
+    });
     createdConditionReportIds.push(cr.id);
   }
-  console.log(`  - Created 50 ConditionReports.`);
+  console.log(`  - Created 50 ConditionReports with InspectionItems.`);
 
   console.log("Creating OpenRepairSlips and RepairItems for maintenance report...");
   const operationsUser = await prisma.user.findFirst({
@@ -1701,6 +1745,7 @@ async function main() {
       },
     });
     const si = scaffItemsForRepair[i % scaffItemsForRepair.length];
+    const itemCost = 50 + i * 10;
     if (si) {
       await prisma.repairItem.create({
         data: {
@@ -1712,14 +1757,18 @@ async function main() {
           quantityRepaired: 1,
           damageType: DAMAGE_TYPES[i % DAMAGE_TYPES.length],
           repairStatus: "completed",
-          totalCost: 50 + i * 10,
-          finalCost: 50 + i * 10,
+          totalCost: itemCost,
+          finalCost: itemCost,
           completedDate: inspDate,
         },
       });
+      await prisma.openRepairSlip.update({
+        where: { id: openRepairSlip.id },
+        data: { estimatedCost: itemCost, actualCost: itemCost },
+      });
     }
   }
-  console.log(`  - Created 15 OpenRepairSlips with RepairItems for maintenance report.`);
+  console.log(`  - Created 15 OpenRepairSlips with RepairItems (estimatedCost/actualCost set).`);
 
   console.log("Creating 50 Deposits linked to RentalAgreements...");
   const createdDepositIds: string[] = [];

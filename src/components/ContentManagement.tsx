@@ -59,6 +59,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Switch } from "./ui/switch";
 import { toast } from "sonner";
 import { RFQNotification } from "../types/rfq";
+import { MAX_CONTENT_TITLE_CHARS, MAX_CONTENT_BODY_CHARS } from "../lib/rfq-validation";
 
 type ContentType =
   | "about"
@@ -343,8 +344,8 @@ export function ContentManagement({ userRole }: ContentManagementProps) {
   const handleEdit = (item: ContentItem) => {
     setIsNewItem(false);
     setCurrentItem(item);
-    setFormTitle(item.title);
-    setFormContent(item.content);
+    setFormTitle((item.title || "").slice(0, MAX_CONTENT_TITLE_CHARS));
+    setFormContent((item.content || "").slice(0, MAX_CONTENT_BODY_CHARS));
     setFormStatus(item.status);
     setFormMetadata(item.metadata || {});
     setFormImageUrl(item.metadata?.imageUrl || "");
@@ -406,6 +407,14 @@ export function ContentManagement({ userRole }: ContentManagementProps) {
   const handleSave = async () => {
     if (!formTitle || !formContent) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+    if ((formTitle || "").length > MAX_CONTENT_TITLE_CHARS) {
+      toast.error(`Title must be ${MAX_CONTENT_TITLE_CHARS} characters or fewer`);
+      return;
+    }
+    if ((formContent || "").length > MAX_CONTENT_BODY_CHARS) {
+      toast.error(`Content must be ${MAX_CONTENT_BODY_CHARS} characters or fewer`);
       return;
     }
 
@@ -851,10 +860,14 @@ export function ContentManagement({ userRole }: ContentManagementProps) {
               </Label>
               <Input
                 id="title"
-                value={formTitle}
-                onChange={(e) => setFormTitle(e.target.value)}
-                placeholder="Enter content title"
+                maxLength={MAX_CONTENT_TITLE_CHARS}
+                value={(formTitle || "").slice(0, MAX_CONTENT_TITLE_CHARS)}
+                onChange={(e) => setFormTitle(e.target.value.slice(0, MAX_CONTENT_TITLE_CHARS))}
+                placeholder="Enter content title (max 50 characters)"
               />
+              {(formTitle || "").length === MAX_CONTENT_TITLE_CHARS && (
+                <p className="text-xs text-amber-600">You have reached the limit (only {MAX_CONTENT_TITLE_CHARS} characters).</p>
+              )}
             </div>
 
             {/* Content */}
@@ -864,12 +877,16 @@ export function ContentManagement({ userRole }: ContentManagementProps) {
               </Label>
               <Textarea
                 id="content"
-                value={formContent}
-                onChange={(e) => setFormContent(e.target.value)}
-                placeholder="Enter content details"
+                maxLength={MAX_CONTENT_BODY_CHARS}
+                value={(formContent || "").slice(0, MAX_CONTENT_BODY_CHARS)}
+                onChange={(e) => setFormContent(e.target.value.slice(0, MAX_CONTENT_BODY_CHARS))}
+                placeholder="Enter content details (max 300 characters)"
                 rows={8}
                 className="resize-none"
               />
+              {(formContent || "").length === MAX_CONTENT_BODY_CHARS && (
+                <p className="text-xs text-amber-600">You have reached the limit (only {MAX_CONTENT_BODY_CHARS} characters).</p>
+              )}
             </div>
 
             {/* Category-specific metadata fields */}

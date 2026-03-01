@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { ConditionReport, InspectionItem, InspectionImage } from '../../types/inspection';
+import { MAX_NOTES_CHARS } from '../../lib/rfq-validation';
 
 // Interface for scaffolding items from API
 interface ScaffoldingItem {
@@ -284,7 +285,7 @@ export function ConditionReportForm({
         inspectionDate: report.inspectionDate,
         inspectedBy: report.inspectedBy,
         status: report.status,
-        notes: report.notes || ''
+        notes: (report.notes || '').slice(0, MAX_NOTES_CHARS)
       });
       setItems(report.items || []);
     }
@@ -493,6 +494,11 @@ export function ConditionReportForm({
       return;
     }
 
+    if (formData.notes && formData.notes.length > MAX_NOTES_CHARS) {
+      toast.error(`General notes must be ${MAX_NOTES_CHARS} characters or fewer (about 70 words)`);
+      return;
+    }
+
     const totals = calculateTotals();
     const now = new Date().toISOString();
 
@@ -552,7 +558,9 @@ export function ConditionReportForm({
               <Input
                 id="rcfNumber"
                 value={formData.rcfNumber}
-                onChange={(e) => setFormData({ ...formData, rcfNumber: e.target.value })}
+                readOnly
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
                 placeholder="RCF-XXXXXX"
               />
             </div>
@@ -561,7 +569,9 @@ export function ConditionReportForm({
               <Input
                 id="deliveryOrderNumber"
                 value={formData.deliveryOrderNumber}
-                onChange={(e) => setFormData({ ...formData, deliveryOrderNumber: e.target.value })}
+                readOnly
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
                 placeholder="DO-XXXXXX"
               />
             </div>
@@ -570,7 +580,9 @@ export function ConditionReportForm({
               <Input
                 id="customerName"
                 value={formData.customerName}
-                onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                readOnly
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
                 placeholder="Enter customer name"
               />
             </div>
@@ -579,7 +591,9 @@ export function ConditionReportForm({
               <Input
                 id="returnedBy"
                 value={formData.returnedBy}
-                onChange={(e) => setFormData({ ...formData, returnedBy: e.target.value })}
+                readOnly
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
                 placeholder="Driver name (from return management)"
               />
             </div>
@@ -589,7 +603,9 @@ export function ConditionReportForm({
                 id="returnDate"
                 type="date"
                 value={formData.returnDate}
-                onChange={(e) => setFormData({ ...formData, returnDate: e.target.value })}
+                readOnly
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
@@ -629,11 +645,15 @@ export function ConditionReportForm({
             <Label htmlFor="notes">General Notes</Label>
             <Textarea
               id="notes"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Overall condition notes, special observations..."
+              maxLength={MAX_NOTES_CHARS}
+              value={(formData.notes ?? '').slice(0, MAX_NOTES_CHARS)}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value.slice(0, MAX_NOTES_CHARS) }))}
+              placeholder="Overall condition notes (max 500 characters, about 70 words)"
               rows={2}
             />
+            {(formData.notes ?? '').length === MAX_NOTES_CHARS && (
+              <p className="text-xs text-amber-600">You have reached the limit ({MAX_NOTES_CHARS} characters, about 70 words).</p>
+            )}
           </div>
         </CardContent>
       </Card>
