@@ -130,11 +130,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      invoiceType,
-      sourceId,
-      originalInvoice,
-      customerName,
-      customerId,
       creditNoteId,
       amount,
       refundMethod,
@@ -144,12 +139,6 @@ export async function POST(request: NextRequest) {
       attachments,
     } = body;
 
-    if (!invoiceType || !sourceId || !originalInvoice || !customerName || !customerId) {
-      return NextResponse.json(
-        { success: false, message: 'invoiceType, sourceId, originalInvoice, customerName, customerId are required' },
-        { status: 400 }
-      );
-    }
     if (!creditNoteId) {
       return NextResponse.json(
         { success: false, message: 'creditNoteId is required — please select a credit note' },
@@ -164,14 +153,24 @@ export async function POST(request: NextRequest) {
       );
     }
     const validStatus = status === 'Draft' || status === 'Pending Approval' ? status : 'Draft';
-    const validType = ['deposit', 'monthlyRental', 'additionalCharge'].includes(invoiceType) ? invoiceType : 'deposit';
 
-    // Validate credit note exists, is approved, and belongs to the same source
+    // Fetch credit note and derive invoice fields from it
     const toNum = (v: unknown) =>
       typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0);
     const creditNote = await prisma.creditNote.findUnique({
       where: { id: creditNoteId },
-      select: { id: true, creditNoteNumber: true, amount: true, sourceId: true, status: true },
+      select: {
+        id: true,
+        creditNoteNumber: true,
+        amount: true,
+        sourceId: true,
+        agreementId: true,
+        invoiceType: true,
+        originalInvoice: true,
+        customerName: true,
+        customerId: true,
+        status: true,
+      },
     });
     if (!creditNote) {
       return NextResponse.json(
@@ -185,12 +184,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (creditNote.sourceId !== sourceId) {
+
+    // Derive invoice fields from credit note (for return-item CNs, sourceId may be agreementId)
+    const invoiceType = creditNote.invoiceType || 'monthlyRental';
+    const sourceId = creditNote.sourceId ?? creditNote.agreementId ?? '';
+    const originalInvoice = creditNote.originalInvoice || creditNote.creditNoteNumber || 'N/A';
+    const customerName = creditNote.customerName || '';
+    const customerId = creditNote.customerId || `${customerName}|`;
+
+    if (!sourceId) {
       return NextResponse.json(
-        { success: false, message: 'Credit note does not belong to the selected invoice' },
+        { success: false, message: 'Credit note has no source reference; cannot create refund' },
         { status: 400 }
       );
     }
+
+    const validType = ['deposit', 'monthlyRental', 'additionalCharge'].includes(invoiceType) ? invoiceType : 'monthlyRental';
 
     // Calculate remaining balance for this specific credit note
     const cnAmount = toNum(creditNote.amount);
@@ -200,7 +209,7 @@ export async function POST(request: NextRequest) {
     });
     const totalApplied = cnApps.reduce((s, a) => s + toNum(a.amountApplied), 0);
     const cnRefunds = await prisma.refund.findMany({
-      where: { creditNoteId, status: 'Approved' },
+      where: { creditNoteId },
       select: { amount: true },
     });
     const totalRefunded = cnRefunds.reduce((s, r) => s + toNum(r.amount), 0);

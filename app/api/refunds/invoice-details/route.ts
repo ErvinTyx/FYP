@@ -39,8 +39,41 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Resolve agreementId for the selected invoice (needed to find return-item credit notes)
+    let agreementId: string | null = null;
+    if (invoiceType === 'deposit') {
+      const deposit = await prisma.deposit.findUnique({ where: { id: sourceId }, select: { agreementId: true } });
+      agreementId = deposit?.agreementId ?? null;
+    } else if (invoiceType === 'monthlyRental') {
+      const invoice = await prisma.monthlyRentalInvoice.findUnique({ where: { id: sourceId }, select: { agreementId: true } });
+      agreementId = invoice?.agreementId ?? null;
+    } else {
+      // Additional charge: resolve agreement via deliverySet or returnRequest -> deliverySet -> deliveryRequest -> rfq
+      const charge = await prisma.additionalCharge.findUnique({
+        where: { id: sourceId },
+        include: {
+          deliverySet: { select: { deliveryRequest: { select: { rfqId: true } } } },
+          returnRequest: { select: { deliverySet: { select: { deliveryRequest: { select: { rfqId: true } } } } } },
+        },
+      });
+      const rfqId = charge?.deliverySet?.deliveryRequest?.rfqId
+        ?? charge?.returnRequest?.deliverySet?.deliveryRequest?.rfqId;
+      if (rfqId) {
+        const agreement = await prisma.rentalAgreement.findFirst({ where: { rfqId }, select: { id: true } });
+        agreementId = agreement?.id ?? null;
+      }
+    }
+
+    // Find approved credit notes: (1) sourceId = invoice id, or (2) agreementId = invoice's agreement
+    // (2) catches return-item credit notes, which use agreementId as sourceId
     const creditNotes = await prisma.creditNote.findMany({
-      where: { sourceId, status: 'Approved' },
+      where: {
+        status: 'Approved',
+        OR: [
+          { sourceId },
+          ...(agreementId ? [{ agreementId }] : []),
+        ],
+      },
       select: { id: true, creditNoteNumber: true, amount: true, date: true },
     });
     const toNum = (v: unknown) => (typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0));

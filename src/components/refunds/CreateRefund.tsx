@@ -21,8 +21,7 @@ import {
   TableRow,
 } from "../ui/table";
 import { toast } from "sonner";
-import type { Refund, RefundInvoiceType } from "../../types/refund";
-import type { RefundInvoiceDetailsResponse } from "../../types/refund";
+import type { Refund } from "../../types/refund";
 
 interface CreateRefundProps {
   onBack: () => void;
@@ -31,19 +30,42 @@ interface CreateRefundProps {
 
 const REFUND_METHODS = ["Bank Transfer", "eWallet", "Cash", "Cheque"];
 
-interface InvoiceListItem {
+interface CustomerOption {
+  customerName: string;
+  customerEmail: string | null;
+  customerId: string;
+}
+
+interface AgreementOption {
   id: string;
-  label: string;
-  customerName?: string;
+  agreementNumber: string;
+  projectName: string;
+  hirer?: string;
+}
+
+interface CreditNoteFromAgreement {
+  id: string;
+  creditNoteNumber: string;
+  amount: number;
+  applied: number;
+  refunded: number;
+  remaining: number;
 }
 
 export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
-  const [invoiceType, setInvoiceType] = useState<RefundInvoiceType | "">("");
-  const [invoiceList, setInvoiceList] = useState<InvoiceListItem[]>([]);
-  const [sourceId, setSourceId] = useState("");
-  const [originalInvoice, setOriginalInvoice] = useState("");
-  const [invoiceDetails, setInvoiceDetails] = useState<RefundInvoiceDetailsResponse | null>(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null);
+  const [agreementSearch, setAgreementSearch] = useState("");
+  const [agreementResults, setAgreementResults] = useState<AgreementOption[]>([]);
+  const [selectedAgreement, setSelectedAgreement] = useState<AgreementOption | null>(null);
+  const [loadingAgreements, setLoadingAgreements] = useState(false);
+  const [creditNotesData, setCreditNotesData] = useState<{
+    creditNotes: CreditNoteFromAgreement[];
+    totalApprovedCredit: number;
+    remainingBalance: number;
+  } | null>(null);
+  const [loadingCreditNotes, setLoadingCreditNotes] = useState(false);
   const [selectedCreditNoteId, setSelectedCreditNoteId] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [refundMethod, setRefundMethod] = useState("");
@@ -53,87 +75,128 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const fetchInvoices = useCallback(async (type: RefundInvoiceType) => {
-    if (!type) {
-      setInvoiceList([]);
+  const fetchCustomers = useCallback(async (q: string) => {
+    if (q.length < 2) {
+      setCustomerResults([]);
       return;
     }
     try {
-      if (type === "deposit") {
-        const res = await fetch("/api/deposit");
-        const json = await res.json();
-        if (json.success && json.deposits) {
-          setInvoiceList(
-            json.deposits.map((d: { id: string; depositNumber: string; agreement?: { hirer?: string } }) => ({
-              id: d.id,
-              label: d.depositNumber,
-              customerName: d.agreement?.hirer,
-            }))
-          );
-        } else setInvoiceList([]);
-      } else if (type === "monthlyRental") {
-        const res = await fetch("/api/monthly-rental");
-        const json = await res.json();
-        if (json.success && json.invoices) {
-          setInvoiceList(
-            json.invoices.map((inv: { id: string; invoiceNumber: string; customerName?: string }) => ({
-              id: inv.id,
-              label: inv.invoiceNumber,
-              customerName: inv.customerName,
-            }))
-          );
-        } else setInvoiceList([]);
+      const res = await fetch(`/api/credit-notes/customers?q=${encodeURIComponent(q)}`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.customers)) {
+        setCustomerResults(json.customers);
       } else {
-        const res = await fetch("/api/additional-charges");
-        const json = await res.json();
-        if (json.success && json.data) {
-          setInvoiceList(
-            json.data.map((c: { id: string; invoiceNo: string; customerName?: string }) => ({
-              id: c.id,
-              label: c.invoiceNo,
-              customerName: c.customerName,
-            }))
-          );
-        } else setInvoiceList([]);
+        setCustomerResults([]);
       }
     } catch {
-      setInvoiceList([]);
+      setCustomerResults([]);
     }
-    setSourceId("");
-    setOriginalInvoice("");
-    setInvoiceDetails(null);
   }, []);
 
   useEffect(() => {
-    if (invoiceType) fetchInvoices(invoiceType);
-    else setInvoiceList([]);
-  }, [invoiceType, fetchInvoices]);
-
-  useEffect(() => {
-    if (!sourceId || !invoiceType) {
-      setInvoiceDetails(null);
+    if (selectedCustomer && customerSearch === selectedCustomer.customerName) {
+      setCustomerResults([]);
       return;
     }
-    setLoadingDetails(true);
-    fetch(
-      `/api/refunds/invoice-details?invoiceType=${encodeURIComponent(invoiceType)}&sourceId=${encodeURIComponent(sourceId)}`
-    )
+    if (selectedCustomer && customerSearch !== selectedCustomer.customerName && customerSearch.length >= 2) {
+      setSelectedCustomer(null);
+      setSelectedAgreement(null);
+      setCreditNotesData(null);
+      setSelectedCreditNoteId("");
+      setRefundAmount("");
+    }
+    const t = setTimeout(() => fetchCustomers(customerSearch), 300);
+    return () => clearTimeout(t);
+  }, [customerSearch, fetchCustomers, selectedCustomer]);
+
+  const fetchAgreements = useCallback(async (customerName: string, searchQ?: string) => {
+    if (!customerName.trim()) {
+      setAgreementResults([]);
+      return;
+    }
+    setLoadingAgreements(true);
+    try {
+      let url = `/api/refunds/agreements?customerName=${encodeURIComponent(customerName)}`;
+      if (searchQ?.trim()) {
+        url += `&q=${encodeURIComponent(searchQ.trim())}`;
+      }
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.agreements)) {
+        setAgreementResults(json.agreements);
+      } else {
+        setAgreementResults([]);
+      }
+    } catch {
+      setAgreementResults([]);
+    } finally {
+      setLoadingAgreements(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setAgreementResults([]);
+      setSelectedAgreement(null);
+      setCreditNotesData(null);
+      setSelectedCreditNoteId("");
+      setRefundAmount("");
+      return;
+    }
+    const t = setTimeout(
+      () => fetchAgreements(selectedCustomer.customerName, agreementSearch),
+      200
+    );
+    return () => clearTimeout(t);
+  }, [selectedCustomer, agreementSearch, fetchAgreements]);
+
+  useEffect(() => {
+    if (!selectedAgreement) {
+      setCreditNotesData(null);
+      setSelectedCreditNoteId("");
+      setRefundAmount("");
+      return;
+    }
+    setLoadingCreditNotes(true);
+    fetch(`/api/credit-notes/agreement-balance?agreementId=${encodeURIComponent(selectedAgreement.id)}`)
       .then((r) => r.json())
       .then((json) => {
-        if (json.success && json.invoice) {
-          setInvoiceDetails(json as RefundInvoiceDetailsResponse);
+        if (json.success && json.data) {
+          setCreditNotesData(json.data);
           setSelectedCreditNoteId("");
           setRefundAmount("");
-        } else setInvoiceDetails(null);
+        } else {
+          setCreditNotesData(null);
+        }
       })
-      .catch(() => setInvoiceDetails(null))
-      .finally(() => setLoadingDetails(false));
-  }, [sourceId, invoiceType]);
+      .catch(() => setCreditNotesData(null))
+      .finally(() => setLoadingCreditNotes(false));
+  }, [selectedAgreement]);
 
-  const handleSelectInvoice = (id: string) => {
-    const inv = invoiceList.find((i) => i.id === id);
-    setSourceId(id);
-    setOriginalInvoice(inv?.label ?? id);
+  const handleSelectCustomer = (c: CustomerOption) => {
+    setSelectedCustomer(c);
+    setCustomerSearch(c.customerName);
+    setCustomerResults([]);
+  };
+
+  const eligibleCreditNotes = (creditNotesData?.creditNotes ?? []).filter((cn) => cn.remaining > 0);
+  const selectedCN = (creditNotesData?.creditNotes ?? []).find((cn) => cn.id === selectedCreditNoteId);
+  const maxAmount = selectedCN?.remaining ?? 0;
+
+  const validate = (forSubmit: boolean): boolean => {
+    const e: Record<string, string> = {};
+    if (!selectedCustomer) e.customer = "Please select a customer";
+    if (!selectedAgreement) e.agreement = "Please select an agreement";
+    if (!selectedCreditNoteId) e.creditNote = "Please select a credit note";
+    const amount = parseFloat(refundAmount);
+    if (!refundAmount || isNaN(amount) || amount <= 0) e.refundAmount = "Enter a valid refund amount";
+    else if (amount > maxAmount) e.refundAmount = `Amount cannot exceed credit note remaining balance (RM${maxAmount.toFixed(2)})`;
+    if (forSubmit) {
+      if (!refundMethod) e.refundMethod = "Select a refund method";
+      if (!reason.trim()) e.reason = "Reason is required";
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
   const uploadAttachments = async (): Promise<Array<{ fileName: string; fileUrl: string; fileSize: number }>> => {
@@ -151,32 +214,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
     return results;
   };
 
-  const totalCredited = invoiceDetails?.totalCredited ?? 0;
-  const amountToReturn = invoiceDetails?.amountToReturn ?? totalCredited;
-  const eligibleCreditNotes = (invoiceDetails?.relatedCreditNotes ?? []).filter((cn) => cn.remainingBalance > 0);
-  const selectedCN = (invoiceDetails?.relatedCreditNotes ?? []).find((cn) => cn.id === selectedCreditNoteId);
-  const maxAmount = selectedCN?.remainingBalance ?? 0;
-
-  const validate = (forSubmit: boolean): boolean => {
-    const e: Record<string, string> = {};
-    if (!sourceId || !invoiceDetails) e.invoice = "Please select an invoice";
-    if (!selectedCreditNoteId) e.creditNote = "Please select a credit note";
-    const amount = parseFloat(refundAmount);
-    if (!refundAmount || isNaN(amount) || amount <= 0) e.refundAmount = "Enter a valid refund amount";
-    else if (amount > maxAmount) e.refundAmount = `Amount cannot exceed credit note remaining balance (RM${maxAmount.toFixed(2)})`;
-    if (forSubmit) {
-      if (!refundMethod) e.refundMethod = "Select a refund method";
-      if (!reason.trim()) e.reason = "Reason is required";
-    }
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const handleSaveDraft = async () => {
-    if (!invoiceDetails?.invoice || !sourceId || !originalInvoice) {
-      toast.error("Please select an invoice");
-      return;
-    }
+  const handleSubmit = async () => {
     if (!selectedCreditNoteId) {
       toast.error("Please select a credit note");
       return;
@@ -186,44 +224,6 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
       toast.error("Enter a valid refund amount (max RM" + maxAmount.toFixed(2) + ")");
       return;
     }
-    setSaving(true);
-    try {
-      const attachmentList = await uploadAttachments();
-      const customerName = invoiceDetails.invoice.customerName ?? "";
-      const customerId = `${customerName}|${invoiceDetails.invoice.customerEmail ?? ""}`;
-      const res = await fetch("/api/refunds", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invoiceType,
-          sourceId,
-          originalInvoice,
-          customerName,
-          customerId,
-          creditNoteId: selectedCreditNoteId,
-          amount,
-          refundMethod: refundMethod || null,
-          reason: reason.trim() || null,
-          reasonDescription: reasonDescription.trim() || null,
-          status: "Draft",
-          attachments: attachmentList,
-        }),
-      });
-      const json = await res.json();
-      if (!json.success) {
-        toast.error(json.message || "Failed to save draft");
-        return;
-      }
-      toast.success("Refund saved as draft");
-      onSave(json.data);
-    } catch {
-      toast.error("Failed to save draft");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSubmitForApproval = async () => {
     if (!validate(true)) {
       toast.error("Please fix the errors below");
       return;
@@ -231,22 +231,14 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
     setSaving(true);
     try {
       const attachmentList = await uploadAttachments();
-      const amount = parseFloat(refundAmount);
-      const customerName = invoiceDetails!.invoice.customerName ?? "";
-      const customerId = `${customerName}|${invoiceDetails!.invoice.customerEmail ?? ""}`;
       const res = await fetch("/api/refunds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          invoiceType,
-          sourceId,
-          originalInvoice,
-          customerName,
-          customerId,
           creditNoteId: selectedCreditNoteId,
           amount,
           refundMethod: refundMethod || null,
-          reason: reason.trim(),
+          reason: reason.trim() || null,
           reasonDescription: reasonDescription.trim() || null,
           status: "Pending Approval",
           attachments: attachmentList,
@@ -266,9 +258,6 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
     }
   };
 
-  const invoiceTypeLabel =
-    invoiceType === "deposit" ? "Deposit" : invoiceType === "monthlyRental" ? "Monthly Rental" : invoiceType === "additionalCharge" ? "Additional Charge" : "";
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -277,7 +266,9 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
         </Button>
         <div className="space-y-1">
           <h1>Issue New Refund</h1>
-          <p className="text-[#374151]">Select invoice (Deposit, Monthly Rental, or Additional Charge). Refund amount is limited by approved credit notes.</p>
+          <p className="text-[#374151]">
+            Search customer, select agreement, then select an approved credit note. Refund amount is limited by the credit note remaining balance.
+          </p>
         </div>
       </div>
 
@@ -287,145 +278,178 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
             <div className="w-8 h-8 rounded-lg bg-[#F15929] flex items-center justify-center">
               <FileText className="h-4 w-4 text-white" />
             </div>
-            <CardTitle className="text-[18px]">Select Invoice</CardTitle>
+            <CardTitle className="text-[18px]">Customer & Agreement</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Invoice Type</Label>
-            <Select value={invoiceType} onValueChange={(v) => setInvoiceType(v as RefundInvoiceType)}>
-              <SelectTrigger className="h-10">
-                <SelectValue placeholder="Select type..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="deposit">Deposit</SelectItem>
-                <SelectItem value="monthlyRental">Monthly Rental</SelectItem>
-                <SelectItem value="additionalCharge">Additional Charge</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label>Search customer (name or email) <span className="text-[#DC2626]">*</span></Label>
+            <div className="relative">
+              <Input
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="Type to search..."
+                className={`h-10 ${errors.customer ? "border-[#DC2626]" : ""}`}
+                autoComplete="off"
+              />
+              {customerResults.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full bg-white border border-[#E5E7EB] rounded-md shadow-lg max-h-48 overflow-auto">
+                  {customerResults.map((c) => (
+                    <li
+                      key={c.customerId}
+                      className="px-4 py-2 hover:bg-[#F3F4F6] cursor-pointer text-sm"
+                      onClick={() => handleSelectCustomer(c)}
+                    >
+                      {c.customerName}
+                      {c.customerEmail ? ` (${c.customerEmail})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {selectedCustomer && (
+              <p className="text-sm text-[#059669]">
+                Selected: {selectedCustomer.customerName}
+                {selectedCustomer.customerEmail ? ` — ${selectedCustomer.customerEmail}` : ""}
+              </p>
+            )}
+            {errors.customer && <p className="text-[#DC2626] text-sm">{errors.customer}</p>}
           </div>
-          <div className="space-y-2">
-            <Label>Original Invoice</Label>
-            <Select value={sourceId} onValueChange={handleSelectInvoice} disabled={!invoiceType || invoiceList.length === 0}>
-              <SelectTrigger className={`h-10 ${errors.invoice ? "border-[#DC2626]" : ""}`}>
-                <SelectValue placeholder="Select invoice..." />
-              </SelectTrigger>
-              <SelectContent>
-                {invoiceList.map((inv) => (
-                  <SelectItem key={inv.id} value={inv.id}>
-                    {inv.label}
-                    {inv.customerName ? ` — ${inv.customerName}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.invoice && <p className="text-[#DC2626] text-sm">{errors.invoice}</p>}
-          </div>
 
-          {loadingDetails && (
-            <p className="text-[#6B7280] text-sm">Loading invoice details and credit notes...</p>
-          )}
-
-          {invoiceDetails && !loadingDetails && (
-            <>
-              <Card className="border-[#E5E7EB] bg-[#F9FAFB]">
-                <CardHeader>
-                  <CardTitle className="text-[16px]">Invoice Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#6B7280]">Number</span>
-                    <span className="text-[#111827]">{invoiceDetails.invoice.number}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#6B7280]">Customer</span>
-                    <span className="text-[#111827]">{invoiceDetails.invoice.customerName}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#6B7280]">Invoice Amount</span>
-                    <span className="text-[#111827]">RM{invoiceDetails.invoice.amount.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#6B7280]">Status</span>
-                    <span className="text-[#111827]">{invoiceDetails.invoice.status}</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div>
-                <h4 className="text-[14px] font-medium text-[#374151] mb-2">Approved Credit Notes</h4>
-                {invoiceDetails.relatedCreditNotes.length === 0 ? (
-                  <p className="text-sm text-[#6B7280]">No approved credit notes for this invoice. Refund is not available.</p>
-                ) : (
-                  <>
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-[#F9FAFB]">
-                          <TableHead>Credit Note</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="text-right">Remaining</TableHead>
-                          <TableHead>Date</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {invoiceDetails.relatedCreditNotes.map((cn) => (
-                          <TableRow key={cn.id} className={cn.remainingBalance <= 0 ? "opacity-50" : ""}>
-                            <TableCell className="text-[#111827]">{cn.creditNoteNumber}</TableCell>
-                            <TableCell className="text-right">RM{cn.amount.toLocaleString()}</TableCell>
-                            <TableCell className={`text-right font-medium ${cn.remainingBalance > 0 ? "text-[#059669]" : "text-[#DC2626]"}`}>
-                              RM{cn.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </TableCell>
-                            <TableCell>{cn.date}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    <div className="mt-2 flex flex-col gap-1 text-sm">
-                      <div className="flex justify-between font-medium">
-                        <span className="text-[#374151]">Total remaining refundable</span>
-                        <span className="text-[#059669]">RM{amountToReturn.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-                    </div>
-
-                    {eligibleCreditNotes.length > 0 && (
-                      <div className="mt-4 space-y-2">
-                        <Label>Select Credit Note to Refund From <span className="text-[#DC2626]">*</span></Label>
-                        <Select
-                          value={selectedCreditNoteId}
-                          onValueChange={(v) => {
-                            setSelectedCreditNoteId(v);
-                            setRefundAmount("");
-                            if (errors.creditNote) setErrors((prev) => ({ ...prev, creditNote: "" }));
-                          }}
-                        >
-                          <SelectTrigger className={`h-10 ${errors.creditNote ? "border-[#DC2626]" : ""}`}>
-                            <SelectValue placeholder="Select credit note..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {eligibleCreditNotes.map((cn) => (
-                              <SelectItem key={cn.id} value={cn.id}>
-                                {cn.creditNoteNumber} — Remaining: RM{cn.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.creditNote && <p className="text-[#DC2626] text-sm">{errors.creditNote}</p>}
-                        {selectedCN && (
-                          <p className="text-xs text-[#6B7280]">
-                            Max refundable from {selectedCN.creditNoteNumber}: RM{selectedCN.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
+          {selectedCustomer && (
+            <div className="space-y-2">
+              <Label>Search agreement <span className="text-[#DC2626]">*</span></Label>
+              <div className="relative">
+                <Input
+                  value={agreementSearch}
+                  onChange={(e) => setAgreementSearch(e.target.value)}
+                  placeholder="Search by agreement number..."
+                  className={`h-10 ${errors.agreement ? "border-[#DC2626]" : ""}`}
+                  autoComplete="off"
+                />
+              </div>
+              {loadingAgreements && <p className="text-[#6B7280] text-sm">Loading agreements...</p>}
+              {!loadingAgreements && agreementResults.length > 0 && (
+                <div className="border border-[#E5E7EB] rounded-md max-h-48 overflow-auto">
+                  {agreementResults.map((ag) => (
+                    <div
+                      key={ag.id}
+                      className={`px-4 py-3 cursor-pointer hover:bg-[#F3F4F6] border-b border-[#E5E7EB] last:border-b-0 ${
+                        selectedAgreement?.id === ag.id ? "bg-[#F0FDF4] border-l-4 border-l-[#059669]" : ""
+                      }`}
+                      onClick={() => {
+                        setSelectedAgreement(ag);
+                        if (errors.agreement) setErrors((prev) => ({ ...prev, agreement: "" }));
+                      }}
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-[#111827] font-medium">{ag.agreementNumber}</span>
+                        {ag.projectName && (
+                          <span className="text-xs text-[#6B7280] mt-0.5">{ag.projectName}</span>
                         )}
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!loadingAgreements && selectedCustomer && agreementResults.length === 0 && (
+                <p className="text-sm text-[#6B7280]">
+                  {agreementSearch.trim() ? "No agreements found. Try a different search." : "No agreements found for this customer."}
+                </p>
+              )}
+              {selectedAgreement && (
+                <p className="text-sm text-[#059669]">
+                  Selected: {selectedAgreement.agreementNumber} — {selectedAgreement.projectName}
+                </p>
+              )}
+              {errors.agreement && <p className="text-[#DC2626] text-sm">{errors.agreement}</p>}
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {invoiceDetails && selectedCreditNoteId && selectedCN && (
+      {selectedAgreement && (
+        <Card className="border-[#E5E7EB]">
+          <CardHeader>
+            <CardTitle className="text-[18px]">Credit Notes</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {loadingCreditNotes && (
+              <p className="text-[#6B7280] text-sm">Loading credit notes...</p>
+            )}
+            {!loadingCreditNotes && creditNotesData && (
+              <>
+                <div>
+                  <h4 className="text-[14px] font-medium text-[#374151] mb-2">Approved Credit Notes</h4>
+                  {creditNotesData.creditNotes.length === 0 ? (
+                    <p className="text-sm text-[#6B7280]">No approved credit notes for this agreement. Refund is not available.</p>
+                  ) : (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-[#F9FAFB]">
+                            <TableHead>Credit Note</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="text-right">Remaining</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {creditNotesData.creditNotes.map((cn) => (
+                            <TableRow key={cn.id} className={cn.remaining <= 0 ? "opacity-50" : ""}>
+                              <TableCell className="text-[#111827]">{cn.creditNoteNumber}</TableCell>
+                              <TableCell className="text-right">RM{cn.amount.toLocaleString()}</TableCell>
+                              <TableCell className={`text-right font-medium ${cn.remaining > 0 ? "text-[#059669]" : "text-[#DC2626]"}`}>
+                                RM{cn.remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      <div className="mt-2 flex justify-between font-medium text-sm">
+                        <span className="text-[#374151]">Total remaining refundable</span>
+                        <span className="text-[#059669]">RM{creditNotesData.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+
+                      {eligibleCreditNotes.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <Label>Select Credit Note to Refund From <span className="text-[#DC2626]">*</span></Label>
+                          <Select
+                            value={selectedCreditNoteId}
+                            onValueChange={(v) => {
+                              setSelectedCreditNoteId(v);
+                              setRefundAmount("");
+                              if (errors.creditNote) setErrors((prev) => ({ ...prev, creditNote: "" }));
+                            }}
+                          >
+                            <SelectTrigger className={`h-10 ${errors.creditNote ? "border-[#DC2626]" : ""}`}>
+                              <SelectValue placeholder="Select credit note..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {eligibleCreditNotes.map((cn) => (
+                                <SelectItem key={cn.id} value={cn.id}>
+                                  {cn.creditNoteNumber} — Remaining: RM{cn.remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {errors.creditNote && <p className="text-[#DC2626] text-sm">{errors.creditNote}</p>}
+                          {selectedCN && (
+                            <p className="text-xs text-[#6B7280]">
+                              Max refundable from {selectedCN.creditNoteNumber}: RM{selectedCN.remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {selectedCreditNoteId && selectedCN && (
         <Card className="border-[#E5E7EB]">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -527,7 +551,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => document.getElementById("refund-docs")?.click()}
-                disabled={maxAmount <= 0}
+                    disabled={maxAmount <= 0}
                   >
                     <Upload className="h-4 w-4 mr-2" />
                     Select Files
@@ -549,11 +573,14 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
         </Card>
       )}
 
-      {invoiceDetails && selectedCreditNoteId && maxAmount > 0 && (
+      {selectedCreditNoteId && maxAmount > 0 && (
         <Card className="border-[#E5E7EB]">
-          <CardContent className="pt-6 flex gap-3">
-            
-            <Button className="flex-1 bg-[#F15929] hover:bg-[#D14821] h-10" onClick={handleSubmitForApproval} disabled={saving}>
+          <CardContent className="pt-6">
+            <Button
+              className="w-full bg-[#F15929] hover:bg-[#D14821] h-10"
+              onClick={handleSubmit}
+              disabled={saving}
+            >
               Submit for Approval
             </Button>
           </CardContent>
