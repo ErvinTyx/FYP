@@ -406,6 +406,46 @@ export function MonthlyRentalInvoiceDetails({
         </Card>
       )}
 
+      {/* Paid Status Info */}
+      {invoice.status === 'Paid' && invoice.approvedAt && (
+        <Card className="border-[#059669] bg-[#F0FDF4]">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-[#059669]" />
+                  <div>
+                    <p className="text-[#047857]">
+                      Payment Approved
+                    </p>
+                    <p className="text-[14px] text-[#6B7280] mt-1">
+                      Approved by {invoice.approvedBy || "Admin"} on {formatRfqDate(invoice.approvedAt)}
+                    </p>
+                  </div>
+                </div>
+                {onPrintReceipt && (
+                  <Button
+                    onClick={() => onPrintReceipt(invoice.id)}
+                    className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    View Receipt
+                  </Button>
+                )}
+              </div>
+              {invoice.referenceNumber && (
+                <div className="bg-white rounded-lg border border-[#BBF7D0] p-4">
+                  <p className="text-[14px] text-[#6B7280]">Bank Reference Number</p>
+                  <p className="text-[#111827] mt-1 font-mono">
+                    {invoice.referenceNumber}
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Rejection Card */}
       {invoice.status === 'Rejected' && invoice.rejectionReason && (
         <Card className="border-[#DC2626] bg-[#FEF2F2]">
@@ -784,45 +824,7 @@ export function MonthlyRentalInvoiceDetails({
         </Card>
       )}
 
-      {/* Paid Status Info */}
-      {invoice.status === 'Paid' && invoice.approvedAt && (
-        <Card className="border-[#059669] bg-[#F0FDF4]">
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-[#059669]" />
-                  <div>
-                    <p className="text-[#047857]">
-                      Payment Approved
-                    </p>
-                    <p className="text-[14px] text-[#6B7280] mt-1">
-                      Approved by {invoice.approvedBy || "Admin"} on {formatRfqDate(invoice.approvedAt)}
-                    </p>
-                  </div>
-                </div>
-                {onPrintReceipt && (
-                  <Button
-                    onClick={() => onPrintReceipt(invoice.id)}
-                    className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
-                    View Receipt
-                  </Button>
-                )}
-              </div>
-              {invoice.referenceNumber && (
-                <div className="bg-white rounded-lg border border-[#BBF7D0] p-4">
-                  <p className="text-[14px] text-[#6B7280]">Bank Reference Number</p>
-                  <p className="text-[#111827] mt-1 font-mono">
-                    {invoice.referenceNumber}
-                  </p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      
 
       {/* Approval Modal */}
       <ApprovalModal
