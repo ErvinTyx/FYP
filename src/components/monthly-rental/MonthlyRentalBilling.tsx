@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MonthlyRentalInvoiceList } from './MonthlyRentalInvoiceList';
 import { MonthlyRentalInvoiceDetails } from './MonthlyRentalInvoiceDetails';
+import { MonthlyRentalReceiptPrint } from './MonthlyRentalReceiptPrint';
 import { MonthlyRentalInvoice } from '../../types/monthly-rental';
 import { toast } from 'sonner';
 import { uploadPaymentProof } from '@/lib/upload';
 import { Loader2 } from 'lucide-react';
 
-type View = 'list' | 'details';
+type View = 'list' | 'details' | 'receipt';
 
 type SOANavigationAction = 'view' | 'viewDocument' | 'downloadReceipt';
 
@@ -210,6 +211,11 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
     toast.info('Items return is handled through the Return Request module');
   };
 
+  const handlePrintReceipt = (invoiceId: string) => {
+    setSelectedInvoiceId(invoiceId);
+    setCurrentView('receipt');
+  };
+
   const selectedInvoice = selectedInvoiceId
     ? invoices.find(inv => inv.id === selectedInvoiceId)
     : null;
@@ -262,8 +268,16 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
           onApprove={handleApprove}
           onReject={handleReject}
           onMarkAsReturned={handleMarkAsReturned}
+          onPrintReceipt={handlePrintReceipt}
           userRole={userRole}
           isProcessing={isProcessing}
+        />
+      )}
+
+      {currentView === 'receipt' && selectedInvoice && (
+        <MonthlyRentalReceiptPrint
+          invoice={selectedInvoice}
+          onBack={handleBack}
         />
       )}
     </div>
