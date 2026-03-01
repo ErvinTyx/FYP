@@ -1,8 +1,14 @@
 import { useState } from "react";
-import { X, XCircle } from "lucide-react";
+import { XCircle } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
-import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../ui/dialog";
 
 interface RejectModalProps {
   isOpen: boolean;
@@ -11,75 +17,78 @@ interface RejectModalProps {
   invoiceNo: string;
 }
 
-export function RejectModal({ isOpen, onClose, onReject, invoiceNo }: RejectModalProps) {
+export function RejectModal({
+  isOpen,
+  onClose,
+  onReject,
+  invoiceNo,
+}: RejectModalProps) {
   const [reason, setReason] = useState("");
-
-  if (!isOpen) return null;
+  const [error, setError] = useState("");
 
   const handleReject = () => {
     if (!reason.trim()) {
-      toast.error("Please provide a rejection reason");
+      setError("Please provide a reason for rejection");
+      return;
+    }
+
+    if (reason.trim().length < 10) {
+      setError("Rejection reason must be at least 10 characters");
       return;
     }
 
     onReject(reason);
     setReason("");
+    setError("");
     onClose();
   };
 
   const handleClose = () => {
     setReason("");
+    setError("");
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB]">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-[#FEE2E2] flex items-center justify-center">
-              <XCircle className="h-5 w-5 text-[#991B1B]" />
-            </div>
-            <h2 className="text-[18px] text-[#231F20]">Reject Payment</h2>
-          </div>
-          <button
-            onClick={handleClose}
-            className="text-[#6B7280] hover:text-[#231F20] transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <XCircle className="h-5 w-5 text-[#DC2626]" />
+            Reject Payment
+          </DialogTitle>
+          <DialogDescription>
+            You are about to reject the payment for additional charge {invoiceNo}. Please provide a detailed reason.
+          </DialogDescription>
+        </DialogHeader>
 
-        {/* Content */}
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-[#6B7280]">
-            You are about to reject Additional Charge <strong>{invoiceNo}</strong>. Please provide
-            a clear reason for rejection.
-          </p>
-
+        <div className="space-y-4 py-4">
           <div className="space-y-2">
             <label className="text-[14px] text-[#374151]">
               Rejection Reason <span className="text-[#DC2626]">*</span>
             </label>
             <Textarea
+              placeholder="Enter detailed reason for rejection (e.g., unclear payment proof, incorrect amount, expired document)..."
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Explain why the payment proof is being rejected..."
-              className="min-h-[120px] border-[#D1D5DB] rounded-md"
+              onChange={(e) => {
+                setReason(e.target.value);
+                setError("");
+              }}
+              className="min-h-[150px] border-[#D1D5DB] rounded-md"
             />
+            {error && (
+              <p className="text-[12px] text-[#DC2626]">{error}</p>
+            )}
           </div>
 
-          <div className="bg-[#FEF3C7] border border-[#F59E0B] rounded-lg p-3">
-            <p className="text-xs text-[#92400E]">
-              <strong>Note:</strong> The customer can resubmit a new proof of payment until the
-              due date.
+          <div className="bg-[#FEF2F2] border border-[#FEE2E2] rounded-lg p-4">
+            <p className="text-[14px] text-[#991B1B]">
+              <strong>Important:</strong> The customer will be notified of this rejection and can re-upload payment proof. Make sure to provide clear instructions on what needs to be corrected.
             </p>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 p-6 border-t border-[#E5E7EB]">
+        <div className="flex justify-end gap-3">
           <Button
             variant="outline"
             onClick={handleClose}
@@ -91,11 +100,10 @@ export function RejectModal({ isOpen, onClose, onReject, invoiceNo }: RejectModa
             onClick={handleReject}
             className="bg-[#DC2626] hover:bg-[#B91C1C] text-white h-10 px-6 rounded-lg"
           >
-            <XCircle className="h-4 w-4 mr-2" />
-            Reject Payment
+            Confirm Rejection
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

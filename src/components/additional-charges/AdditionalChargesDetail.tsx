@@ -705,6 +705,8 @@ export function AdditionalChargesDetail({
         onClose={() => setApproveModalOpen(false)}
         onApprove={handleApproveConfirmed}
         invoiceNo={charge.invoiceNo}
+        customerName={charge.customerName}
+        amount={payableAmount}
       />
       <RejectModal
         isOpen={rejectModalOpen}

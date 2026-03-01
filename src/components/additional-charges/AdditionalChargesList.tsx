@@ -496,6 +496,8 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
             }}
             onApprove={handleApproveConfirmed}
             invoiceNo={selectedCharge.invoiceNo}
+            customerName={selectedCharge.customerName}
+            amount={selectedCharge.totalCharges}
           />
           <RejectModal
             isOpen={rejectModalOpen}

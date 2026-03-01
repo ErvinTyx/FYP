@@ -1,86 +1,112 @@
 import { useState } from "react";
-import { X, CheckCircle } from "lucide-react";
+import { CheckCircle } from "lucide-react";
 import { Button } from "../ui/button";
+import { Label } from "../ui/label";
 import { Input } from "../ui/input";
-import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../ui/dialog";
 
 interface ApproveModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApprove: (referenceId: string) => void;
   invoiceNo: string;
+  customerName: string;
+  amount: number;
 }
 
-export function ApproveModal({ isOpen, onClose, onApprove, invoiceNo }: ApproveModalProps) {
+export function ApproveModal({
+  isOpen,
+  onClose,
+  onApprove,
+  invoiceNo,
+  customerName,
+  amount,
+}: ApproveModalProps) {
   const [referenceId, setReferenceId] = useState("");
-
-  if (!isOpen) return null;
+  const [error, setError] = useState("");
 
   const handleApprove = () => {
     if (!referenceId.trim()) {
-      toast.error("Please enter a reference/transaction ID");
+      setError("Bank Reference Number is required");
       return;
     }
-
-    onApprove(referenceId);
+    onApprove(referenceId.trim());
     setReferenceId("");
+    setError("");
     onClose();
   };
 
   const handleClose = () => {
     setReferenceId("");
+    setError("");
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#E5E7EB]">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-[#D1FAE5] flex items-center justify-center">
-              <CheckCircle className="h-5 w-5 text-[#065F46]" />
-            </div>
-            <h2 className="text-[18px] text-[#231F20]">Approve Payment</h2>
-          </div>
-          <button
-            onClick={handleClose}
-            className="text-[#6B7280] hover:text-[#231F20] transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CheckCircle className="h-5 w-5 text-[#059669]" />
+            Approve Payment
+          </DialogTitle>
+          <DialogDescription>
+            Enter the bank reference number to approve this additional charge payment
+          </DialogDescription>
+        </DialogHeader>
 
-        {/* Content */}
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-[#6B7280]">
-            You are about to mark Additional Charge <strong>{invoiceNo}</strong> as paid. Please enter
-            the reference/transaction ID for record purposes.
-          </p>
+        <div className="space-y-4 py-4">
+          <div className="bg-[#F0FDF4] border border-[#BBF7D0] rounded-lg p-4 space-y-3">
+            <div className="flex justify-between">
+              <span className="text-[14px] text-[#374151]">Invoice Number:</span>
+              <span className="text-[#111827]">{invoiceNo}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[14px] text-[#374151]">Customer:</span>
+              <span className="text-[#111827]">{customerName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[14px] text-[#374151]">Amount:</span>
+              <span className="text-[#111827]">RM{amount.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          </div>
 
           <div className="space-y-2">
-            <label className="text-[14px] text-[#374151]">
-              Reference ID / Transaction ID <span className="text-[#DC2626]">*</span>
-            </label>
+            <Label htmlFor="referenceId">
+              Bank Reference Number <span className="text-[#DC2626]">*</span>
+            </Label>
             <Input
-              type="text"
+              id="referenceId"
+              placeholder="Enter bank transfer reference number"
               value={referenceId}
-              onChange={(e) => setReferenceId(e.target.value)}
-              placeholder="e.g., TXN-20241210-001"
-              className="h-10 border-[#D1D5DB] rounded-md"
+              onChange={(e) => {
+                setReferenceId(e.target.value);
+                setError("");
+              }}
+              className={error ? "border-[#DC2626]" : ""}
             />
+            <p className="text-[12px] text-[#6B7280]">
+              Enter the reference number from the customer&apos;s bank transfer or payment receipt
+            </p>
+            {error && (
+              <p className="text-[14px] text-[#DC2626]">{error}</p>
+            )}
           </div>
 
-          <div className="bg-[#D1FAE5] border border-[#10B981] rounded-lg p-3">
-            <p className="text-xs text-[#065F46]">
-              <strong>Confirmation:</strong> Once marked as paid, this action cannot be undone. The
-              payment will be marked as completed.
+          <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-lg p-4">
+            <p className="text-[14px] text-[#92400E]">
+              <strong>Note:</strong> Once approved, this invoice will be marked as PAID and the customer will be notified. This action cannot be undone.
             </p>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 p-6 border-t border-[#E5E7EB]">
+        <div className="flex justify-end gap-3">
           <Button
             variant="outline"
             onClick={handleClose}
@@ -90,13 +116,12 @@ export function ApproveModal({ isOpen, onClose, onApprove, invoiceNo }: ApproveM
           </Button>
           <Button
             onClick={handleApprove}
-            className="bg-[#10B981] hover:bg-[#059669] text-white h-10 px-6 rounded-lg"
+            className="bg-[#059669] hover:bg-[#047857] text-white h-10 px-6 rounded-lg"
           >
-            <CheckCircle className="h-4 w-4 mr-2" />
-            Approve Payment
+            Confirm Approval
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
