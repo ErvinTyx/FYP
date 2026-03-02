@@ -117,7 +117,7 @@ export function DepositDetails({
   }, [deposit.id]);
 
   const canUploadPayment = userRole === "Customer" && (deposit.status === "Pending Payment" || (deposit.status === "Rejected" && !deposit.isOverdue));
-  const canAdminUploadPayment = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance" || userRole === "Staff") && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && !deposit.paymentProof;
+  const canAdminUploadPayment = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && !deposit.paymentProof;
   const canApprove = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && deposit.status === "Pending Approval";
   
   // DEBUG: Log canApprove result
