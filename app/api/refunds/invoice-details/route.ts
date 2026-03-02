@@ -48,16 +48,26 @@ export async function GET(request: NextRequest) {
       const invoice = await prisma.monthlyRentalInvoice.findUnique({ where: { id: sourceId }, select: { agreementId: true } });
       agreementId = invoice?.agreementId ?? null;
     } else {
-      // Additional charge: resolve agreement via deliverySet or returnRequest -> deliverySet -> deliveryRequest -> rfq
+      // Additional charge: resolve agreement via deliverySetId or returnRequestId -> deliverySet -> deliveryRequest -> rfq
       const charge = await prisma.additionalCharge.findUnique({
         where: { id: sourceId },
-        include: {
-          deliverySet: { select: { deliveryRequest: { select: { rfqId: true } } } },
-          returnRequest: { select: { deliverySet: { select: { deliveryRequest: { select: { rfqId: true } } } } } },
-        },
+        select: { deliverySetId: true, returnRequestId: true },
       });
-      const rfqId = charge?.deliverySet?.deliveryRequest?.rfqId
-        ?? charge?.returnRequest?.deliverySet?.deliveryRequest?.rfqId;
+      let rfqId: string | null = null;
+      if (charge?.deliverySetId) {
+        const ds = await prisma.deliverySet.findUnique({
+          where: { id: charge.deliverySetId },
+          select: { deliveryRequest: { select: { rfqId: true } } },
+        });
+        rfqId = ds?.deliveryRequest?.rfqId ?? null;
+      }
+      if (!rfqId && charge?.returnRequestId) {
+        const rr = await prisma.returnRequest.findUnique({
+          where: { id: charge.returnRequestId },
+          select: { deliverySet: { select: { deliveryRequest: { select: { rfqId: true } } } } },
+        });
+        rfqId = rr?.deliverySet?.deliveryRequest?.rfqId ?? null;
+      }
       if (rfqId) {
         const agreement = await prisma.rentalAgreement.findFirst({ where: { rfqId }, select: { id: true } });
         agreementId = agreement?.id ?? null;

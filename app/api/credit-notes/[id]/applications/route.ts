@@ -47,33 +47,49 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, message: 'Credit note not found' }, { status: 404 });
     }
 
-    const applications = await prisma.creditNoteApplication.findMany({
-      where: { creditNoteId: id },
-      orderBy: { appliedAt: 'desc' },
-    });
+    const [applications, refunds] = await Promise.all([
+      prisma.creditNoteApplication.findMany({
+        where: { creditNoteId: id },
+        orderBy: { appliedAt: 'desc' },
+      }),
+      prisma.refund.findMany({
+        where: { creditNoteId: id },
+        select: { id: true, refundNumber: true, amount: true, createdBy: true, createdAt: true, status: true },
+      }),
+    ]);
 
     const totalAmount = toNum(cn.amount);
-    const totalApplied = applications.reduce((s, a) => s + toNum(a.amountApplied), 0);
-    
-    // Also subtract refunds (including Draft and Pending Approval, not just Approved)
-    // This ensures refunds count as "applied" even before they're approved
-    const refunds = await prisma.refund.findMany({
-      where: { creditNoteId: id },
-      select: { amount: true },
-    });
+    const totalFromApplications = applications.reduce((s, a) => s + toNum(a.amountApplied), 0);
     const totalRefunded = refunds.reduce((s, r) => s + toNum(r.amount), 0);
-    
-    const remainingBalance = Math.max(0, totalAmount - totalApplied - totalRefunded);
+    const totalApplied = totalFromApplications + totalRefunded;
+    const remainingBalance = Math.max(0, totalAmount - totalApplied);
 
-    const serialized = applications.map((a) => ({
+    const serializedApps = applications.map((a) => ({
       ...a,
+      applicationType: 'invoice' as const,
       amountApplied: toNum(a.amountApplied),
       appliedAt: a.appliedAt.toISOString(),
     }));
 
+    const serializedRefunds = refunds.map((r) => ({
+      id: r.id,
+      applicationType: 'refund' as const,
+      targetInvoiceNumber: r.refundNumber,
+      targetInvoiceType: 'refund' as const,
+      amountApplied: toNum(r.amount),
+      appliedBy: r.createdBy,
+      appliedAt: r.createdAt.toISOString(),
+      notes: undefined,
+      refundStatus: r.status,
+    }));
+
+    const merged = [...serializedApps, ...serializedRefunds].sort(
+      (a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()
+    );
+
     return NextResponse.json({
       success: true,
-      data: serialized,
+      data: merged,
       totalAmount,
       totalApplied,
       remainingBalance,

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { toast } from "sonner";
 import { RefundList } from "./RefundList";
 import { CreateRefund } from "./CreateRefund";
 import { RefundDetails } from "./RefundDetails";
@@ -23,6 +24,7 @@ export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, o
   const [pageSize, setPageSize] = useState(10);
   const [orderBy, setOrderBy] = useState<OrderBy>("latest");
   const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const fetchRefunds = useCallback(async () => {
     setLoading(true);
@@ -82,6 +84,52 @@ export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, o
     fetchRefunds();
   }, [fetchRefunds]);
 
+  const handleApprove = useCallback(
+    async (refundId: string) => {
+      setIsProcessing(true);
+      try {
+        const res = await fetch(`/api/refunds/${refundId}/approve`, { method: "PUT" });
+        const json = await res.json();
+        if (!json.success) {
+          toast.error(json.message || "Failed to approve");
+          return;
+        }
+        toast.success("Refund approved successfully");
+        await fetchRefunds();
+      } catch {
+        toast.error("Failed to approve");
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [fetchRefunds]
+  );
+
+  const handleReject = useCallback(
+    async (refundId: string, reason: string) => {
+      setIsProcessing(true);
+      try {
+        const res = await fetch(`/api/refunds/${refundId}/reject`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason }),
+        });
+        const json = await res.json();
+        if (!json.success) {
+          toast.error(json.message || "Failed to reject");
+          return;
+        }
+        toast.success("Refund rejected");
+        await fetchRefunds();
+      } catch {
+        toast.error("Failed to reject");
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [fetchRefunds]
+  );
+
   if (currentView === "create") {
     return <CreateRefund onBack={handleBackToList} onSave={handleSaveRefund} />;
   }
@@ -110,6 +158,10 @@ export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, o
       loading={loading}
       onCreateNew={handleCreateNew}
       onViewDetails={handleViewDetails}
+      userRole={userRole}
+      onApprove={handleApprove}
+      onReject={handleReject}
+      isProcessing={isProcessing}
     />
   );
 }

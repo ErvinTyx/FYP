@@ -62,6 +62,19 @@ export interface CreditNoteApplication {
   notes?: string;
 }
 
+/** Application history row: either invoice application or refund */
+export type CreditNoteApplicationHistoryItem = (CreditNoteApplication & { applicationType?: 'invoice' }) | {
+  id: string;
+  applicationType: 'refund';
+  targetInvoiceNumber: string;
+  targetInvoiceType: 'refund';
+  amountApplied: number;
+  appliedBy: string;
+  appliedAt: string;
+  notes?: string;
+  refundStatus?: string;
+};
+
 export interface EligibleInvoice {
   id: string;
   invoiceNumber: string;

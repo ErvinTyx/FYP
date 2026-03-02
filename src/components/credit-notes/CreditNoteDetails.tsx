@@ -14,7 +14,7 @@ import {
 } from "../ui/table";
 import { StatusBadge } from "./StatusBadge";
 import { RejectionModal } from "./RejectionModal";
-import { CreditNote, CreditNoteApplication } from "../../types/creditNote";
+import { CreditNote, CreditNoteApplicationHistoryItem } from "../../types/creditNote";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -46,7 +46,7 @@ export function CreditNoteDetails({
   const printRef = useRef<HTMLDivElement>(null);
 
   // Application tracking state
-  const [applications, setApplications] = useState<CreditNoteApplication[]>([]);
+  const [applications, setApplications] = useState<CreditNoteApplicationHistoryItem[]>([]);
   const [totalApplied, setTotalApplied] = useState(0);
   const [remainingBalance, setRemainingBalance] = useState(0);
   const [loadingApplications, setLoadingApplications] = useState(false);
@@ -422,11 +422,13 @@ export function CreditNoteDetails({
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="bg-[#F3F4F6] text-[#374151]">
-                            {app.targetInvoiceType === "deposit"
-                              ? "Deposit"
-                              : app.targetInvoiceType === "monthlyRental"
-                                ? "Monthly Rental"
-                                : "Additional Charge"}
+                            {"applicationType" in app && app.applicationType === "refund"
+                              ? "Refund"
+                              : app.targetInvoiceType === "deposit"
+                                ? "Deposit"
+                                : app.targetInvoiceType === "monthlyRental"
+                                  ? "Monthly Rental"
+                                  : "Additional Charge"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-[#059669] font-medium">
@@ -436,7 +438,11 @@ export function CreditNoteDetails({
                         <TableCell className="text-[#374151]">
                           {new Date(app.appliedAt).toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-[#6B7280]">{app.notes || "—"}</TableCell>
+                        <TableCell className="text-[#6B7280]">
+                          {"applicationType" in app && app.applicationType === "refund" && "refundStatus" in app && app.refundStatus
+                            ? app.refundStatus
+                            : app.notes || "—"}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
