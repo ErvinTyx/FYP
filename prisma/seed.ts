@@ -20,7 +20,6 @@ const ROLES = [
   "sales",
   "operations",
   "production",
-  "vendor",
   "customer",
 ] as const;
 
