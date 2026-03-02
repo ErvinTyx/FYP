@@ -31,7 +31,7 @@ interface CreditNoteDetailsProps {
   onReject: (id: string, reason: string) => void;
   onApplyCredit?: (creditNote: CreditNote) => void;
   onViewDocument?: () => void;
-  userRole: "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
+  userRole: "super_user" | "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
 }
 
 export function CreditNoteDetails({

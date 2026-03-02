@@ -554,6 +554,7 @@ export default function App() {
       case "credit-notes":
         return (
           <CreditNotes
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "credit-notes" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />
@@ -561,7 +562,7 @@ export default function App() {
       case "refund-management":
         return (
           <RefundManagementMain
-            userRole={userRole === "super_user" || userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Other"}
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "refund-management" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />

@@ -85,6 +85,7 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
   const [selectedRefund, setSelectedRefund] = useState<Refund | null>(null);
 
   const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
+  const canCreateRefund = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
   const handleApproveClick = (refund: Refund) => {
     setSelectedRefund(refund);
@@ -145,13 +146,15 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
           <h1>Refund Management</h1>
           <p className="text-[#374151]">Process and track refund requests across all invoice types</p>
         </div>
-        <Button
-          onClick={onCreateNew}
-          className="bg-[#F15929] hover:bg-[#D14821] h-10 px-6 rounded-lg"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Issue New Refund
-        </Button>
+        {canCreateRefund && (
+          <Button
+            onClick={onCreateNew}
+            className="bg-[#F15929] hover:bg-[#D14821] h-10 px-6 rounded-lg"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Issue New Refund
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

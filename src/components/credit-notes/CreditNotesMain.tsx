@@ -55,13 +55,14 @@ function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
 type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
 
 interface CreditNotesMainProps {
+  userRole?: "super_user" | "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
   initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
   onConsumedSOANavigation?: () => void;
 }
 
 type OrderBy = "latest" | "earliest";
 
-export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }: CreditNotesMainProps = {}) {
+export function CreditNotesMain({ userRole = "Other", initialOpenFromSOA, onConsumedSOANavigation }: CreditNotesMainProps = {}) {
   const [currentView, setCurrentView] = useState<View>("list");
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [total, setTotal] = useState(0);
@@ -70,7 +71,8 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
   const [orderBy, setOrderBy] = useState<OrderBy>("latest");
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userRole] = useState<"Admin" | "Finance" | "Sales" | "Viewer" | "Other">("Admin");
+
+  const canCreateCreditNote = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
   const fetchCreditNotes = useCallback(async () => {
     try {
@@ -219,13 +221,15 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
                 Create and manage credit notes for customer refunds and adjustments
               </p>
             </div>
-            <Button
-              onClick={handleCreateNew}
-              className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Create Credit Note
-            </Button>
+            {canCreateCreditNote && (
+              <Button
+                onClick={handleCreateNew}
+                className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Credit Note
+              </Button>
+            )}
           </div>
         </>
       )}

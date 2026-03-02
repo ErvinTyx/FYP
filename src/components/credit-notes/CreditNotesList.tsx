@@ -54,7 +54,7 @@ interface CreditNotesListProps {
   onView: (id: string) => void;
   onApprove?: (id: string) => void;
   onReject?: (id: string, reason: string) => void;
-  userRole?: "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
+  userRole?: "super_user" | "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
 }
 
 export function CreditNotesList({
