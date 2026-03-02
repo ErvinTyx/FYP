@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import { RefundList } from "./RefundList";
 import { CreateRefund } from "./CreateRefund";
 import { RefundDetails } from "./RefundDetails";
-import type { Refund } from "../../types/refund";
+import { RefundReceiptPrint } from "./RefundReceiptPrint";
+import type { Refund, RelatedCreditNote } from "../../types/refund";
 
 type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
 
@@ -15,9 +16,13 @@ interface RefundManagementMainProps {
 
 type OrderBy = "latest" | "earliest";
 
+type RefundWithCreditNotes = Refund & { relatedCreditNotes?: RelatedCreditNote[] };
+
 export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, onConsumedSOANavigation }: RefundManagementMainProps) {
-  const [currentView, setCurrentView] = useState<"list" | "create" | "details">("list");
+  const [currentView, setCurrentView] = useState<"list" | "create" | "details" | "receipt">("list");
   const [selectedRefundId, setSelectedRefundId] = useState<string | null>(null);
+  const [receiptRefund, setReceiptRefund] = useState<RefundWithCreditNotes | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -57,9 +62,49 @@ export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, o
     const found = refunds.find((r) => r.id === initialOpenFromSOA.entityId);
     if (!found) return;
     setSelectedRefundId(initialOpenFromSOA.entityId);
-    setCurrentView("details");
+    if (initialOpenFromSOA.action === "viewDocument" || initialOpenFromSOA.action === "downloadReceipt") {
+      setCurrentView("receipt");
+    } else {
+      setCurrentView("details");
+    }
     onConsumedSOANavigation?.();
   }, [refunds, initialOpenFromSOA, onConsumedSOANavigation]);
+
+  // Fetch refund for receipt view
+  const fetchReceiptRefund = useCallback(async (refundId: string) => {
+    setReceiptLoading(true);
+    try {
+      const res = await fetch(`/api/refunds/${refundId}?includeCreditNotes=true`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        setReceiptRefund(json.data);
+      } else {
+        setReceiptRefund(null);
+      }
+    } catch {
+      setReceiptRefund(null);
+    } finally {
+      setReceiptLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentView === "receipt" && selectedRefundId) {
+      fetchReceiptRefund(selectedRefundId);
+    } else {
+      setReceiptRefund(null);
+    }
+  }, [currentView, selectedRefundId, fetchReceiptRefund]);
+
+  const handlePrintReceipt = useCallback((refundId: string) => {
+    setSelectedRefundId(refundId);
+    setCurrentView("receipt");
+  }, []);
+
+  const handleBackFromReceipt = useCallback(() => {
+    setCurrentView("details");
+    setReceiptRefund(null);
+  }, []);
 
   const handleCreateNew = () => {
     setCurrentView("create");
@@ -141,7 +186,31 @@ export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, o
         userRole={userRole}
         onBack={handleBackToList}
         onRefetchList={handleRefetchList}
+        onPrintReceipt={handlePrintReceipt}
       />
+    );
+  }
+
+  if (currentView === "receipt" && selectedRefundId) {
+    if (receiptLoading) {
+      return (
+        <div className="flex items-center justify-center min-h-[200px] text-[#6B7280]">
+          Loading refund receipt...
+        </div>
+      );
+    }
+    if (receiptRefund) {
+      return (
+        <RefundReceiptPrint
+          refund={receiptRefund}
+          onBack={handleBackFromReceipt}
+        />
+      );
+    }
+    return (
+      <div className="flex items-center justify-center min-h-[200px] text-[#6B7280]">
+        Refund not found.
+      </div>
     );
   }
 
