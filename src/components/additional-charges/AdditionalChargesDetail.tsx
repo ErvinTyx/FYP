@@ -671,28 +671,37 @@ export function AdditionalChargesDetail({
         </Card>
       )}
 
-      {(charge.status === "Pending Approval" && (
-        <Card className="border-[#E5E7EB]">
+      {charge.status === "Pending Approval" && (
+        <Card className="border-[#F15929] bg-[#FFF7F5]">
           <CardContent className="pt-6">
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={() => setApproveModalOpen(true)}
-                className="bg-[#10B981] hover:bg-[#059669] text-white h-10 px-6 rounded-lg"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Approve Payment
-              </Button>
-              <Button
-                onClick={() => setRejectModalOpen(true)}
-                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white h-10 px-6 rounded-lg"
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Reject Payment
-              </Button>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[#231F20]">Payment Review Required</p>
+                <p className="text-[14px] text-[#6B7280] mt-1">
+                  Customer has submitted payment proof. Please review and approve or reject.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setRejectModalOpen(true)}
+                  className="h-10 px-6 rounded-lg border-[#DC2626] text-[#DC2626] hover:bg-[#FEF2F2]"
+                >
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Reject
+                </Button>
+                <Button
+                  onClick={() => setApproveModalOpen(true)}
+                  className="bg-[#059669] hover:bg-[#047857] text-white h-10 px-6 rounded-lg"
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Approve Payment
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
-      ))}
+      )}
 
       <UploadPopModal
         isOpen={uploadModalOpen}
