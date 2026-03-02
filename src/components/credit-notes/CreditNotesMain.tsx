@@ -4,11 +4,12 @@ import { Button } from "../ui/button";
 import { CreditNotesList } from "./CreditNotesList";
 import { CreditNoteForm } from "./CreditNoteForm";
 import { CreditNoteDetails } from "./CreditNoteDetails";
+import { CreditNoteDocumentPrint } from "./CreditNoteDocumentPrint";
 import { ApplyCreditModal } from "./ApplyCreditModal";
 import { CreditNote } from "../../types/creditNote";
 import { toast } from "sonner";
 
-type View = "list" | "create" | "edit" | "details";
+type View = "list" | "create" | "edit" | "details" | "document";
 
 function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
   return {
@@ -240,6 +241,9 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
           onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
           onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
           onView={handleView}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          userRole={userRole}
         />
       )}
 
@@ -258,7 +262,15 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
           onApprove={handleApprove}
           onReject={handleReject}
           onApplyCredit={handleApplyCredit}
+          onViewDocument={() => setCurrentView("document")}
           userRole={userRole}
+        />
+      )}
+
+      {currentView === "document" && selectedNote && (
+        <CreditNoteDocumentPrint
+          creditNote={selectedNote}
+          onBack={() => setCurrentView("details")}
         />
       )}
 

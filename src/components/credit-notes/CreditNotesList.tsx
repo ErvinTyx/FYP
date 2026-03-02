@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Eye, MoreVertical } from "lucide-react";
+import { Search, Eye, MoreVertical, CheckCircle, XCircle } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -24,6 +24,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import {
@@ -34,6 +35,8 @@ import {
   PaginationPrevious,
 } from "../ui/pagination";
 import { StatusBadge } from "./StatusBadge";
+import { CreditNoteApprovalModal } from "./CreditNoteApprovalModal";
+import { RejectionModal } from "./RejectionModal";
 import { CreditNote } from "../../types/creditNote";
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
@@ -49,6 +52,9 @@ interface CreditNotesListProps {
   onPageSizeChange?: (pageSize: number) => void;
   onOrderByChange?: (orderBy: OrderBy) => void;
   onView: (id: string) => void;
+  onApprove?: (id: string) => void;
+  onReject?: (id: string, reason: string) => void;
+  userRole?: "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
 }
 
 export function CreditNotesList({
@@ -61,9 +67,18 @@ export function CreditNotesList({
   onPageSizeChange,
   onOrderByChange,
   onView,
+  onApprove,
+  onReject,
+  userRole = "Viewer",
 }: CreditNotesListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [selectedNoteForApproval, setSelectedNoteForApproval] = useState<CreditNote | null>(null);
+  const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
+  const [selectedNoteForRejection, setSelectedNoteForRejection] = useState<CreditNote | null>(null);
+
+  const canApproveReject = (userRole === "Admin" || userRole === "Finance") && (onApprove != null || onReject != null);
 
   const filteredNotes = creditNotes.filter((note) => {
     const matchesSearch =
@@ -80,6 +95,32 @@ export function CreditNotesList({
   const pendingAmount = creditNotes
     .filter((note) => note.status === "Pending Approval")
     .reduce((acc, note) => acc + note.amount, 0);
+
+  const handleApproveClick = (note: CreditNote) => {
+    setSelectedNoteForApproval(note);
+    setApprovalModalOpen(true);
+  };
+
+  const handleRejectClick = (note: CreditNote) => {
+    setSelectedNoteForRejection(note);
+    setRejectionModalOpen(true);
+  };
+
+  const handleApprove = () => {
+    if (selectedNoteForApproval && onApprove) {
+      onApprove(selectedNoteForApproval.id);
+      setApprovalModalOpen(false);
+      setSelectedNoteForApproval(null);
+    }
+  };
+
+  const handleReject = (reason: string) => {
+    if (selectedNoteForRejection && onReject) {
+      onReject(selectedNoteForRejection.id, reason);
+      setRejectionModalOpen(false);
+      setSelectedNoteForRejection(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -236,6 +277,23 @@ export function CreditNotesList({
                             <Eye className="h-4 w-4 mr-2" />
                             View
                           </DropdownMenuItem>
+                          {canApproveReject && note.status === "Pending Approval" && (onApprove != null || onReject != null) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {onApprove != null && (
+                                <DropdownMenuItem onClick={() => handleApproveClick(note)}>
+                                  <CheckCircle className="mr-2 h-4 w-4 text-[#10B981]" />
+                                  Approve
+                                </DropdownMenuItem>
+                              )}
+                              {onReject != null && (
+                                <DropdownMenuItem onClick={() => handleRejectClick(note)}>
+                                  <XCircle className="mr-2 h-4 w-4 text-[#DC2626]" />
+                                  Reject
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -275,6 +333,32 @@ export function CreditNotesList({
           })()}
         </CardContent>
       </Card>
+
+      {approvalModalOpen && selectedNoteForApproval && onApprove != null && (
+        <CreditNoteApprovalModal
+          isOpen={approvalModalOpen}
+          onClose={() => {
+            setApprovalModalOpen(false);
+            setSelectedNoteForApproval(null);
+          }}
+          onApprove={handleApprove}
+          creditNoteNumber={selectedNoteForApproval.creditNoteNumber}
+          customer={selectedNoteForApproval.customer}
+          amount={selectedNoteForApproval.amount}
+        />
+      )}
+
+      {rejectionModalOpen && selectedNoteForRejection && onReject != null && (
+        <RejectionModal
+          isOpen={rejectionModalOpen}
+          onClose={() => {
+            setRejectionModalOpen(false);
+            setSelectedNoteForRejection(null);
+          }}
+          onReject={handleReject}
+          creditNoteNumber={selectedNoteForRejection.creditNoteNumber}
+        />
+      )}
     </div>
   );
 }
