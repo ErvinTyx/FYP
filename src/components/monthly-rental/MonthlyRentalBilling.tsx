@@ -12,7 +12,7 @@ type View = 'list' | 'details' | 'receipt';
 type SOANavigationAction = 'view' | 'viewDocument' | 'downloadReceipt';
 
 interface MonthlyRentalBillingProps {
-  userRole?: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  userRole?: 'super_user' | 'Admin' | 'Finance' | 'Sales' | 'Customer' | 'Other';
   initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
   onConsumedSOANavigation?: () => void;
 }

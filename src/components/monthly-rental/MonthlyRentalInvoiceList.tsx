@@ -54,7 +54,7 @@ interface MonthlyRentalInvoiceListProps {
   onEditPayment?: (id: string) => void;
   onApprove?: (invoiceId: string, referenceNumber: string) => void;
   onReject?: (invoiceId: string, reason: string) => void;
-  userRole: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  userRole: 'super_user' | 'Admin' | 'Finance' | 'Sales' | 'Customer' | 'Other';
   isProcessing?: boolean;
 }
 
@@ -66,6 +66,8 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
   const [selectedInvoice, setSelectedInvoice] = useState<MonthlyRentalInvoice | null>(null);
   
   const canApproveReject = (userRole === 'super_user' || userRole === 'Admin' || userRole === 'Finance');
+  // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
+  const canUploadProofRole = userRole === 'super_user' || userRole === 'Admin' || userRole === 'Sales';
   
   const handleApproveClick = (invoice: MonthlyRentalInvoice) => {
     setSelectedInvoice(invoice);
@@ -324,8 +326,8 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
                               View Details
                             </DropdownMenuItem>
                             
-                            {/* Upload proof for Pending Payment, Overdue, or Rejected */}
-                            {(invoice.status === 'Pending Payment' || invoice.status === 'Rejected' || invoice.status === 'Overdue') && onEditPayment && (
+                            {/* Upload proof for Pending Payment, Overdue, or Rejected - only super_user, Admin, Staff (Finance cannot upload) */}
+                            {canUploadProofRole && (invoice.status === 'Pending Payment' || invoice.status === 'Rejected' || invoice.status === 'Overdue') && onEditPayment && (
                               <DropdownMenuItem
                                 onClick={() => onEditPayment(invoice.id)}
                                 disabled={isProcessing}

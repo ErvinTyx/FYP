@@ -69,7 +69,7 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
   const [orderBy, setOrderBy] = useState<OrderBy>("latest");
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userRole] = useState<"Admin" | "Finance" | "Staff" | "Viewer">("Admin");
+  const [userRole] = useState<"Admin" | "Finance" | "Sales" | "Viewer" | "Other">("Admin");
 
   const fetchCreditNotes = useCallback(async () => {
     try {

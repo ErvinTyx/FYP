@@ -41,7 +41,7 @@ interface DepositDetailsProps {
   onPrintReceipt?: (depositId: string) => void;
   onResetDueDate?: (depositId: string, newDueDate: string) => void;
   onMarkExpired?: (depositId: string) => void;
-  userRole: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
+  userRole: "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
   isProcessing?: boolean;
 }
 
@@ -117,7 +117,8 @@ export function DepositDetails({
   }, [deposit.id]);
 
   const canUploadPayment = userRole === "Customer" && (deposit.status === "Pending Payment" || (deposit.status === "Rejected" && !deposit.isOverdue));
-  const canAdminUploadPayment = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && !deposit.paymentProof;
+  // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
+  const canAdminUploadPayment = (userRole === "super_user" || userRole === "Admin" || userRole === "Sales") && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && !deposit.paymentProof;
   const canApprove = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && deposit.status === "Pending Approval";
   
   // DEBUG: Log canApprove result
@@ -775,8 +776,8 @@ export function DepositDetails({
         </Card>
       )}
 
-      {/* Payment Proof (Submitted - View Only) */}
-      {deposit.paymentProof && (
+      {/* Payment Proof (Submitted - View Only) - Finance cannot view */}
+      {deposit.paymentProof && userRole !== "Finance" && (
         <Card className="border-[#E5E7EB]">
           <CardHeader>
             <CardTitle className="text-[18px]">Payment Proof</CardTitle>

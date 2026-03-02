@@ -34,7 +34,7 @@ interface RefundDetailsData extends Refund {
 
 interface RefundDetailsProps {
   refundId: string;
-  userRole: "Admin" | "Finance" | "Staff" | "Customer" | "super_user";
+  userRole: "Admin" | "Finance" | "Sales" | "Customer" | "super_user" | "Other";
   onBack: () => void;
   onRefetchList: () => void;
   onPrintReceipt?: (refundId: string) => void;

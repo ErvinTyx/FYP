@@ -9,7 +9,7 @@ import type { Refund, RelatedCreditNote } from "../../types/refund";
 type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
 
 interface RefundManagementMainProps {
-  userRole?: "Admin" | "Finance" | "Staff" | "Customer" | "super_user";
+  userRole?: "Admin" | "Finance" | "Sales" | "Customer" | "super_user" | "Other";
   initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
   onConsumedSOANavigation?: () => void;
 }
@@ -18,7 +18,7 @@ type OrderBy = "latest" | "earliest";
 
 type RefundWithCreditNotes = Refund & { relatedCreditNotes?: RelatedCreditNote[] };
 
-export function RefundManagementMain({ userRole = "Staff", initialOpenFromSOA, onConsumedSOANavigation }: RefundManagementMainProps) {
+export function RefundManagementMain({ userRole = "Other", initialOpenFromSOA, onConsumedSOANavigation }: RefundManagementMainProps) {
   const [currentView, setCurrentView] = useState<"list" | "create" | "details" | "receipt">("list");
   const [selectedRefundId, setSelectedRefundId] = useState<string | null>(null);
   const [receiptRefund, setReceiptRefund] = useState<RefundWithCreditNotes | null>(null);

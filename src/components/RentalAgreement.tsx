@@ -119,7 +119,7 @@ interface RentalAgreement {
   deposits?: DepositInfo[];
 }
 
-const userRoles = ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff'];
+const userRoles = ['Admin', 'Manager', 'Sales', 'Finance', 'Operations'];
 
 export function RentalAgreement() {
   const [agreements, setAgreements] = useState<RentalAgreement[]>([]);
@@ -349,7 +349,7 @@ export function RentalAgreement() {
           id: selectedAgreement.id,
           ...formData,
           changes: 'Agreement updated',
-          allowedRoles: ['Admin', 'Manager', 'Sales', 'Finance', 'Operations', 'Staff'],
+          allowedRoles: ['Admin', 'Manager', 'Sales', 'Finance', 'Operations'],
         }),
       });
 

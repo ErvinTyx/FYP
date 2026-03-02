@@ -66,7 +66,7 @@ interface DepositListProps {
   onReject?: (depositId: string, reason: string) => void;
   onResetDueDate?: (depositId: string, newDueDate: string) => void;
   onMarkExpired?: (depositId: string) => void;
-  userRole: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
+  userRole: "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
   isProcessing?: boolean;
 }
 
@@ -111,6 +111,8 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
   
   const canManageDeposits = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
   const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
+  // Only super_user, Admin, and Staff (sales) can upload proof; Finance cannot
+  const canUploadProof = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
   const handleResetDueDate = () => {
     if (selectedDepositForReset && onResetDueDate && newDueDate) {
@@ -355,8 +357,8 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
                               View Details
                             </DropdownMenuItem>
                             
-                            {/* Upload proof for Pending Payment, Overdue, or Rejected */}
-                            {onUploadProof && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && (
+                            {/* Upload proof for Pending Payment, Overdue, or Rejected - only super_user, Admin, Staff (Finance cannot upload) */}
+                            {onUploadProof && canUploadProof && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && (
                               <DropdownMenuItem 
                                 onClick={() => {
                                   setSelectedDepositForUpload(deposit);

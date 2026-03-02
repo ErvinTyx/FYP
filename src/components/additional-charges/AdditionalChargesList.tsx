@@ -95,11 +95,14 @@ function mapApiChargeToDisplay(api: {
   };
 }
 
+type UserRole = "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
+
 interface AdditionalChargesListProps {
   onViewDetails: (charge: AdditionalCharge) => void;
+  userRole?: UserRole;
 }
 
-export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListProps) {
+export function AdditionalChargesList({ onViewDetails, userRole = "Other" }: AdditionalChargesListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [charges, setCharges] = useState<AdditionalCharge[]>([]);
@@ -112,6 +115,9 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedCharge, setSelectedCharge] = useState<AdditionalCharge | null>(null);
+
+  // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
+  const canUploadProof = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
   const fetchCharges = useCallback(async () => {
     setLoading(true);
@@ -404,7 +410,7 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Details
                                 </DropdownMenuItem>
-                                {charge.status === "Pending Payment" && (
+                                {canUploadProof && charge.status === "Pending Payment" && (
                                   <DropdownMenuItem onClick={() => handleUploadPop(charge.id)}>
                                     <Upload className="mr-2 h-4 w-4" />
                                     Upload POP
@@ -422,13 +428,13 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
                                     </DropdownMenuItem>
                                   </>
                                 )}
-                                {charge.status === "Rejected" && (
+                                {canUploadProof && charge.status === "Rejected" && (
                                   <DropdownMenuItem onClick={() => handleUploadPop(charge.id)}>
                                     <Upload className="mr-2 h-4 w-4" />
                                     Re-upload POP
                                   </DropdownMenuItem>
                                 )}
-                                {isOverdue && charge.status === "Pending Approval" && (
+                                {canUploadProof && isOverdue && charge.status === "Pending Approval" && (
                                   <DropdownMenuItem onClick={() => handleUploadPop(charge.id)}>
                                     <Upload className="mr-2 h-4 w-4" />
                                     Upload POP

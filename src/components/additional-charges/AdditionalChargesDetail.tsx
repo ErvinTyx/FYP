@@ -80,11 +80,14 @@ function mapApiChargeToDisplay(api: {
   };
 }
 
+type UserRole = "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
+
 interface AdditionalChargesDetailProps {
   charge: AdditionalCharge;
   onBack: () => void;
   onUpdate: (updatedCharge: AdditionalCharge) => void;
   onPrintReceipt?: () => void;
+  userRole?: UserRole;
 }
 
 export function AdditionalChargesDetail({
@@ -92,6 +95,7 @@ export function AdditionalChargesDetail({
   onBack,
   onUpdate,
   onPrintReceipt,
+  userRole = "Other",
 }: AdditionalChargesDetailProps) {
   const [charge, setCharge] = useState<AdditionalCharge>(initialCharge);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -250,6 +254,8 @@ export function AdditionalChargesDetail({
   };
 
   const proofDisplay = charge.proofOfPaymentUrl ?? charge.proofOfPayment;
+  // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
+  const canUploadProof = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
   return (
     <div className="space-y-6">
@@ -604,10 +610,11 @@ export function AdditionalChargesDetail({
         </CardContent>
       </Card>
 
-      {/* Upload Proof of Payment Section */}
-      {(charge.status === "Pending Payment" ||
-        charge.status === "Rejected" ||
-        isOverdue) &&
+      {/* Upload Proof of Payment Section - only super_user, Admin, Staff (Finance cannot upload) */}
+      {canUploadProof &&
+        (charge.status === "Pending Payment" ||
+          charge.status === "Rejected" ||
+          isOverdue) &&
         !proofDisplay && (
         <Card className="border-[#E5E5E5] bg-white shadow-sm rounded-lg">
           <CardHeader>
@@ -634,8 +641,8 @@ export function AdditionalChargesDetail({
         </Card>
       )}
 
-      {/* Payment Proof (Submitted - View Only) */}
-      {proofDisplay && (
+      {/* Payment Proof (Submitted - View Only) - Finance cannot view */}
+      {proofDisplay && userRole !== "Finance" && (
         <Card className="border-[#E5E7EB]">
           <CardHeader>
             <CardTitle className="text-[18px]">Payment Proof</CardTitle>

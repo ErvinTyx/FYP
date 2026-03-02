@@ -538,7 +538,7 @@ export default function App() {
       case "manage-deposits":
         return (
           <ManageDepositFlow
-            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"}
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "manage-deposits" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />
@@ -546,6 +546,7 @@ export default function App() {
       case "monthly-rental":
         return (
           <MonthlyRentalBilling
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "monthly-rental" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />
@@ -560,7 +561,7 @@ export default function App() {
       case "refund-management":
         return (
           <RefundManagementMain
-            userRole={userRole === "super_user" || userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"}
+            userRole={userRole === "super_user" || userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "refund-management" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />
@@ -568,6 +569,7 @@ export default function App() {
       case "additional-charges":
         return (
           <AdditionalCharges
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "additional-charges" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />

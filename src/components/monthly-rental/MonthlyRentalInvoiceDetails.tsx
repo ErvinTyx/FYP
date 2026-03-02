@@ -38,7 +38,7 @@ interface MonthlyRentalInvoiceDetailsProps {
   onReject: (invoiceId: string, reason: string) => void;
   onMarkAsReturned: (invoiceId: string) => void;
   onPrintReceipt?: (invoiceId: string) => void;
-  userRole: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  userRole: 'super_user' | 'Admin' | 'Finance' | 'Sales' | 'Customer' | 'Other';
   isProcessing?: boolean;
 }
 
@@ -132,11 +132,11 @@ export function MonthlyRentalInvoiceDetails({
 
   const isBeforeDueDate = new Date() < new Date(invoice.dueDate);
   
-  // Can upload proof for Pending Payment, Rejected, or Overdue
-  // For Rejected/Overdue, allow re-uploading even if previous proof exists
-  const canUploadProof = invoice.status === 'Pending Payment' || 
+  // Can upload proof for Pending Payment, Rejected, or Overdue - only super_user, Admin, Staff (sales); Finance cannot upload
+  const canUploadProofByStatus = invoice.status === 'Pending Payment' || 
                           invoice.status === 'Rejected' || 
                           invoice.status === 'Overdue';
+  const canUploadProof = canUploadProofByStatus && (userRole === 'super_user' || userRole === 'Admin' || userRole === 'Sales');
   
   const canApproveReject = (userRole === 'super_user' || userRole === 'Admin' || userRole === 'Finance') && 
     invoice.status === 'Pending Approval';
@@ -761,8 +761,8 @@ export function MonthlyRentalInvoiceDetails({
         </Card>
       )}
 
-      {/* Payment Proof Review */}
-      {invoice.paymentProofUrl && (
+      {/* Payment Proof Review - Finance cannot view */}
+      {invoice.paymentProofUrl && userRole !== 'Finance' && (
         <Card className="border-[#E5E7EB]">
           <CardHeader>
             <CardTitle className="text-[18px]">Payment Proof</CardTitle>

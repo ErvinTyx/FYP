@@ -73,13 +73,13 @@ interface RefundListProps {
   loading?: boolean;
   onCreateNew: () => void;
   onViewDetails: (refund: Refund) => void;
-  userRole?: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
+  userRole?: "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
   onApprove?: (refundId: string) => void;
   onReject?: (refundId: string, reason: string) => void;
   isProcessing?: boolean;
 }
 
-export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, loading, onCreateNew, onViewDetails, userRole = "Staff", onApprove, onReject, isProcessing = false }: RefundListProps) {
+export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, loading, onCreateNew, onViewDetails, userRole = "Other", onApprove, onReject, isProcessing = false }: RefundListProps) {
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedRefund, setSelectedRefund] = useState<Refund | null>(null);
