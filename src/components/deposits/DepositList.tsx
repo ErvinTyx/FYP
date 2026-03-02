@@ -235,7 +235,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
         <div className="relative flex-1 max-w-[400px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
           <Input
-            placeholder="Search by deposit ID, invoice, or customer..."
+            placeholder="Search by Agreement ID, invoice, or customer..."
             className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -299,7 +299,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
           <Table>
             <TableHeader>
               <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
-                <TableHead>Invoice No.</TableHead>
+                <TableHead>Rental Agreement No.</TableHead>
                 <TableHead>Customer Name</TableHead>
                 <TableHead>Deposit Amount</TableHead>
                 <TableHead>Status</TableHead>

@@ -196,7 +196,7 @@ export function RefundDetails({
             {refund.rejectedBy && (
               <p className="text-[12px] text-[#991B1B]">
                 Rejected by {refund.rejectedBy}
-                {refund.rejectedAt && ` on ${refund.rejectedAt.split("T")[0]}`}
+                {refund.rejectedAt && ` on ${formatRfqDate(refund.rejectedAt)}`}
               </p>
             )}
           </CardContent>
@@ -337,7 +337,7 @@ export function RefundDetails({
             </div>
             <div>
               <p className="text-[14px] text-[#6B7280]">Created Date</p>
-              <p className="text-[#111827]">{refund.createdAt.split("T")[0]}</p>
+              <p className="text-[#111827]">{formatRfqDate(refund.createdAt)}</p>
             </div>
             <div>
               <p className="text-[14px] text-[#6B7280]">Refund Amount</p>
@@ -423,7 +423,7 @@ export function RefundDetails({
                     <TableCell className="text-right">
                       RM{cn.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>
-                    <TableCell>{cn.date}</TableCell>
+                    <TableCell>{formatRfqDate(cn.date)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -43,6 +43,7 @@ import {
 } from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
 import { RejectionModal } from "../monthly-rental/RejectionModal";
+import { formatRfqDate } from "../../lib/rfqDate";
 import type { Refund, RefundStatus } from "../../types/refund";
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
@@ -274,7 +275,7 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
                     </TableCell>
                     <TableCell>{getStatusBadge(refund.status)}</TableCell>
                     <TableCell className="text-[#374151]">
-                      {refund.createdAt.split("T")[0]}
+                      {formatRfqDate(refund.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
