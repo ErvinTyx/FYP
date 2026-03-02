@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Plus, Trash2, Send, CalendarDays, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Send, CalendarDays, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -492,6 +492,43 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     ]);
   };
 
+  const handleRemoveItem = (itemId: string) => {
+    if (invoiceType !== "monthlyRental" && invoiceType !== "additionalCharge") return;
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+  };
+
+  const handleResetLineItems = () => {
+    if (invoiceType === "monthlyRental" && monthlyInvoiceItems.length > 0) {
+      setItems(
+        monthlyInvoiceItems.map((invItem) => ({
+          id: invItem.id,
+          description: invItem.scaffoldingItemName,
+          quantity: invItem.quantityBilled,
+          previousPrice: invItem.lineTotal,
+          currentPrice: invItem.lineTotal,
+          unitPrice: invItem.unitPrice,
+          amount: 0,
+        }))
+      );
+    } else if (invoiceType === "additionalCharge" && additionalChargeItems.length > 0) {
+      setItems(
+        additionalChargeItems.map((ci) => ({
+          id: ci.id,
+          description: ci.itemName,
+          quantity: ci.quantity,
+          previousPrice: ci.amount,
+          currentPrice: ci.amount,
+          unitPrice: ci.unitPrice,
+          amount: 0,
+        }))
+      );
+    }
+  };
+
+  const canResetLineItems =
+    (invoiceType === "monthlyRental" && items.length < monthlyInvoiceItems.length) ||
+    (invoiceType === "additionalCharge" && items.length < additionalChargeItems.length);
+
   const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
   const totalCurrentPrice = items.reduce((sum, item) => sum + (item.currentPrice || 0), 0);
 
@@ -558,9 +595,13 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     }
     if (forSubmit) {
       if (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") {
+        if (items.length === 0) {
+          toast.error("At least one line item is required");
+          return false;
+        }
         // For monthly rental and additional charges: check description, amount, and validate currentPrice <= previousPrice
         if (items.some((i) => !i.description || i.amount <= 0)) {
-          toast.error("Please complete all line items with valid adjusted amounts");
+          toast.error("Please complete all line items with valid adjusted amounts greater than 0");
           return false;
         }
         // Validate that adjusted amount doesn't exceed original amount
@@ -890,10 +931,39 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
             </div>
           )}
 
-          {reason !== "Returned Items" && (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") &&
-            items.map((item) => (
+          {reason !== "Returned Items" && (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && (
+            <>
+              {canResetLineItems && (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleResetLineItems}
+                    title="Restore all removed line items"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset line items
+                  </Button>
+                </div>
+              )}
+              {items.map((item) => (
               <Card key={item.id} className="border-[#E5E7EB] bg-[#F9FAFB]">
                 <CardContent className="pt-4 pb-4">
+                  <div className="flex justify-end mb-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#6B7280] hover:text-red-600 hover:bg-red-50"
+                      onClick={() => handleRemoveItem(item.id)}
+                      disabled={items.length <= 1}
+                      title="Remove line item"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-[14px] text-[#374151]">Description</label>
@@ -931,6 +1001,8 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                 </CardContent>
               </Card>
             ))}
+            </>
+          )}
 
           {invoiceType === "deposit" && items.length === 1 && (
             <div className="flex justify-end">
