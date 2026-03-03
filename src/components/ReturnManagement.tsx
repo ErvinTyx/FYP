@@ -208,7 +208,9 @@ export function ReturnManagement() {
         hasStatusBreakdown: !!item.statusBreakdown,
         statusBreakdown: item.statusBreakdown,
       }));
-      fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ReturnManagement.tsx:saveReturnToDatabase',message:'PUT payload items',data:{itemCount:returnOrder.items?.length,firstItem:itemsPayload?.[0],allHaveBreakdown:itemsPayload?.every(i=>i.hasStatusBreakdown)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') {
+        fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ReturnManagement.tsx:saveReturnToDatabase',message:'PUT payload items',data:{itemCount:returnOrder.items?.length,firstItem:itemsPayload?.[0],allHaveBreakdown:itemsPayload?.every(i=>i.hasStatusBreakdown)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+      }
       // #endregion
       const response = await fetch('/api/return', {
         method: 'PUT',

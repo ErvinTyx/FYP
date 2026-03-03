@@ -110,12 +110,8 @@ export function ForgotPasswordNewPassword({
       return;
     }
 
-    // Simulate checking if new password is same as old password
-    const oldPassword = "1234"; // Demo purposes
-    if (newPassword === oldPassword) {
-      setNewPasswordError("New password cannot be same as previous password.");
-      return;
-    }
+    // Old-password-differs check should be performed by the backend API when
+    // the forgot-password flow is wired to a real password-change endpoint.
 
     setIsLoading(true);
 

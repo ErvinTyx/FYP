@@ -5,7 +5,22 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+
+const CONTENT_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
+
+async function requireContentAuth() {
+  const session = await auth();
+  if (!session?.user) {
+    return { error: NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 }) };
+  }
+  const hasPermission = session.user.roles?.some((role: string) => CONTENT_ROLES.includes(role));
+  if (!hasPermission) {
+    return { error: NextResponse.json({ success: false, message: 'Forbidden: You do not have permission to access content' }, { status: 403 }) };
+  }
+  return {};
+}
 
 /**
  * GET /api/content/[id]
@@ -16,6 +31,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await requireContentAuth();
+    if (authResult.error) return authResult.error;
+
     const { id } = await params;
 
     if (!id) {
@@ -62,6 +80,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await requireContentAuth();
+    if (authResult.error) return authResult.error;
+
     const { id } = await params;
     const body = await request.json();
 
@@ -125,6 +146,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authResult = await requireContentAuth();
+    if (authResult.error) return authResult.error;
+
     const { id } = await params;
 
     if (!id) {
