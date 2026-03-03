@@ -116,6 +116,8 @@ interface RentalAgreement {
   createdBy: string;
   rfqId?: string;
   rfq?: RFQOption;
+  extendedFromAgreementId?: string | null;
+  extendedFromAgreement?: { id: string; agreementNumber: string } | null;
   deposits?: DepositInfo[];
 }
 
@@ -142,6 +144,8 @@ export function RentalAgreement() {
   const [rfqProjectList, setRfqProjectList] = useState<RFQOption[]>([]);
   const [rfqProjectLoading, setRfqProjectLoading] = useState(false);
   const [selectedRfqProjectId, setSelectedRfqProjectId] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   // Fetch agreements from API
   const fetchAgreements = useCallback(async () => {
@@ -167,6 +171,17 @@ export function RentalAgreement() {
   useEffect(() => {
     fetchAgreements();
   }, [fetchAgreements]);
+
+  const filteredAgreements = agreements.filter((agreement) => {
+    const matchesSearch = !searchTerm.trim() || (() => {
+      const query = searchTerm.trim().toLowerCase();
+      const project = agreement.projectName?.toLowerCase() ?? '';
+      const hirer = agreement.hirer?.toLowerCase() ?? '';
+      return project.includes(query) || hirer.includes(query);
+    })();
+    const matchesStatus = statusFilter === 'all' || agreement.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   // Fetch approved RFQ projects when create dialog opens (for project name selector).
   // Only RFQs with status "approved" are fetched; those already linked to a rental agreement are excluded.
@@ -220,6 +235,9 @@ export function RentalAgreement() {
 
   const [versionAccess, setVersionAccess] = useState<string[]>(['Admin', 'Manager']);
 
+  const isValidNric = (value: string) =>
+    /^[0-9]{6}-[0-9]{2}-[0-9]{4}$/.test(value.trim());
+
   const getStatusBadge = (status: RentalAgreement['status']) => {
     switch (status) {
       case 'Draft':
@@ -260,6 +278,27 @@ export function RentalAgreement() {
     const missing = getCreateValidationError();
     if (missing) {
       toast.error(`Please fill in all required fields. Missing: ${missing}`);
+      return;
+    }
+    if (typeof formData.securityDeposit === 'number' && formData.securityDeposit < 0) {
+      toast.error('Security Deposit (Month) cannot be negative.');
+      return;
+    }
+    if (typeof formData.minimumCharges === 'number' && formData.minimumCharges < 0) {
+      toast.error('Minimum Charges (Month) cannot be negative.');
+      return;
+    }
+    if (typeof formData.defaultInterest === 'number' && formData.defaultInterest < 0) {
+      toast.error('Default Interest (% per month) cannot be negative.');
+      return;
+    }
+
+    if (!isValidNric(formData.ownerNRIC || '')) {
+      toast.error('Owner NRIC No. must be in format XXXXXX-XX-XXXX and contain digits only.');
+      return;
+    }
+    if (!isValidNric(formData.hirerNRIC || '')) {
+      toast.error('Hirer NRIC No. must be in format XXXXXX-XX-XXXX and contain digits only.');
       return;
     }
 
@@ -338,6 +377,27 @@ export function RentalAgreement() {
       toast.error(`Please fill in all required fields. Missing: ${missing}`);
       return;
     }
+    if (typeof formData.securityDeposit === 'number' && formData.securityDeposit < 0) {
+      toast.error('Security Deposit (Month) cannot be negative.');
+      return;
+    }
+    if (typeof formData.minimumCharges === 'number' && formData.minimumCharges < 0) {
+      toast.error('Minimum Charges (Month) cannot be negative.');
+      return;
+    }
+    if (typeof formData.defaultInterest === 'number' && formData.defaultInterest < 0) {
+      toast.error('Default Interest (% per month) cannot be negative.');
+      return;
+    }
+
+    if (!isValidNric(formData.ownerNRIC || '')) {
+      toast.error('Owner NRIC No. must be in format XXXXXX-XX-XXXX and contain digits only.');
+      return;
+    }
+    if (!isValidNric(formData.hirerNRIC || '')) {
+      toast.error('Hirer NRIC No. must be in format XXXXXX-XX-XXXX and contain digits only.');
+      return;
+    }
 
     try {
       const response = await fetch('/api/rental-agreement', {
@@ -400,11 +460,15 @@ export function RentalAgreement() {
   };
 
   const handleViewAgreement = (agreement: RentalAgreement) => {
-    // Check if user has access to view this version
-    const latestVersion = agreement.versions[agreement.versions.length - 1];
-    if (!latestVersion.allowedRoles.includes(currentUserRole)) {
-      toast.error("You don't have permission to view this agreement version");
-      return;
+    // Check if user has access to view this version (when versions exist)
+    const versions = agreement.versions ?? [];
+    const latestVersion = versions.length > 0 ? versions[versions.length - 1] : null;
+    if (latestVersion?.allowedRoles?.length) {
+      const allowed = latestVersion.allowedRoles;
+      if (!allowed.includes(currentUserRole)) {
+        toast.error("You don't have permission to view this agreement version");
+        return;
+      }
     }
     setSelectedAgreement(agreement);
     setIsViewDialogOpen(true);
@@ -422,7 +486,9 @@ export function RentalAgreement() {
       monthlyRental: computedMonthlyRental != null ? computedMonthlyRental : Number(agreement.monthlyRental),
     };
     setFormData(initialFormData);
-    setVersionAccess(agreement.versions[agreement.versions.length - 1].allowedRoles);
+    const versions = agreement.versions ?? [];
+    const latestVersion = versions.length > 0 ? versions[versions.length - 1] : null;
+    setVersionAccess(latestVersion?.allowedRoles ?? ['Admin', 'Manager', 'Sales', 'Finance', 'Operations']);
     setIsEditDialogOpen(true);
   };
 
@@ -480,6 +546,12 @@ export function RentalAgreement() {
   };
 
   const handleDownloadPDF = (agreement: RentalAgreement) => {
+    // If a signed document exists, download that instead of regenerating the PDF
+    if (agreement.signedDocumentUrl) {
+      void handleDownloadSignedDocument(agreement);
+      return;
+    }
+
     try {
       toast.success(`Downloading ${agreement.agreementNumber} as PDF...`);
       const doc = generateRentalAgreementPdf({
@@ -553,10 +625,11 @@ export function RentalAgreement() {
 
       if (data.success) {
         toast.success("Signed agreement uploaded successfully!");
+        // Ensure the latest versions and signed document info are reflected before user opens Version History
+        await fetchAgreements();
         setIsUploadDialogOpen(false);
         setUploadedFile(null);
         setSelectedAgreement(null);
-        fetchAgreements(); // Refresh the list
       } else {
         toast.error(data.message || 'Failed to upload signed document');
       }
@@ -731,18 +804,41 @@ export function RentalAgreement() {
 
       {/* Agreements Table */}
       <Card className="border-[#E5E7EB]">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-[18px]">All Agreements</CardTitle>
-          <Button 
-            className="bg-[#F15929] hover:bg-[#d94d1f] h-10 px-6 rounded-lg"
-            onClick={() => {
-              resetForm();
-              setIsCreateDialogOpen(true);
-            }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Agreement
-          </Button>
+        <CardHeader className="space-y-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[18px]">All Agreements</CardTitle>
+          </div>
+          <div className="flex items-center gap-3">
+            <Input
+              placeholder="Search by project name or hirer name"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-9 flex-1"
+            />
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-9 w-[160px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Draft">Draft</SelectItem>
+                <SelectItem value="Active">Active</SelectItem>
+                <SelectItem value="Expired">Expired</SelectItem>
+                <SelectItem value="Terminated">Terminated</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button 
+              className="bg-[#F15929] hover:bg-[#d94d1f] h-10 px-6 rounded-lg"
+              onClick={() => {
+                resetForm();
+                setIsCreateDialogOpen(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Agreement
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -770,13 +866,26 @@ export function RentalAgreement() {
                     No rental agreements found. Create your first agreement.
                   </TableCell>
                 </TableRow>
-              ) : agreements.map((agreement) => (
+              ) : filteredAgreements.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-[#6B7280]">
+                    No agreements match your search or selected status.
+                  </TableCell>
+                </TableRow>
+              ) : filteredAgreements.map((agreement) => (
                 <TableRow key={agreement.id} className="h-14 hover:bg-[#F3F4F6]">
-                  <TableCell className="text-[#374151]">{agreement.projectName}</TableCell>
+                  <TableCell className="text-[#374151]">
+                    {agreement.projectName}
+                    {agreement.extendedFromAgreement?.agreementNumber && (
+                      <span className="ml-1 text-[#6B7280] text-sm">
+                        (Extended from {agreement.extendedFromAgreement.agreementNumber})
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-[#374151]">{agreement.hirer ?? '—'}</TableCell>
                   <TableCell className="text-[#374151]">
                     {agreement.rfq?.totalAmount != null
-                      ? `RM ${Number(agreement.rfq.totalAmount).toLocaleString()}`
+                      ? `RM ${Number(agreement.rfq.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       : '—'}
                   </TableCell>
                   <TableCell className="text-[#374151]">
@@ -907,7 +1016,7 @@ export function RentalAgreement() {
                   <Input
                     disabled
                     readOnly
-                    value={`Auto-generated on save (e.g. RA-${new Date().getFullYear()}-001)`}
+                    value={`Auto-generated on save (e.g. RA-2026-02-13-1205)`}
                     className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
@@ -1066,10 +1175,10 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Monthly Rental (RM) *</Label>
                   <Input
-                    type="number"
+                    type="text"
                     readOnly
                     disabled
-                    value={formData.monthlyRental ?? ''}
+                    value={formData.monthlyRental != null ? Number(formData.monthlyRental).toFixed(2) : ''}
                     className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
@@ -1077,18 +1186,34 @@ export function RentalAgreement() {
                   <Label>Security Deposit (Month) *</Label>
                   <Input
                     type="number"
+                    min={0}
                     placeholder="0"
-                    value={formData.securityDeposit || ''}
-                    onChange={(e) => setFormData({...formData, securityDeposit: parseFloat(e.target.value)})}
+                    value={formData.securityDeposit === undefined ? '' : formData.securityDeposit}
+                    onChange={(e) => {
+                      if (e.target.value.trim() === '') {
+                        setFormData({ ...formData, securityDeposit: undefined });
+                        return;
+                      }
+                      const n = parseFloat(e.target.value);
+                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Minimum Charges (Month) *</Label>
                   <Input
                     type="number"
+                    min={0}
                     placeholder="0"
-                    value={formData.minimumCharges || ''}
-                    onChange={(e) => setFormData({...formData, minimumCharges: parseFloat(e.target.value)})}
+                    value={formData.minimumCharges === undefined ? '' : formData.minimumCharges}
+                    onChange={(e) => {
+                      if (e.target.value.trim() === '') {
+                        setFormData({ ...formData, minimumCharges: undefined });
+                        return;
+                      }
+                      const n = parseFloat(e.target.value);
+                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1096,9 +1221,17 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     step="0.1"
+                    min={0}
                     placeholder="0.0"
-                    value={formData.defaultInterest || ''}
-                    onChange={(e) => setFormData({...formData, defaultInterest: parseFloat(e.target.value)})}
+                    value={formData.defaultInterest === undefined ? '' : formData.defaultInterest}
+                    onChange={(e) => {
+                      if (e.target.value.trim() === '') {
+                        setFormData({ ...formData, defaultInterest: undefined });
+                        return;
+                      }
+                      const n = parseFloat(e.target.value);
+                      setFormData({ ...formData, defaultInterest: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1142,6 +1275,8 @@ export function RentalAgreement() {
                   <Label>Owner NRIC No. *</Label>
                   <Input
                     placeholder="XXXXXX-XX-XXXX"
+                    maxLength={14}
+                    inputMode="numeric"
                     value={formData.ownerNRIC || ''}
                     onChange={(e) => setFormData({...formData, ownerNRIC: e.target.value})}
                   />
@@ -1158,6 +1293,8 @@ export function RentalAgreement() {
                   <Label>Hirer NRIC No. *</Label>
                   <Input
                     placeholder="XXXXXX-XX-XXXX"
+                    maxLength={14}
+                    inputMode="numeric"
                     value={formData.hirerNRIC || ''}
                     onChange={(e) => setFormData({...formData, hirerNRIC: e.target.value})}
                   />
@@ -1332,10 +1469,10 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Monthly Rental (RM)</Label>
                   <Input
-                    type="number"
+                    type="text"
                     readOnly
                     disabled
-                    value={formData.monthlyRental ?? ''}
+                    value={formData.monthlyRental != null ? Number(formData.monthlyRental).toFixed(2) : ''}
                     className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
@@ -1343,16 +1480,34 @@ export function RentalAgreement() {
                   <Label>Security Deposit (Month) *</Label>
                   <Input
                     type="number"
-                    value={formData.securityDeposit || ''}
-                    onChange={(e) => setFormData({...formData, securityDeposit: parseFloat(e.target.value)})}
+                    min={0}
+                    placeholder="0"
+                    value={formData.securityDeposit === undefined ? '' : formData.securityDeposit}
+                    onChange={(e) => {
+                      if (e.target.value.trim() === '') {
+                        setFormData({ ...formData, securityDeposit: undefined });
+                        return;
+                      }
+                      const n = parseFloat(e.target.value);
+                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Minimum Charges (Month)</Label>
                   <Input
                     type="number"
-                    value={formData.minimumCharges || ''}
-                    onChange={(e) => setFormData({...formData, minimumCharges: parseFloat(e.target.value)})}
+                    min={0}
+                    placeholder="0"
+                    value={formData.minimumCharges === undefined ? '' : formData.minimumCharges}
+                    onChange={(e) => {
+                      if (e.target.value.trim() === '') {
+                        setFormData({ ...formData, minimumCharges: undefined });
+                        return;
+                      }
+                      const n = parseFloat(e.target.value);
+                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1360,8 +1515,17 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     step="0.1"
-                    value={formData.defaultInterest || ''}
-                    onChange={(e) => setFormData({...formData, defaultInterest: parseFloat(e.target.value)})}
+                    min={0}
+                    placeholder="0.0"
+                    value={formData.defaultInterest === undefined ? '' : formData.defaultInterest}
+                    onChange={(e) => {
+                      if (e.target.value.trim() === '') {
+                        setFormData({ ...formData, defaultInterest: undefined });
+                        return;
+                      }
+                      const n = parseFloat(e.target.value);
+                      setFormData({ ...formData, defaultInterest: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
@@ -1403,6 +1567,9 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Owner NRIC No. *</Label>
                   <Input
+                    placeholder="XXXXXX-XX-XXXX"
+                    maxLength={14}
+                    inputMode="numeric"
                     value={formData.ownerNRIC || ''}
                     onChange={(e) => setFormData({...formData, ownerNRIC: e.target.value})}
                   />
@@ -1417,6 +1584,9 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label>Hirer NRIC No.</Label>
                   <Input
+                    placeholder="XXXXXX-XX-XXXX"
+                    maxLength={14}
+                    inputMode="numeric"
                     value={formData.hirerNRIC || ''}
                     onChange={(e) => setFormData({...formData, hirerNRIC: e.target.value})}
                   />
@@ -1534,7 +1704,7 @@ export function RentalAgreement() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-[#6B7280]">Monthly Rental</Label>
-                    <p className="text-[#111827]">RM {selectedAgreement.monthlyRental.toLocaleString()}</p>
+                    <p className="text-[#111827]">RM {Number(selectedAgreement.monthlyRental).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[#6B7280]">Security Deposit</Label>
@@ -1854,7 +2024,7 @@ export function RentalAgreement() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Total Rental</Label>
-                  <p className="text-[#111827]">RM {calculateTotalRental(vn('monthlyRental'), v('termOfHire')).toLocaleString()}</p>
+                  <p className="text-[#111827]">RM {calculateTotalRental(vn('monthlyRental'), v('termOfHire')).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Security Deposit</Label>
@@ -1918,6 +2088,15 @@ export function RentalAgreement() {
                 <Button
                   className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]"
                   onClick={() => {
+                    // If this is the current version and a signed document exists, download the signed file instead
+                    if (
+                      selectedVersion.versionNumber === selectedAgreement.currentVersion &&
+                      selectedAgreement.signedDocumentUrl
+                    ) {
+                      void handleDownloadSignedDocument(selectedAgreement);
+                      return;
+                    }
+
                     const display = selectedVersion.snapshot && typeof selectedVersion.snapshot === 'object' && !Array.isArray(selectedVersion.snapshot)
                       ? (selectedVersion.snapshot as Record<string, unknown>)
                       : (selectedAgreement as unknown as Record<string, unknown>);

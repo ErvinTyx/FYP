@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import bcrypt from "bcrypt";
 import "dotenv/config";
+import { computeTermOfHireFromRfqItems, parseDaysFromTermOfHireString, getTotalRentalMonthFromDays } from "../src/lib/term-of-hire";
 
 const adapter = new PrismaMariaDb({
   host: process.env.DATABASE_HOST || "localhost",
@@ -85,7 +86,7 @@ async function main() {
 
   // Create users for specific roles
   console.log("Creating users for specific roles...");
-  const rolesToCreateUsersFor = ["admin", "finance", "sales", "operations", "production", "vendor"];
+  const rolesToCreateUsersFor = ["admin", "finance", "sales", "operations", "production"];
 
   for (const roleName of rolesToCreateUsersFor) {
     const role = await prisma.role.findUnique({
@@ -735,8 +736,9 @@ async function main() {
       price: 0.59,
       originPrice: 41.75,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC001.jpg',
       damageRepairs: {
         create: [
           { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0, costPerUnit: 2.10 },
@@ -751,8 +753,9 @@ async function main() {
       price: 0.75,
       originPrice: 54.11,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC002.jpg',
       damageRepairs: {
         create: [
           { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0, costPerUnit: 2.10 },
@@ -767,8 +770,9 @@ async function main() {
       price: 1.46,
       originPrice: 105.77,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC003.jpg',
       damageRepairs: {
         create: [
           { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0, costPerUnit: 2.10 },
@@ -783,8 +787,9 @@ async function main() {
       price: 1.12,
       originPrice: 100.96,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC004.jpg',
       damageRepairs: {
         create: [
           { description: 'Wedge key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50, costPerUnit: 10.50 },
@@ -802,8 +807,9 @@ async function main() {
       price: 1.50,
       originPrice: 139.92,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC005.jpg',
       damageRepairs: {
         create: [
           { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75, costPerUnit: 15.75 },
@@ -822,8 +828,9 @@ async function main() {
       price: 2.59,
       originPrice: 196.99,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC006.jpg',
       damageRepairs: {
         create: [
           { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0, costPerUnit: 2.10 },
@@ -838,8 +845,9 @@ async function main() {
       price: 0.56,
       originPrice: 61.08,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC007.jpg',
       damageRepairs: {
         create: [
           { description: 'Wedge key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50, costPerUnit: 10.50 },
@@ -857,8 +865,9 @@ async function main() {
       price: 0.77,
       originPrice: 76.03,
       status: 'Available',
-      location: 'Warehouse B',
+      location: 'Klang Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC008.jpg',
       damageRepairs: {
         create: [
           { description: 'Wedge key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50, costPerUnit: 10.50 },
@@ -876,8 +885,9 @@ async function main() {
       price: 1.31,
       originPrice: 125.48,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC009.jpg',
       damageRepairs: {
         create: [
           { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75, costPerUnit: 15.75 },
@@ -895,8 +905,9 @@ async function main() {
       price: 1.37,
       originPrice: 129.75,
       status: 'Low Stock',
-      location: 'Warehouse B',
+      location: 'Klang Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC010.jpeg',
       damageRepairs: {
         create: [
           { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75, costPerUnit: 15.75 },
@@ -915,8 +926,9 @@ async function main() {
       price: 1.21,
       originPrice: 87.32,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC011.jpg',
       damageRepairs: {
         create: [
           { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0, costPerUnit: 2.10 },
@@ -931,8 +943,9 @@ async function main() {
       price: 2.78,
       originPrice: 220.42,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC012.jpg',
       damageRepairs: {
         create: [
           { description: 'Wedge key missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50, costPerUnit: 10.50 },
@@ -950,8 +963,9 @@ async function main() {
       price: 2.21,
       originPrice: 173.34,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC013.jpg',
       damageRepairs: {
         create: [
           { description: 'Wedge key missing / lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 10.50, costPerUnit: 10.50 },
@@ -969,8 +983,9 @@ async function main() {
       price: 1.30,
       originPrice: 102.74,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC014.jpg',
       damageRepairs: {
         create: [
           { description: 'Thread pipe bend / dented / missing / lost', repairChargePerUnit: 0, partsLabourCostPerUnit: 21.00, costPerUnit: 21.00 },
@@ -985,8 +1000,9 @@ async function main() {
       price: 2.07,
       originPrice: 164.16,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC015.png',
       damageRepairs: {
         create: [
           { description: 'Thread pipe bend / dented / missing / lost', repairChargePerUnit: 0, partsLabourCostPerUnit: 21.00, costPerUnit: 21.00 },
@@ -1002,8 +1018,9 @@ async function main() {
       price: 0.95,
       originPrice: 68.86,
       status: 'Available',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC016.jpg',
       damageRepairs: {
         create: [
           { description: 'Major concrete cleaning', repairChargePerUnit: 2.10, partsLabourCostPerUnit: 0, costPerUnit: 2.10 },
@@ -1018,8 +1035,9 @@ async function main() {
       price: 0.82,
       originPrice: 90.64,
       status: 'Low Stock',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC017.jpg',
       damageRepairs: {
         create: [
           { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75, costPerUnit: 15.75 },
@@ -1037,8 +1055,9 @@ async function main() {
       price: 0.93,
       originPrice: 98.07,
       status: 'Out of Stock',
-      location: 'Warehouse B',
+      location: 'Klang Warehouse',
       itemStatus: 'Unavailable',
+      imageUrl: '/uploads/scaffolding/SC018.jpg',
       damageRepairs: {
         create: [
           { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75, costPerUnit: 15.75 },
@@ -1056,8 +1075,9 @@ async function main() {
       price: 1.14,
       originPrice: 113.06,
       status: 'Low Stock',
-      location: 'Warehouse A',
+      location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
+      imageUrl: '/uploads/scaffolding/SC019.jpg',
       damageRepairs: {
         create: [
           { description: 'Key missing /lost / damaged', repairChargePerUnit: 0, partsLabourCostPerUnit: 15.75, costPerUnit: 15.75 },
@@ -1449,27 +1469,42 @@ async function main() {
   const createdAgreements: { id: string; agreementNumber: string; rfqId: string; projectName: string; hirer: string; securityDeposit: number }[] = [];
   for (let i = 0; i < 50; i++) {
     const rfq = createdRfqs[i];
-    const totalRentalMonths = SAMPLE_TOTAL_RENTAL_MONTHS[i];
+    const fallbackTotalRentalMonths = SAMPLE_TOTAL_RENTAL_MONTHS[i];
+
+    // Compute termOfHire from RFQ items using the same logic as the live API
+    const computedTermOfHire = await computeTermOfHireFromRfqItems(prisma as unknown as any, rfq.id);
+    const termDays = parseDaysFromTermOfHireString(computedTermOfHire);
+    const effectiveTotalRentalMonths =
+      termDays != null ? getTotalRentalMonthFromDays(termDays) : fallbackTotalRentalMonths;
+
     const securityDepositAmount = Math.round(rfq.totalAmount * 0.1 * 100) / 100;
     const agreement = await prisma.rentalAgreement.create({
       data: {
         agreementNumber: SAMPLE_AGREEMENT_NUMBERS[i],
+        poNumber: `PO-${SAMPLE_AGREEMENT_NUMBERS[i]}`,          // example PO
         projectName: rfq.projectName,
         owner: "Power Metal Steel Sdn Bhd",
+        ownerPhone: "+60 3-1234 5678",                          
         hirer: rfq.customerName,
+        hirerPhone: rfq.customerPhone ?? null,                  
         location: rfq.projectLocation,
-        totalRentalMonth: totalRentalMonths,
-        monthlyRental: Math.round((rfq.totalAmount / Math.max(1, totalRentalMonths)) * 100) / 100,
+        termOfHire: computedTermOfHire ?? `${fallbackTotalRentalMonths} months`,
+        totalRentalMonth: effectiveTotalRentalMonths,
+        monthlyRental: Math.round((rfq.totalAmount / Math.max(1, effectiveTotalRentalMonths)) * 100) / 100,
         securityDeposit: securityDepositAmount,
-        minimumCharges: 0,
-        defaultInterest: 0,
-        status: "Completed",
+        minimumCharges: 1,
+        defaultInterest: 1.5,
+        ownerSignatoryName: "Power Metal Representative",
+        hirerSignatoryName: rfq.customerName,
+        status: "Active",
         signedStatus: "completed",
+        signedDocumentUrl: "/uploads/agreements/signed/SignedAgreement-Seed.pdf",
         currentVersion: 1,
         createdBy: salesUser.id,
         rfqId: rfq.id,
       },
     });
+
     const rfqItems = await prisma.rFQItem.findMany({ where: { rfqId: rfq.id } });
     for (const it of rfqItems) {
       await prisma.agreementItem.create({
@@ -1483,6 +1518,23 @@ async function main() {
         },
       });
     }
+
+    // Create an initial version so Version History is not empty for seeded agreements
+    await prisma.agreementVersion.create({
+      data: {
+        agreementId: agreement.id,
+        versionNumber: 1,
+        changes: "Initial agreement created (seed)",
+        allowedRoles: JSON.stringify([
+          "Admin",
+          "Manager",
+          "Sales",
+          "Finance",
+          "Operations",
+        ]),
+        createdBy: salesUser.id,
+      },
+    });
     createdAgreements.push({
       id: agreement.id,
       agreementNumber: agreement.agreementNumber,
@@ -1492,6 +1544,7 @@ async function main() {
       securityDeposit: securityDepositAmount,
     });
   }
+  
   console.log(`  - Created ${createdAgreements.length} RentalAgreements with AgreementItems.`);
 
   console.log("Creating 50 DeliveryRequests with DeliverySets and DO issued...");
