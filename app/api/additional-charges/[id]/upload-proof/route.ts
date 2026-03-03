@@ -13,13 +13,28 @@ import { auth } from '@/lib/auth';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
 const FOLDER = 'additional-charges';
+const UPLOAD_PROOF_ROLES = ['super_user', 'admin', 'sales'];
 
 interface RouteParams { params: Promise<{ id: string }> }
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
-    const uploadedByEmail = session?.user?.email ?? (request.headers.get('x-uploaded-by-email') || null);
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    // Only admin, super_user, and sales can upload proof of payment
+    const canUploadProof = session.user.roles?.some(role => UPLOAD_PROOF_ROLES.includes(role));
+    if (!canUploadProof) {
+      return NextResponse.json(
+        { success: false, message: 'Forbidden: Only admin, super_user, and sales can upload proof of payment' },
+        { status: 403 }
+      );
+    }
+    const uploadedByEmail = session.user.email ?? (request.headers.get('x-uploaded-by-email') || null);
 
     const { id } = await params;
     if (!id) {

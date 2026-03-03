@@ -116,9 +116,8 @@ export function DepositDetails({
     fetchApps();
   }, [deposit.id]);
 
-  const canUploadPayment = userRole === "Customer" && (deposit.status === "Pending Payment" || (deposit.status === "Rejected" && !deposit.isOverdue));
-  // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
-  const canAdminUploadPayment = (userRole === "super_user" || userRole === "Admin" || userRole === "Sales") && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && !deposit.paymentProof;
+  // Only admin, super_user, and sales can upload proof of payment (not Customer, Finance, or other roles)
+  const canAdminUploadPayment = (userRole === "super_user" || userRole === "Admin" || userRole === "Sales") && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && (deposit.status === "Rejected" || !deposit.paymentProof);
   const canApprove = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && deposit.status === "Pending Approval";
   
   // DEBUG: Log canApprove result
@@ -692,62 +691,6 @@ export function DepositDetails({
               >
                 <Upload className="mr-2 h-4 w-4" />
                 Submit Proof of Payment
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Payment Proof Upload (Customer View) */}
-      {canUploadPayment && !isOverdue && (
-        <Card className="border-[#E5E7EB]">
-          <CardHeader>
-            <CardTitle className="text-[18px]">Upload Payment Proof</CardTitle>
-            <p className="text-[14px] text-[#6B7280] mt-2">
-              Upload your payment receipt or bank transfer proof to complete this deposit payment
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <PaymentProofUpload
-              onFileSelect={setPaymentFile}
-              existingFile={paymentFile}
-            />
-            <div className="flex justify-end gap-3">
-              <Button
-                onClick={handleSubmitPayment}
-                disabled={!paymentFile}
-                className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg disabled:opacity-50"
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                Submit Payment Proof
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Re-upload for Rejected (Customer View) */}
-      {isCustomerView && deposit.status === "Rejected" && !isOverdue && isBeforeDueDate && (
-        <Card className="border-[#E5E7EB]">
-          <CardHeader>
-            <CardTitle className="text-[18px]">Re-upload Payment Proof</CardTitle>
-            <p className="text-[14px] text-[#6B7280] mt-2">
-              Please upload the correct payment proof based on the rejection reason above
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <PaymentProofUpload
-              onFileSelect={setPaymentFile}
-              existingFile={paymentFile}
-            />
-            <div className="flex justify-end gap-3">
-              <Button
-                onClick={handleSubmitPayment}
-                disabled={!paymentFile}
-                className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg disabled:opacity-50"
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                Submit for Re-Approval
               </Button>
             </div>
           </CardContent>

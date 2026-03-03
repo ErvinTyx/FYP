@@ -6,6 +6,7 @@ import { sendDepositRejectionEmail } from '@/lib/email';
 // Roles allowed to manage deposits
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 const APPROVAL_ROLES = ['super_user', 'admin', 'finance'];
+const UPLOAD_PROOF_ROLES = ['super_user', 'admin', 'sales'];
 
 /**
  * Generate a unique deposit number in format DEP-YYYYMMDD-XXX
@@ -446,6 +447,14 @@ export async function PUT(request: NextRequest) {
 
     switch (action) {
       case 'upload-proof': {
+        // Only admin, super_user, and sales can upload proof of payment
+        const canUploadProof = session.user.roles?.some(role => UPLOAD_PROOF_ROLES.includes(role));
+        if (!canUploadProof) {
+          return NextResponse.json(
+            { success: false, message: 'Forbidden: Only admin, super_user, and sales can upload proof of payment' },
+            { status: 403 }
+          );
+        }
         // Validate current status allows proof upload
         const allowedStatuses = ['Pending Payment', 'Overdue', 'Rejected'];
         if (!allowedStatuses.includes(deposit.status)) {

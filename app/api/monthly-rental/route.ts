@@ -7,6 +7,7 @@ import { calculateBillingPeriod, getCycleNumber } from '@/lib/billing-helpers';
 // Roles allowed to manage monthly rental invoices
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 const APPROVAL_ROLES = ['super_user', 'admin', 'finance'];
+const UPLOAD_PROOF_ROLES = ['super_user', 'admin', 'sales'];
 
 /**
  * Generate a unique invoice number in format MRI-YYYYMMDD-XXX
@@ -810,6 +811,14 @@ export async function PUT(request: NextRequest) {
 
     switch (action) {
       case 'upload-proof': {
+        // Only admin, super_user, and sales can upload proof of payment
+        const canUploadProof = session.user.roles?.some(role => UPLOAD_PROOF_ROLES.includes(role));
+        if (!canUploadProof) {
+          return NextResponse.json(
+            { success: false, message: 'Forbidden: Only admin, super_user, and sales can upload proof of payment' },
+            { status: 403 }
+          );
+        }
         // Validate current status allows proof upload
         const allowedStatuses = ['Pending Payment', 'Overdue', 'Rejected'];
         if (!allowedStatuses.includes(invoice.status)) {
