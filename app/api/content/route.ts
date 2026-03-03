@@ -5,7 +5,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+
+const CONTENT_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 
 /**
  * GET /api/content
@@ -13,6 +16,21 @@ import { prisma } from '@/lib/prisma';
  */
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    const hasPermission = session.user.roles?.some((role: string) => CONTENT_ROLES.includes(role));
+    if (!hasPermission) {
+      return NextResponse.json(
+        { success: false, message: 'Forbidden: You do not have permission to access content' },
+        { status: 403 }
+      );
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const type = searchParams.get('type');
     const status = searchParams.get('status');
@@ -52,6 +70,21 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    const hasPermission = session.user.roles?.some((role: string) => CONTENT_ROLES.includes(role));
+    if (!hasPermission) {
+      return NextResponse.json(
+        { success: false, message: 'Forbidden: You do not have permission to create content' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { type, title, content, status, imageUrl, metadata, updatedBy } = body;
 

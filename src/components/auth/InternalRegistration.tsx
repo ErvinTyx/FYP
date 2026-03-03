@@ -127,8 +127,12 @@ export function InternalRegistration({ onBack, onComplete }: InternalRegistratio
 
       const data = await response.json();
 
-      if (!data.success && data.errors) {
-        setFormErrors(data.errors);
+      if (!data.success) {
+        if (data.errors) {
+          setFormErrors(data.errors);
+        } else if (data.message) {
+          setFormErrors({ general: data.message });
+        }
         setIsCheckingUnique(false);
         return;
       }

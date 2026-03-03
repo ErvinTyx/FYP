@@ -34,6 +34,12 @@ function useChart() {
   return context;
 }
 
+// Sanitize id for safe use in CSS selectors (prevents XSS via dangerouslySetInnerHTML)
+function sanitizeChartId(id: string | undefined): string {
+  if (!id || typeof id !== "string") return "";
+  return id.replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
 function ChartContainer({
   id,
   className,
@@ -47,7 +53,8 @@ function ChartContainer({
   >["children"];
 }) {
   const uniqueId = React.useId();
-  const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`;
+  const safeId = sanitizeChartId(id) || uniqueId.replace(/:/g, "");
+  const chartId = `chart-${safeId}`;
 
   return (
     <ChartContext.Provider value={{ config }}>

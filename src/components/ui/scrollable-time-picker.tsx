@@ -30,7 +30,9 @@ function WheelColumn({ items, selectedValue, onSelect, label }: WheelColumnProps
   // Scroll to selected value on mount and when value changes externally
   useEffect(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scrollable-time-picker.tsx:useEffect',message:'Mount/value change',data:{label,selectedValue,hasRef:!!scrollRef.current,scrollHeight:scrollRef.current?.scrollHeight,clientHeight:scrollRef.current?.clientHeight},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') {
+      fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scrollable-time-picker.tsx:useEffect',message:'Mount/value change',data:{label,selectedValue,hasRef:!!scrollRef.current,scrollHeight:scrollRef.current?.scrollHeight,clientHeight:scrollRef.current?.clientHeight},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+    }
     // #endregion
     if (scrollRef.current && !isScrollingRef.current) {
       const index = items.indexOf(selectedValue);
@@ -43,7 +45,9 @@ function WheelColumn({ items, selectedValue, onSelect, label }: WheelColumnProps
 
   const handleScroll = useCallback(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scrollable-time-picker.tsx:handleScroll',message:'Scroll event fired',data:{label,hasRef:!!scrollRef.current,scrollTop:scrollRef.current?.scrollTop},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') {
+      fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scrollable-time-picker.tsx:handleScroll',message:'Scroll event fired',data:{label,hasRef:!!scrollRef.current,scrollTop:scrollRef.current?.scrollTop},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+    }
     // #endregion
     if (!scrollRef.current) return;
 
@@ -93,7 +97,9 @@ function WheelColumn({ items, selectedValue, onSelect, label }: WheelColumnProps
 
   // #region agent log
   useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scrollable-time-picker.tsx:WheelColumn:render',message:'Component rendered',data:{label,containerHeight:ITEM_HEIGHT*VISIBLE_ITEMS,itemHeight:ITEM_HEIGHT,visibleItems:VISIBLE_ITEMS,totalItems:items.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') {
+      fetch('http://127.0.0.1:7242/ingest/54f76e26-7bfc-4310-a122-56b8dd220777',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'scrollable-time-picker.tsx:WheelColumn:render',message:'Component rendered',data:{label,containerHeight:ITEM_HEIGHT*VISIBLE_ITEMS,itemHeight:ITEM_HEIGHT,visibleItems:VISIBLE_ITEMS,totalItems:items.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+    }
   }, [label, items.length]);
   // #endregion
 
