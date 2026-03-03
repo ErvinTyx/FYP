@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Plus, Eye, MoreVertical, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Eye, MoreVertical, CheckCircle, XCircle, Search } from "lucide-react";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import {
   Table,
@@ -81,9 +82,20 @@ interface RefundListProps {
 }
 
 export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, loading, onCreateNew, onViewDetails, userRole = "Other", onApprove, onReject, isProcessing = false }: RefundListProps) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedRefund, setSelectedRefund] = useState<Refund | null>(null);
+
+  const filteredRefunds = refunds.filter((refund) => {
+    const matchesSearch =
+      (refund.refundNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (refund.customerName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (refund.originalInvoice || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === "all" || refund.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
   const canCreateRefund = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
@@ -195,6 +207,28 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
         </Card>
       </div>
 
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 max-w-[400px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
+          <Input
+            placeholder="Search by Refund ID, invoice, or customer..."
+            className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="Pending Approval">Pending Approval</SelectItem>
+            <SelectItem value="Approved">Approved</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <Card className="border-[#E5E7EB]">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-[18px]">Refund Listing</CardTitle>
@@ -259,8 +293,14 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
                     No refund records found. Click &quot;Issue New Refund&quot; to create one.
                   </TableCell>
                 </TableRow>
+              ) : filteredRefunds.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-[#6B7280] h-32">
+                    No refunds found
+                  </TableCell>
+                </TableRow>
               ) : (
-                refunds.map((refund) => (
+                filteredRefunds.map((refund) => (
                   <TableRow key={refund.id} className="h-14 hover:bg-[#F3F4F6]">
                     <TableCell className="text-[#111827]">{refund.refundNumber}</TableCell>
                     <TableCell className="text-[#374151]">{refund.originalInvoice}</TableCell>

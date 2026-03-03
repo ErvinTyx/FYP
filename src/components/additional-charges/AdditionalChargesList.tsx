@@ -282,34 +282,31 @@ export function AdditionalChargesList({ onViewDetails, userRole = "Other" }: Add
         </p>
       </div>
 
-      <Card className="border-[#E5E7EB]">
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#9CA3AF] h-4 w-4" />
-              <Input
-                placeholder="Search by Invoice, DO, Customer, or Charge ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-10 border-[#D1D5DB] rounded-md"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-[200px] h-10 border-[#D1D5DB] rounded-md">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="Pending Payment">Pending Payment</SelectItem>
-                <SelectItem value="Pending Approval">Pending Approval</SelectItem>
-                <SelectItem value="Paid">Paid</SelectItem>
-                <SelectItem value="Rejected">Rejected</SelectItem>
-                <SelectItem value="Overdue">Overdue</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Filters */}
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 max-w-[400px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
+          <Input
+            placeholder="Search by Invoice, DO, Customer, or Charge ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="Pending Payment">Pending Payment</SelectItem>
+            <SelectItem value="Pending Approval">Pending Approval</SelectItem>
+            <SelectItem value="Paid">Paid</SelectItem>
+            <SelectItem value="Rejected">Rejected</SelectItem>
+            <SelectItem value="Overdue">Overdue</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       <Card className="border-[#E5E7EB]">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
