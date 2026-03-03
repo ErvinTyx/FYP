@@ -5,7 +5,7 @@ import { createChargeForDelivery } from '@/lib/additional-charge-utils';
 import { calculateBillingPeriod, getCycleNumber } from '@/lib/billing-helpers';
 
 // Roles allowed to manage delivery requests
-const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
+const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations', 'production'];
 
 /**
  * Auto-generate first monthly rental invoice when delivery is completed.
