@@ -5,7 +5,7 @@ import prisma from '@/lib/prisma';
 import { createChargeForReturn } from '@/lib/additional-charge-utils';
 
 // Roles allowed to manage return requests
-const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
+const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations', 'production'];
 
 /**
  * GET /api/return
