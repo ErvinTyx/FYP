@@ -87,7 +87,7 @@ export function CreditNoteDetails({
     }
   }, [showPrintModal, autoPrint]);
 
-  const canApprove = (userRole === "Admin" || userRole === "Finance") && 
+  const canApprove = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && 
                      creditNote.status === "Pending Approval";
 
   const handleConfirmApprove = () => {

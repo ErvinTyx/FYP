@@ -254,6 +254,8 @@ export function AdditionalChargesDetail({
   };
 
   const proofDisplay = charge.proofOfPaymentUrl ?? charge.proofOfPayment;
+  // Only super_user, Admin, and Finance can approve/reject
+  const canApprove = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && charge.status === "Pending Approval";
   // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
   const canUploadProof = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
@@ -278,8 +280,8 @@ export function AdditionalChargesDetail({
         </div>
       </div>
 
-      {/* Pending Approval */}
-      {charge.status === "Pending Approval" && (
+      {/* Pending Approval - only visible to admin, super_user, finance */}
+      {canApprove && (
         <Card className="border-[#F15929] bg-[#FFF7F5]">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">

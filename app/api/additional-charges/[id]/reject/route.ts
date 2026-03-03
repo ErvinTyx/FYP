@@ -4,13 +4,31 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sendAdditionalChargeRejectionEmail } from '@/lib/email';
+
+const APPROVAL_ROLES = ['super_user', 'admin', 'finance'];
 
 interface RouteParams { params: Promise<{ id: string }> }
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    const canReject = session.user.roles?.some((role: string) => APPROVAL_ROLES.includes(role));
+    if (!canReject) {
+      return NextResponse.json(
+        { success: false, message: 'You do not have permission to reject charges' },
+        { status: 403 }
+      );
+    }
+
     const { id } = await params;
     if (!id) {
       return NextResponse.json(
@@ -36,6 +54,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(
         { success: false, message: 'Additional charge not found' },
         { status: 404 }
+      );
+    }
+    if (charge.status !== 'pending_approval') {
+      return NextResponse.json(
+        { success: false, message: 'Only charges with Pending Approval status can be rejected' },
+        { status: 400 }
       );
     }
 

@@ -116,6 +116,8 @@ export function AdditionalChargesList({ onViewDetails, userRole = "Other" }: Add
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedCharge, setSelectedCharge] = useState<AdditionalCharge | null>(null);
 
+  // Only super_user, Admin, and Finance can approve/reject; Sales cannot
+  const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
   // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
   const canUploadProof = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
@@ -413,7 +415,7 @@ export function AdditionalChargesList({ onViewDetails, userRole = "Other" }: Add
                                     Upload POP
                                   </DropdownMenuItem>
                                 )}
-                                {charge.status === "Pending Approval" && (
+                                {canApproveReject && charge.status === "Pending Approval" && (
                                   <>
                                     <DropdownMenuItem onClick={() => handleApprove(charge.id)}>
                                       <CheckCircle className="mr-2 h-4 w-4 text-[#10B981]" />

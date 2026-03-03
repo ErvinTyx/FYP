@@ -78,7 +78,7 @@ export function CreditNotesList({
   const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
   const [selectedNoteForRejection, setSelectedNoteForRejection] = useState<CreditNote | null>(null);
 
-  const canApproveReject = (userRole === "Admin" || userRole === "Finance") && (onApprove != null || onReject != null);
+  const canApproveReject = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && (onApprove != null || onReject != null);
 
   const filteredNotes = creditNotes.filter((note) => {
     const matchesSearch =
