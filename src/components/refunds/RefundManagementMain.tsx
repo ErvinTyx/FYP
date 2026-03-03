@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { toast } from "sonner";
 import { RefundList } from "./RefundList";
 import { CreateRefund } from "./CreateRefund";
@@ -28,18 +29,30 @@ export function RefundManagementMain({ userRole = "Other", initialOpenFromSOA, o
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [orderBy, setOrderBy] = useState<OrderBy>("latest");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [summary, setSummary] = useState<{ totalAmount: number; pendingCount: number; approvedCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const debouncedSearch = useDebounce(searchQuery, 400);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
 
   const fetchRefunds = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
       const res = await fetch(`/api/refunds?${params}`);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setRefunds(json.data);
         setTotal(typeof json.total === "number" ? json.total : json.data.length);
+        setSummary(json.summary ?? null);
       } else {
         setRefunds([]);
         setTotal(0);
@@ -50,7 +63,7 @@ export function RefundManagementMain({ userRole = "Other", initialOpenFromSOA, o
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, orderBy]);
+  }, [page, pageSize, orderBy, debouncedSearch, statusFilter]);
 
   useEffect(() => {
     fetchRefunds();
@@ -221,6 +234,10 @@ export function RefundManagementMain({ userRole = "Other", initialOpenFromSOA, o
       page={page}
       pageSize={pageSize}
       orderBy={orderBy}
+      searchQuery={searchQuery}
+      statusFilter={statusFilter}
+      onSearchChange={setSearchQuery}
+      onStatusFilterChange={setStatusFilter}
       onPageChange={setPage}
       onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
       onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
@@ -231,6 +248,7 @@ export function RefundManagementMain({ userRole = "Other", initialOpenFromSOA, o
       onApprove={handleApprove}
       onReject={handleReject}
       isProcessing={isProcessing}
+      summary={summary}
     />
   );
 }

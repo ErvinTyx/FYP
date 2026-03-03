@@ -63,12 +63,22 @@ function invoiceTypeLabel(invoiceType: string): string {
   }
 }
 
+interface RefundSummary {
+  totalAmount: number;
+  pendingCount: number;
+  approvedCount: number;
+}
+
 interface RefundListProps {
   refunds: Refund[];
   total?: number;
   page?: number;
   pageSize?: number;
   orderBy?: OrderBy;
+  searchQuery?: string;
+  statusFilter?: string;
+  onSearchChange?: (value: string) => void;
+  onStatusFilterChange?: (value: string) => void;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   onOrderByChange?: (orderBy: OrderBy) => void;
@@ -79,23 +89,19 @@ interface RefundListProps {
   onApprove?: (refundId: string) => void;
   onReject?: (refundId: string, reason: string) => void;
   isProcessing?: boolean;
+  summary?: RefundSummary | null;
 }
 
-export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, loading, onCreateNew, onViewDetails, userRole = "Other", onApprove, onReject, isProcessing = false }: RefundListProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderBy = "latest", searchQuery = "", statusFilter = "all", onSearchChange, onStatusFilterChange, onPageChange, onPageSizeChange, onOrderByChange, loading, onCreateNew, onViewDetails, userRole = "Other", onApprove, onReject, isProcessing = false, summary }: RefundListProps) {
   const [showApproveDialog, setShowApproveDialog] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedRefund, setSelectedRefund] = useState<Refund | null>(null);
 
-  const filteredRefunds = refunds.filter((refund) => {
-    const matchesSearch =
-      (refund.refundNumber || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (refund.customerName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (refund.originalInvoice || "").toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || refund.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const displayRefunds = refunds;
+
+  const totalAmount = summary?.totalAmount ?? refunds.reduce((acc, r) => acc + r.amount, 0);
+  const pendingCount = summary?.pendingCount ?? refunds.filter((r) => r.status === "Pending Approval").length;
+  const approvedCount = summary?.approvedCount ?? refunds.filter((r) => r.status === "Approved").length;
 
   const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
   const canCreateRefund = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
@@ -147,10 +153,6 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
         return <Badge className="bg-[#DC2626] hover:bg-[#B91C1C]">Rejected</Badge>;
     }
   };
-
-  const totalAmount = refunds.reduce((acc, r) => acc + r.amount, 0);
-  const pendingCount = refunds.filter((r) => r.status === "Pending Approval").length;
-  const approvedCount = refunds.filter((r) => r.status === "Approved").length;
 
   return (
     <div className="space-y-6">
@@ -213,11 +215,11 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
           <Input
             placeholder="Search by Refund ID, invoice, or customer..."
             className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
           <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
@@ -287,20 +289,14 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
                     Loading...
                   </TableCell>
                 </TableRow>
-              ) : refunds.length === 0 ? (
+              ) : displayRefunds.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-[#6B7280] h-32">
-                    No refund records found. Click &quot;Issue New Refund&quot; to create one.
-                  </TableCell>
-                </TableRow>
-              ) : filteredRefunds.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center text-[#6B7280] h-32">
-                    No refunds found
+                    No refund records found. {total === 0 ? 'Click "Issue New Refund" to create one.' : 'Try adjusting your search or filters.'}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRefunds.map((refund) => (
+                displayRefunds.map((refund) => (
                   <TableRow key={refund.id} className="h-14 hover:bg-[#F3F4F6]">
                     <TableCell className="text-[#111827]">{refund.refundNumber}</TableCell>
                     <TableCell className="text-[#374151]">{refund.originalInvoice}</TableCell>

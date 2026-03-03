@@ -80,12 +80,20 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || undefined;
     const customerName = searchParams.get('customerName') || undefined;
+    const search = searchParams.get('search')?.trim() || undefined;
     const invoiceType = searchParams.get('invoiceType') || undefined;
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (customerName) where.customerName = { contains: customerName };
     if (invoiceType) where.invoiceType = invoiceType;
+    if (search) {
+      (where as Record<string, unknown>).OR = [
+        { refundNumber: { contains: search } },
+        { customerName: { contains: search } },
+        { originalInvoice: { contains: search } },
+      ];
+    }
 
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
     const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
@@ -94,7 +102,17 @@ export async function GET(request: NextRequest) {
     const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
     const skip = (page - 1) * pageSize;
 
-    const total = await prisma.refund.count({ where });
+    const [total, approvedRefunds, pendingCount] = await Promise.all([
+      prisma.refund.count({ where }),
+      prisma.refund.findMany({
+        where: { AND: [where, { status: 'Approved' }] },
+        select: { amount: true },
+      }),
+      prisma.refund.count({ where: { AND: [where, { status: 'Pending Approval' }] } }),
+    ]);
+
+    const totalAmount = approvedRefunds.reduce((sum, r) => sum + Number(r.amount), 0);
+    const approvedCount = approvedRefunds.length;
 
     const list = await prisma.refund.findMany({
       where,
@@ -104,7 +122,15 @@ export async function GET(request: NextRequest) {
       take: pageSize,
     });
     const data = list.map((r) => serializeRefund(r as Parameters<typeof serializeRefund>[0]));
-    return NextResponse.json({ success: true, data, total, page, pageSize, orderBy: orderByParam });
+    return NextResponse.json({
+      success: true,
+      data,
+      total,
+      page,
+      pageSize,
+      orderBy: orderByParam,
+      summary: { totalAmount, pendingCount, approvedCount },
+    });
   } catch (error) {
     console.error('[Refunds] GET error:', error);
     return NextResponse.json(

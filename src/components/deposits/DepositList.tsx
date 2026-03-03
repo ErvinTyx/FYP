@@ -51,12 +51,25 @@ import { Deposit } from "../../types/deposit";
 const PAGE_SIZES = [5, 10, 25, 50] as const;
 type OrderBy = "latest" | "earliest";
 
+interface DepositSummary {
+  pendingPaymentCount: number;
+  pendingApprovalCount: number;
+  paidCount: number;
+  paidAmount: number;
+  overdueCount: number;
+  expiredCount: number;
+}
+
 interface DepositListProps {
   deposits: Deposit[];
   total?: number;
   page?: number;
   pageSize?: number;
   orderBy?: OrderBy;
+  searchQuery?: string;
+  statusFilter?: string;
+  onSearchChange?: (value: string) => void;
+  onStatusFilterChange?: (value: string) => void;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   onOrderByChange?: (orderBy: OrderBy) => void;
@@ -68,11 +81,10 @@ interface DepositListProps {
   onMarkExpired?: (depositId: string) => void;
   userRole: "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
   isProcessing?: boolean;
+  summary?: DepositSummary | null;
 }
 
-export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, onView, onUploadProof, onApprove, onReject, onResetDueDate, onMarkExpired, userRole, isProcessing }: DepositListProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orderBy = "latest", searchQuery = "", statusFilter = "all", onSearchChange, onStatusFilterChange, onPageChange, onPageSizeChange, onOrderByChange, onView, onUploadProof, onApprove, onReject, onResetDueDate, onMarkExpired, userRole, isProcessing, summary }: DepositListProps) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedDepositForUpload, setSelectedDepositForUpload] = useState<Deposit | null>(null);
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
@@ -85,29 +97,14 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
   const [confirmExpireModalOpen, setConfirmExpireModalOpen] = useState(false);
   const [selectedDepositForExpire, setSelectedDepositForExpire] = useState<Deposit | null>(null);
 
-  const filteredDeposits = deposits.filter((deposit) => {
-    const depositNumber = deposit.depositNumber || deposit.depositId || '';
-    const invoiceNo = deposit.invoiceNo || deposit.agreement?.agreementNumber || '';
-    const customerName = deposit.customerName || deposit.agreement?.hirer || '';
-    
-    const matchesSearch =
-      depositNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || deposit.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const displayDeposits = deposits;
 
-  const pendingPaymentCount = deposits.filter((d) => d.status === "Pending Payment").length;
-  const pendingApprovalCount = deposits.filter((d) => d.status === "Pending Approval").length;
-  const paidCount = deposits.filter((d) => d.status === "Paid").length;
-  const paidAmount = deposits
-    .filter((d) => d.status === "Paid")
-    .reduce((sum, d) => sum + d.depositAmount, 0);
-
-  // Count overdue and expired deposits
-  const overdueCount = deposits.filter((d) => d.status === "Overdue").length;
-  const expiredCount = deposits.filter((d) => d.status === "Expired").length;
+  const pendingPaymentCount = summary?.pendingPaymentCount ?? deposits.filter((d) => d.status === "Pending Payment").length;
+  const pendingApprovalCount = summary?.pendingApprovalCount ?? deposits.filter((d) => d.status === "Pending Approval").length;
+  const paidCount = summary?.paidCount ?? deposits.filter((d) => d.status === "Paid").length;
+  const paidAmount = summary?.paidAmount ?? deposits.filter((d) => d.status === "Paid").reduce((sum, d) => sum + d.depositAmount, 0);
+  const overdueCount = summary?.overdueCount ?? deposits.filter((d) => d.status === "Overdue").length;
+  const expiredCount = summary?.expiredCount ?? deposits.filter((d) => d.status === "Expired").length;
   
   const canManageDeposits = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
   const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
@@ -237,11 +234,11 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
           <Input
             placeholder="Search by Agreement ID, invoice, or customer..."
             className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
           <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
@@ -309,14 +306,14 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDeposits.length === 0 ? (
+              {displayDeposits.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-[#6B7280]">
                     No deposits found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredDeposits.map((deposit) => {
+                displayDeposits.map((deposit) => {
                   const displayInvoiceNo = deposit.invoiceNo || deposit.agreement?.agreementNumber || deposit.depositNumber || '-';
                   const displayCustomerName = deposit.customerName || deposit.agreement?.hirer || 'Unknown';
                   const displayLastUpdated = deposit.lastUpdated || deposit.updatedAt || deposit.createdAt;

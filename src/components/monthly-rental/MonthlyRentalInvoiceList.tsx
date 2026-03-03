@@ -41,12 +41,24 @@ import { RejectionModal } from './RejectionModal';
 const PAGE_SIZES = [5, 10, 25, 50] as const;
 type OrderBy = 'latest' | 'earliest';
 
+interface MonthlyRentalSummary {
+  pendingPaymentCount: number;
+  pendingApprovalCount: number;
+  paidCount: number;
+  paidAmount: number;
+  overdueCount: number;
+}
+
 interface MonthlyRentalInvoiceListProps {
   invoices: MonthlyRentalInvoice[];
   total?: number;
   page?: number;
   pageSize?: number;
   orderBy?: OrderBy;
+  searchQuery?: string;
+  statusFilter?: string;
+  onSearchChange?: (value: string) => void;
+  onStatusFilterChange?: (value: string) => void;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   onOrderByChange?: (orderBy: OrderBy) => void;
@@ -56,11 +68,10 @@ interface MonthlyRentalInvoiceListProps {
   onReject?: (invoiceId: string, reason: string) => void;
   userRole: 'super_user' | 'Admin' | 'Finance' | 'Sales' | 'Customer' | 'Other';
   isProcessing?: boolean;
+  summary?: MonthlyRentalSummary | null;
 }
 
-export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSize = 10, orderBy = 'latest', onPageChange, onPageSizeChange, onOrderByChange, onView, onEditPayment, onApprove, onReject, userRole, isProcessing }: MonthlyRentalInvoiceListProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSize = 10, orderBy = 'latest', searchQuery = '', statusFilter = 'all', onSearchChange, onStatusFilterChange, onPageChange, onPageSizeChange, onOrderByChange, onView, onEditPayment, onApprove, onReject, userRole, isProcessing, summary }: MonthlyRentalInvoiceListProps) {
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<MonthlyRentalInvoice | null>(null);
@@ -105,28 +116,14 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
     setSelectedInvoice(null);
   };
 
-  const filteredInvoices = invoices.filter(invoice => {
-    const deliveryRequestId = invoice.deliveryRequest?.requestId || '';
-    const matchesSearch = 
-      invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      invoice.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      deliveryRequestId.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Server-side filtering: invoices are already filtered by API
+  const displayInvoices = invoices;
 
-  const totalCount = total > 0 ? total : invoices.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  
-  const pendingPaymentCount = invoices.filter(inv => inv.status === 'Pending Payment').length;
-  const pendingApprovalCount = invoices.filter(inv => inv.status === 'Pending Approval').length;
-  const paidCount = invoices.filter(inv => inv.status === 'Paid').length;
-  const paidAmount = invoices
-    .filter(inv => inv.status === 'Paid')
-    .reduce((sum, inv) => sum + inv.totalAmount, 0);
-  const overdueCount = invoices.filter(inv => inv.status === 'Overdue').length;
+  const pendingPaymentCount = summary?.pendingPaymentCount ?? invoices.filter(inv => inv.status === 'Pending Payment').length;
+  const pendingApprovalCount = summary?.pendingApprovalCount ?? invoices.filter(inv => inv.status === 'Pending Approval').length;
+  const paidCount = summary?.paidCount ?? invoices.filter(inv => inv.status === 'Paid').length;
+  const paidAmount = summary?.paidAmount ?? invoices.filter(inv => inv.status === 'Paid').reduce((sum, inv) => sum + inv.totalAmount, 0);
+  const overdueCount = summary?.overdueCount ?? invoices.filter(inv => inv.status === 'Overdue').length;
 
   return (
     <div className="space-y-6">
@@ -209,10 +206,10 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
             placeholder="Search by invoice number, customer name, or DO number..."
             className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => onSearchChange?.(e.target.value)}
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
           <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
@@ -282,14 +279,14 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredInvoices.length === 0 ? (
+              {displayInvoices.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-[#6B7280]">
                     No invoices found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredInvoices.map((invoice) => {
+                displayInvoices.map((invoice) => {
                   const isOverdue = invoice.status === 'Overdue';
                   return (
                     <TableRow key={invoice.id} className="h-14 hover:bg-[#F3F4F6]">

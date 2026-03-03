@@ -277,6 +277,8 @@ export async function GET(request: NextRequest) {
     const year = searchParams.get('year');
     const customerName = searchParams.get('customerName') || undefined;
     const customerEmail = searchParams.get('customerEmail') || undefined;
+    const search = searchParams.get('search')?.trim() || undefined;
+    const invoiceNumber = searchParams.get('invoiceNumber') || undefined;
 
     // If id is provided, return single invoice
     if (id) {
@@ -378,6 +380,17 @@ export async function GET(request: NextRequest) {
     if (customerEmail) {
       where.customerEmail = { contains: customerEmail };
     }
+    if (invoiceNumber) {
+      where.invoiceNumber = { contains: invoiceNumber };
+    }
+    // Generic search: OR across invoiceNumber, customerName, deliveryRequest.requestId
+    if (search) {
+      where.OR = [
+        { invoiceNumber: { contains: search } },
+        { customerName: { contains: search } },
+        { deliveryRequest: { requestId: { contains: search } } },
+      ];
+    }
 
     // Pagination and order: page (default 1), pageSize (5, 10, 25, 50), orderBy (latest | earliest)
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
@@ -388,9 +401,39 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * pageSize;
 
-    // Get total count
+    // Get total count and summary in parallel
+    const now = new Date();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const total = await (prisma as any).monthlyRentalInvoice.count({ where });
+    const [total, pendingPaymentCount, pendingApprovalCount, paidInvoices, overdueCount] = await Promise.all([
+      (prisma as any).monthlyRentalInvoice.count({ where }),
+      (prisma as any).monthlyRentalInvoice.count({ where: { AND: [where, { status: 'Pending Payment' }] } }),
+      (prisma as any).monthlyRentalInvoice.count({ where: { AND: [where, { status: 'Pending Approval' }] } }),
+      (prisma as any).monthlyRentalInvoice.findMany({
+        where: { AND: [where, { status: 'Paid' }] },
+        select: { totalAmount: true },
+      }),
+      (prisma as any).monthlyRentalInvoice.count({
+        where: {
+          AND: [
+            where,
+            {
+              OR: [
+                { status: 'Overdue' },
+                {
+                  AND: [
+                    { status: { in: ['Pending Payment', 'Rejected'] } },
+                    { dueDate: { lt: now } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ]);
+
+    const paidCount = paidInvoices.length;
+    const paidAmount = paidInvoices.reduce((sum: number, inv: { totalAmount: unknown }) => sum + Number(inv.totalAmount), 0);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const invoices = await (prisma as any).monthlyRentalInvoice.findMany({
@@ -474,6 +517,13 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       orderBy: orderByParam,
+      summary: {
+        pendingPaymentCount,
+        pendingApprovalCount,
+        paidCount,
+        paidAmount,
+        overdueCount,
+      },
     });
   } catch (error) {
     console.error('Get monthly rental invoices error:', error);

@@ -198,16 +198,29 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
     const openRepairSlipId = searchParams.get('openRepairSlipId') || undefined;
-    const status = searchParams.get('status') || undefined;
-    const customerName = searchParams.get('customerName') || undefined;
+    const statusParam = searchParams.get('status') || undefined;
+    const customerName = searchParams.get('customerName') || searchParams.get('search')?.trim() || undefined;
+
+    const statusDisplayToDb: Record<string, string> = {
+      'Pending Payment': 'pending_payment',
+      'Pending Approval': 'pending_approval',
+      'Paid': 'approved',
+      'Rejected': 'rejected',
+    };
 
     const where: {
       openRepairSlipId?: string;
-      status?: string;
+      status?: string | { in: string[] };
       customerName?: { contains: string };
+      dueDate?: { lt: Date };
     } = {};
     if (openRepairSlipId) where.openRepairSlipId = openRepairSlipId;
-    if (status) where.status = status;
+    if (statusParam && statusParam !== 'Overdue') {
+      where.status = statusDisplayToDb[statusParam] ?? statusParam;
+    } else if (statusParam === 'Overdue') {
+      where.status = { in: ['pending_payment', 'pending_approval'] };
+      where.dueDate = { lt: new Date() };
+    }
     if (customerName) where.customerName = { contains: customerName };
 
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
@@ -359,6 +372,20 @@ export async function GET(request: NextRequest) {
     });
 
     const total = groupedList.length;
+    const now = new Date();
+
+    // Summary from grouped list (same scope as total)
+    const pendingPaymentCount = groupedList.filter((c) => c.status === 'pending_payment').length;
+    const pendingApprovalCount = groupedList.filter((c) => c.status === 'pending_approval').length;
+    const paidGroups = groupedList.filter((c) => c.status === 'approved');
+    const paidCount = paidGroups.length;
+    const paidAmount = paidGroups.reduce((sum, c) => sum + Number(c.totalCharges), 0);
+    const overdueCount = groupedList.filter(
+      (c) =>
+        (c.status === 'pending_payment' || c.status === 'pending_approval') &&
+        c.dueDate < now
+    ).length;
+
     const skip = (page - 1) * pageSize;
     const paged = groupedList.slice(skip, skip + pageSize);
 
@@ -426,6 +453,13 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       orderBy: orderByParam,
+      summary: {
+        pendingPaymentCount,
+        pendingApprovalCount,
+        paidCount,
+        paidAmount,
+        overdueCount,
+      },
     });
   } catch (error) {
     console.error('[Additional Charges API] GET error:', error);
