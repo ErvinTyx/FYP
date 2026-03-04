@@ -82,17 +82,27 @@ export function ScaffoldingManagement() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputEditRef = useRef<HTMLInputElement>(null);
 
-  // Form state
-  const [formData, setFormData] = useState({
+  // Form state (available, price, originPrice undefined = blank, no default; 0 is valid when user enters it)
+  const [formData, setFormData] = useState<{
+    name: string;
+    category: string;
+    available?: number;
+    price?: number;
+    originPrice?: number;
+    location: string;
+    itemStatus: ScaffoldingItem['itemStatus'];
+    imageUrl?: string;
+    damageRepairs: DamageRepairEntry[];
+  }>({
     name: '',
     category: '',
-    available: 0,
-    price: 0,
-    originPrice: 0,
+    available: undefined,
+    price: undefined,
+    originPrice: undefined,
     location: '',
-    itemStatus: 'Available' as ScaffoldingItem['itemStatus'],
-    imageUrl: '' as string | undefined,
-    damageRepairs: [] as DamageRepairEntry[],
+    itemStatus: 'Available',
+    imageUrl: '',
+    damageRepairs: [],
   });
 
   // Fetch scaffolding items from API
@@ -134,9 +144,9 @@ export function ScaffoldingManagement() {
     setFormData({
       name: '',
       category: '',
-      available: 0,
-      price: 0,
-      originPrice: 0,
+      available: undefined,
+      price: undefined,
+      originPrice: undefined,
       location: '',
       itemStatus: 'Available',
       imageUrl: '',
@@ -156,8 +166,15 @@ export function ScaffoldingManagement() {
       ...prev,
       damageRepairs: prev.damageRepairs.map((entry, i) => {
         if (i !== index) return entry;
-        const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
-        const next = { ...entry, [field]: value };
+        // Description is free-text; numeric rules apply only to charge fields
+        if (field === 'description') {
+          return { ...entry, description: String(value).slice(0, 70) };
+        }
+
+        const raw = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+        const numValue = raw < 0 ? 0 : raw;
+        const next: DamageRepairEntry = { ...entry, [field]: numValue };
+
         if (field === 'repairChargePerUnit' && numValue > 0) next.partsLabourCostPerUnit = 0;
         if (field === 'partsLabourCostPerUnit' && numValue > 0) next.repairChargePerUnit = 0;
         return next;
@@ -175,6 +192,41 @@ export function ScaffoldingManagement() {
   const handleAddItem = async () => {
     if (!formData.name || !formData.category || !formData.location) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+    if (formData.name.trim().length > 50) {
+      toast.error("Item Name must be at most 50 characters.");
+      return;
+    }
+    const longDesc = (formData.damageRepairs ?? []).find(e => (e.description?.length ?? 0) > 70);
+    if (longDesc) {
+      toast.error("Description of damage must be at most 70 characters.");
+      return;
+    }
+    const missingDesc = (formData.damageRepairs ?? []).some(e => !(e.description?.trim()));
+    if (missingDesc) {
+      toast.error("Each damage entry must have a description.");
+      return;
+    }
+    if (formData.available === undefined || formData.price === undefined || formData.originPrice === undefined) {
+      toast.error("Please fill in Available Quantity, Price per Day, and Origin Price.");
+      return;
+    }
+    if (formData.available < 0) { toast.error("Available Quantity cannot be negative"); return; }
+    if (formData.price < 0) { toast.error("Price per Day cannot be negative"); return; }
+    if (formData.originPrice < 0) { toast.error("Origin Price cannot be negative"); return; }
+    const hasNegativeDamage = (formData.damageRepairs ?? []).some(
+      e => (e.repairChargePerUnit ?? 0) < 0 || (e.partsLabourCostPerUnit ?? 0) < 0
+    );
+    if (hasNegativeDamage) {
+      toast.error("Damage repair charges cannot be negative");
+      return;
+    }
+    const hasNeitherFilled = (formData.damageRepairs ?? []).some(
+      e => (Number(e.repairChargePerUnit) || 0) <= 0 && (Number(e.partsLabourCostPerUnit) || 0) <= 0
+    );
+    if (hasNeitherFilled) {
+      toast.error("Each damage entry must have either Repair Charge Per Unit or Parts & Labour Cost Per Unit.");
       return;
     }
     const hasBothFilled = (formData.damageRepairs ?? []).some(
@@ -195,9 +247,9 @@ export function ScaffoldingManagement() {
         body: JSON.stringify({
           name: formData.name,
           category: formData.category,
-          available: formData.available,
-          price: formData.price,
-          originPrice: formData.originPrice,
+          available: formData.available as number,
+          price: formData.price as number,
+          originPrice: formData.originPrice as number,
           location: formData.location,
           itemStatus: formData.itemStatus,
           imageUrl: formData.imageUrl,
@@ -230,7 +282,7 @@ export function ScaffoldingManagement() {
       category: item.category,
       available: item.available,
       price: item.price,
-      originPrice: item.originPrice ?? 0,
+      originPrice: item.originPrice ?? undefined,
       location: item.location,
       itemStatus: item.itemStatus,
       imageUrl: item.imageUrl,
@@ -248,6 +300,41 @@ export function ScaffoldingManagement() {
   const handleUpdateItem = async () => {
     if (!selectedItem || !formData.name || !formData.category || !formData.location) {
       toast.error("Please fill in all required fields");
+      return;
+    }
+    if (formData.name.trim().length > 50) {
+      toast.error("Item Name must be at most 50 characters.");
+      return;
+    }
+    const longDesc = (formData.damageRepairs ?? []).find(e => (e.description?.length ?? 0) > 70);
+    if (longDesc) {
+      toast.error("Description of damage must be at most 70 characters.");
+      return;
+    }
+    const missingDescEdit = (formData.damageRepairs ?? []).some(e => !(e.description?.trim()));
+    if (missingDescEdit) {
+      toast.error("Each damage entry must have a description.");
+      return;
+    }
+    if (formData.available === undefined || formData.price === undefined || formData.originPrice === undefined) {
+      toast.error("Please fill in Available Quantity, Price per Day, and Origin Price.");
+      return;
+    }
+    if (formData.available < 0) { toast.error("Available Quantity cannot be negative"); return; }
+    if (formData.price < 0) { toast.error("Price per Day cannot be negative"); return; }
+    if (formData.originPrice < 0) { toast.error("Origin Price cannot be negative"); return; }
+    const hasNegativeDamage = (formData.damageRepairs ?? []).some(
+      e => (e.repairChargePerUnit ?? 0) < 0 || (e.partsLabourCostPerUnit ?? 0) < 0
+    );
+    if (hasNegativeDamage) {
+      toast.error("Damage repair charges cannot be negative");
+      return;
+    }
+    const hasNeitherFilled = (formData.damageRepairs ?? []).some(
+      e => (Number(e.repairChargePerUnit) || 0) <= 0 && (Number(e.partsLabourCostPerUnit) || 0) <= 0
+    );
+    if (hasNeitherFilled) {
+      toast.error("Each damage entry must have either Repair Charge Per Unit or Parts & Labour Cost Per Unit.");
       return;
     }
     const hasBothFilled = (formData.damageRepairs ?? []).some(
@@ -269,9 +356,9 @@ export function ScaffoldingManagement() {
           id: selectedItem.id,
           name: formData.name,
           category: formData.category,
-          available: formData.available,
-          price: formData.price,
-          originPrice: formData.originPrice,
+          available: formData.available as number,
+          price: formData.price as number,
+          originPrice: formData.originPrice as number,
           location: formData.location,
           itemStatus: formData.itemStatus,
           imageUrl: formData.imageUrl || null,
@@ -486,17 +573,21 @@ export function ScaffoldingManagement() {
       {/* Actions & Filters */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex gap-4 items-center flex-1">
-          <div className="relative flex-1 max-w-[300px]">
+          <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
             <Input
               placeholder="Search items..."
-              className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
+              className="pl-10 bg-white border-[#D1D5DB] rounded-md"
+              style={{ height: 40, minHeight: 40 }}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[180px] h-10 bg-white border-[#D1D5DB] rounded-md">
+            <SelectTrigger
+              className="w-[180px] py-0 bg-white border-[#D1D5DB] rounded-md"
+              style={{ height: 40, minHeight: 40 }}
+            >
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
@@ -508,7 +599,10 @@ export function ScaffoldingManagement() {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px] h-10 bg-white border-[#D1D5DB] rounded-md">
+            <SelectTrigger
+              className="w-[180px] py-0 bg-white border-[#D1D5DB] rounded-md"
+              style={{ height: 40, minHeight: 40 }}
+            >
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -708,9 +802,11 @@ export function ScaffoldingManagement() {
               <Input 
                 id="itemName" 
                 className="h-10" 
+                maxLength={50}
                 value={formData.name}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
               />
+              <p className="text-xs text-[#6B7280]">{formData.name.length}/50 characters</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -736,8 +832,18 @@ export function ScaffoldingManagement() {
                   id="available" 
                   type="number" 
                   className="h-10" 
-                  value={formData.available}
-                  onChange={(e) => setFormData({...formData, available: parseInt(e.target.value) || 0})}
+                  min={0}
+                  placeholder="0"
+                  value={formData.available === undefined ? '' : formData.available}
+                  onChange={(e) => {
+                    if (e.target.value.trim() === '') {
+                      setFormData({ ...formData, available: undefined });
+                      return;
+                    }
+                    const raw = parseInt(e.target.value, 10);
+                    const next = Number.isNaN(raw) ? undefined : Math.max(0, raw);
+                    setFormData({ ...formData, available: next });
+                  }}
                 />
               </div>
             </div>
@@ -750,8 +856,17 @@ export function ScaffoldingManagement() {
                   step="0.01"
                   placeholder="0.00" 
                   className="h-10" 
-                  value={formData.price}
-                  onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value) || 0})}
+                  min={0}
+                  value={formData.price === undefined ? '' : formData.price}
+                  onChange={(e) => {
+                    if (e.target.value.trim() === '') {
+                      setFormData({ ...formData, price: undefined });
+                      return;
+                    }
+                    const raw = parseFloat(e.target.value);
+                    const next = Number.isNaN(raw) ? undefined : Math.max(0, raw);
+                    setFormData({ ...formData, price: next });
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -762,8 +877,17 @@ export function ScaffoldingManagement() {
                   step="0.01"
                   placeholder="0.00" 
                   className="h-10" 
-                  value={formData.originPrice}
-                  onChange={(e) => setFormData({...formData, originPrice: parseFloat(e.target.value) || 0})}
+                  min={0}
+                  value={formData.originPrice === undefined ? '' : formData.originPrice}
+                  onChange={(e) => {
+                    if (e.target.value.trim() === '') {
+                      setFormData({ ...formData, originPrice: undefined });
+                      return;
+                    }
+                    const raw = parseFloat(e.target.value);
+                    const next = Number.isNaN(raw) ? undefined : Math.max(0, raw);
+                    setFormData({ ...formData, originPrice: next });
+                  }}
                 />
               </div>
             </div>
@@ -778,9 +902,9 @@ export function ScaffoldingManagement() {
                     <SelectValue placeholder="Select location" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Warehouse A">Warehouse A</SelectItem>
-                    <SelectItem value="Warehouse B">Warehouse B</SelectItem>
-                    <SelectItem value="Warehouse C">Warehouse C</SelectItem>
+                    <SelectItem value="Shah Alam Warehouse">Shah Alam Warehouse</SelectItem>
+                    <SelectItem value="Klang Warehouse">Klang Warehouse</SelectItem>
+                    <SelectItem value="Puchong Warehouse">Puchong Warehouse</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -864,13 +988,15 @@ export function ScaffoldingManagement() {
                   {formData.damageRepairs.map((entry, index) => (
                     <div key={index} className="flex gap-4 items-start p-3 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB]">
                       <div className="flex-1 min-w-0 space-y-2">
-                        <Label className="text-[12px] text-[#6B7280]">Description Of Damage</Label>
+                        <Label className="text-[12px] text-[#6B7280]">Description Of Damage *</Label>
                         <Textarea
                           placeholder="Describe the damage..."
                           className="min-h-[80px] resize-none"
+                          maxLength={70}
                           value={entry.description}
                           onChange={(e) => updateDamageRepairEntry(index, 'description', e.target.value)}
                         />
+                        <p className="text-xs text-[#6B7280]">{entry.description.length}/70 characters</p>
                       </div>
                       <div className="flex flex-col gap-2 w-[180px] flex-shrink-0">
                         <div className="space-y-1">
@@ -880,7 +1006,8 @@ export function ScaffoldingManagement() {
                             step="0.01"
                             placeholder="0.00"
                             className="h-9"
-                            value={entry.repairChargePerUnit || ''}
+                            min={0}
+                            value={entry.repairChargePerUnit === 0 ? '' : entry.repairChargePerUnit}
                             onChange={(e) => updateDamageRepairEntry(index, 'repairChargePerUnit', parseFloat(e.target.value) || 0)}
                           />
                         </div>
@@ -891,7 +1018,8 @@ export function ScaffoldingManagement() {
                             step="0.01"
                             placeholder="0.00"
                             className="h-9"
-                            value={entry.partsLabourCostPerUnit || ''}
+                            min={0}
+                            value={entry.partsLabourCostPerUnit === 0 ? '' : entry.partsLabourCostPerUnit}
                             onChange={(e) => updateDamageRepairEntry(index, 'partsLabourCostPerUnit', parseFloat(e.target.value) || 0)}
                           />
                         </div>
@@ -954,9 +1082,11 @@ export function ScaffoldingManagement() {
               <Input 
                 id="editItemName" 
                 className="h-10" 
+                maxLength={50}
                 value={formData.name}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
               />
+              <p className="text-xs text-[#6B7280]">{formData.name.length}/50 characters</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -982,8 +1112,18 @@ export function ScaffoldingManagement() {
                   id="editAvailable" 
                   type="number" 
                   className="h-10" 
-                  value={formData.available}
-                  onChange={(e) => setFormData({...formData, available: parseInt(e.target.value) || 0})}
+                  min={0}
+                  placeholder="0"
+                  value={formData.available === undefined ? '' : formData.available}
+                  onChange={(e) => {
+                    if (e.target.value.trim() === '') {
+                      setFormData({ ...formData, available: undefined });
+                      return;
+                    }
+                    const raw = parseInt(e.target.value, 10);
+                    const next = Number.isNaN(raw) ? undefined : Math.max(0, raw);
+                    setFormData({ ...formData, available: next });
+                  }}
                 />
               </div>
             </div>
@@ -996,8 +1136,17 @@ export function ScaffoldingManagement() {
                   step="0.01"
                   placeholder="0.00" 
                   className="h-10" 
-                  value={formData.price}
-                  onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value) || 0})}
+                  min={0}
+                  value={formData.price === undefined ? '' : formData.price}
+                  onChange={(e) => {
+                    if (e.target.value.trim() === '') {
+                      setFormData({ ...formData, price: undefined });
+                      return;
+                    }
+                    const raw = parseFloat(e.target.value);
+                    const next = Number.isNaN(raw) ? undefined : Math.max(0, raw);
+                    setFormData({ ...formData, price: next });
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -1008,8 +1157,17 @@ export function ScaffoldingManagement() {
                   step="0.01"
                   placeholder="0.00" 
                   className="h-10" 
-                  value={formData.originPrice}
-                  onChange={(e) => setFormData({...formData, originPrice: parseFloat(e.target.value) || 0})}
+                  min={0}
+                  value={formData.originPrice === undefined ? '' : formData.originPrice}
+                  onChange={(e) => {
+                    if (e.target.value.trim() === '') {
+                      setFormData({ ...formData, originPrice: undefined });
+                      return;
+                    }
+                    const raw = parseFloat(e.target.value);
+                    const next = Number.isNaN(raw) ? undefined : Math.max(0, raw);
+                    setFormData({ ...formData, originPrice: next });
+                  }}
                 />
               </div>
             </div>
@@ -1024,9 +1182,9 @@ export function ScaffoldingManagement() {
                     <SelectValue placeholder="Select location" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Warehouse A">Warehouse A</SelectItem>
-                    <SelectItem value="Warehouse B">Warehouse B</SelectItem>
-                    <SelectItem value="Warehouse C">Warehouse C</SelectItem>
+                    <SelectItem value="Shah Alam Warehouse">Shah Alam Warehouse</SelectItem>
+                    <SelectItem value="Klang Warehouse">Klang Warehouse</SelectItem>
+                    <SelectItem value="Puchong Warehouse">Puchong Warehouse</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1110,13 +1268,15 @@ export function ScaffoldingManagement() {
                   {formData.damageRepairs.map((entry, index) => (
                     <div key={index} className="flex gap-4 items-start p-3 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB]">
                       <div className="flex-1 min-w-0 space-y-2">
-                        <Label className="text-[12px] text-[#6B7280]">Description Of Damage</Label>
+                        <Label className="text-[12px] text-[#6B7280]">Description Of Damage *</Label>
                         <Textarea
                           placeholder="Describe the damage..."
                           className="min-h-[80px] resize-none"
+                          maxLength={70}
                           value={entry.description}
                           onChange={(e) => updateDamageRepairEntry(index, 'description', e.target.value)}
                         />
+                        <p className="text-xs text-[#6B7280]">{entry.description.length}/70 characters</p>
                       </div>
                       <div className="flex flex-col gap-2 w-[180px] flex-shrink-0">
                         <div className="space-y-1">
@@ -1126,7 +1286,8 @@ export function ScaffoldingManagement() {
                             step="0.01"
                             placeholder="0.00"
                             className="h-9"
-                            value={entry.repairChargePerUnit || ''}
+                            min={0}
+                            value={entry.repairChargePerUnit === 0 ? '' : entry.repairChargePerUnit}
                             onChange={(e) => updateDamageRepairEntry(index, 'repairChargePerUnit', parseFloat(e.target.value) || 0)}
                           />
                         </div>
@@ -1137,7 +1298,8 @@ export function ScaffoldingManagement() {
                             step="0.01"
                             placeholder="0.00"
                             className="h-9"
-                            value={entry.partsLabourCostPerUnit || ''}
+                            min={0}
+                            value={entry.partsLabourCostPerUnit === 0 ? '' : entry.partsLabourCostPerUnit}
                             onChange={(e) => updateDamageRepairEntry(index, 'partsLabourCostPerUnit', parseFloat(e.target.value) || 0)}
                           />
                         </div>

@@ -51,6 +51,14 @@ export async function GET() {
     const agreements = await prisma.rentalAgreement.findMany({
       where: { signedStatus: { in: ['completed', 'Completed', 'COMPLETED'] } },
       orderBy: { createdAt: 'desc' },
+      include: {
+        extendedFromAgreement: {
+          select: {
+            id: true,
+            agreementNumber: true,
+          },
+        },
+      },
     });
 
     const agreementIds = agreements.map((a) => a.id);
@@ -727,7 +735,11 @@ export async function GET() {
       const returnRequestStatus = returnStatusByAgreementNo.get(agreement.agreementNumber) ?? null;
       const returnCompletion = returnCompletionByAgreementNo.get(agreement.agreementNumber) ?? null;
       const paymentStatus = paymentStatusByAgreementId.get(agreement.id) ?? null;
-      const ag = agreement as typeof agreement & { rfqId?: string | null };
+      const ag = agreement as typeof agreement & {
+        rfqId?: string | null;
+        extendedFromAgreementId?: string | null;
+        extendedFromAgreement?: { id: string; agreementNumber: string } | null;
+      };
       const rentalStartDate = ag.rfqId ? minDeliverByRfqId.get(ag.rfqId)?.toISOString() ?? null : null;
       const additionalChargeStatus = additionalChargeStatusByAgreementNo.get(agreement.agreementNumber) ?? null;
       const monthlyRentalPaymentStatus = monthlyRentalByAgreementId.get(agreement.id) ?? null;
@@ -741,6 +753,10 @@ export async function GET() {
           hirerSignatoryName: agreement.hirerSignatoryName,
           termOfHire: agreement.termOfHire,
           rentalStartDate,
+          extendedFromAgreementId: ag.extendedFromAgreementId ?? null,
+          extendedFromAgreement: ag.extendedFromAgreement
+            ? { id: ag.extendedFromAgreement.id, agreementNumber: ag.extendedFromAgreement.agreementNumber }
+            : null,
           additionalChargeStatus,
           monthlyRentalPaymentStatus,
           depositStatus,
