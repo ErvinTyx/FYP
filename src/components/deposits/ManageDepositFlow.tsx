@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { DepositList } from "./DepositList";
 import { DepositDetails } from "./DepositDetails";
 import { DepositReceiptPrint } from "./DepositReceiptPrint";
@@ -25,7 +26,7 @@ type View = "list" | "details" | "receipt";
 type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
 
 interface ManageDepositFlowProps {
-  userRole?: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
+  userRole?: "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
   initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
   onConsumedSOANavigation?: () => void;
 }
@@ -37,6 +38,16 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [orderBy, setOrderBy] = useState<'latest' | 'earliest'>('latest');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [summary, setSummary] = useState<{
+    pendingPaymentCount: number;
+    pendingApprovalCount: number;
+    paidCount: number;
+    paidAmount: number;
+    overdueCount: number;
+    expiredCount: number;
+  } | null>(null);
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [approvedDepositId, setApprovedDepositId] = useState<string | null>(null);
@@ -44,12 +55,20 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const debouncedSearch = useDebounce(searchQuery, 400);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
+
   // Fetch deposits from API
   const fetchDeposits = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
       const response = await fetch(`/api/deposit?${params}`);
       const data = await response.json();
       
@@ -58,6 +77,7 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
       }
       
       setTotal(typeof data.total === 'number' ? data.total : (data.deposits?.length ?? 0));
+      setSummary(data.summary ?? null);
       
       // Transform API data to match frontend interface
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,7 +123,7 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
     } finally {
       setIsLoading(false);
     }
-  }, [page, pageSize, orderBy]);
+  }, [page, pageSize, orderBy, debouncedSearch, statusFilter]);
 
   // Load deposits when page, pageSize, or orderBy change
   useEffect(() => {
@@ -384,15 +404,22 @@ export function ManageDepositFlow({ userRole = "Admin", initialOpenFromSOA, onCo
           page={page}
           pageSize={pageSize}
           orderBy={orderBy}
+          searchQuery={searchQuery}
+          statusFilter={statusFilter}
+          onSearchChange={setSearchQuery}
+          onStatusFilterChange={setStatusFilter}
           onPageChange={setPage}
           onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
           onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
           onView={handleView}
           onUploadProof={handleSubmitPayment}
+          onApprove={handleApprove}
+          onReject={handleReject}
           onResetDueDate={handleResetDueDate}
           onMarkExpired={handleMarkExpired}
           userRole={userRole}
           isProcessing={isProcessing}
+          summary={summary}
         />
       )}
 

@@ -584,14 +584,14 @@ export function CustomerRegistration({ onBack, onComplete }: CustomerRegistratio
     }
   };
 
-  // Upload file to server and return URL
+  // Upload file to server and return URL (uses unauthenticated registration endpoint)
   const uploadFileToServer = async (file: File): Promise<string | null> => {
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('folder', 'identity-documents');
 
-      const response = await fetch('/api/upload', {
+      const response = await fetch('/api/upload/registration', {
         method: 'POST',
         body: formData,
       });

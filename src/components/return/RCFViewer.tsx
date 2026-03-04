@@ -1,4 +1,5 @@
 import { Printer, X, FileText, AlertCircle, CheckCircle2, PackageX, AlertTriangle } from 'lucide-react';
+import { escapeHtml } from '@/lib/escape-html';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 
@@ -87,7 +88,7 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Return Condition Form - ${rcfNumber}</title>
+        <title>Return Condition Form - ${escapeHtml(rcfNumber)}</title>
         <style>
           @media print {
             @page { margin: 15mm; size: A4; }
@@ -237,10 +238,10 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
         <div class="info-section">
           <div class="info-box">
             <div class="info-label">RCF Number</div>
-            <div class="info-value" style="font-size: 16px; font-weight: bold; color: #F15929;">${rcfNumber}</div>
+            <div class="info-value" style="font-size: 16px; font-weight: bold; color: #F15929;">${escapeHtml(rcfNumber)}</div>
             ${grnNumber ? `
               <div class="info-label">GRN Reference</div>
-              <div class="info-value">${grnNumber}</div>
+              <div class="info-value">${escapeHtml(grnNumber)}</div>
             ` : ''}
             <div class="info-label">Inspection Date</div>
             <div class="info-value">${inspectionDate}</div>
@@ -248,9 +249,9 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
 
           <div class="info-box">
             <div class="info-label">Customer Name</div>
-            <div class="info-value">${returnData.customer}</div>
+            <div class="info-value">${escapeHtml(returnData.customer)}</div>
             <div class="info-label">Order/Request ID</div>
-            <div class="info-value">${returnData.orderId}</div>
+            <div class="info-value">${escapeHtml(returnData.orderId)}</div>
             <div class="info-label">Total Items Inspected</div>
             <div class="info-value" style="font-weight: bold;">${totalItems}</div>
           </div>
@@ -291,19 +292,19 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
                 const entries = Object.entries(item.statusBreakdown).filter(([_, qty]) => qty > 0);
                 breakdownHtml = entries.map(([status, qty]) => {
                   const style = getStatusStyle(status as ItemConditionStatus);
-                  return `<span class="status-badge" style="background-color: ${style.bg}; color: ${style.text}; margin: 2px;">${qty} ${status}</span>`;
+                  return `<span class="status-badge" style="background-color: ${style.bg}; color: ${style.text}; margin: 2px;">${escapeHtml(String(qty))} ${escapeHtml(status)}</span>`;
                 }).join(' ');
               } else {
                 const style = getStatusStyle(item.status);
-                breakdownHtml = `<span class="status-badge" style="background-color: ${style.bg}; color: ${style.text};">${item.quantityReturned} ${item.status}</span>`;
+                breakdownHtml = `<span class="status-badge" style="background-color: ${style.bg}; color: ${style.text};">${escapeHtml(String(item.quantityReturned))} ${escapeHtml(item.status)}</span>`;
               }
               return `
                 <tr>
                   <td>${index + 1}</td>
-                  <td style="font-weight: 500;">${item.name}</td>
+                  <td style="font-weight: 500;">${escapeHtml(item.name)}</td>
                   <td style="text-align: center; font-weight: bold;">${item.quantityReturned}</td>
                   <td>${breakdownHtml}</td>
-                  <td style="font-size: 10px; color: #666;">${item.notes || '-'}</td>
+                  <td style="font-size: 10px; color: #666;">${escapeHtml(item.notes || '-')}</td>
                 </tr>
               `;
             }).join('')}
@@ -313,7 +314,7 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
         ${returnData.productionNotes ? `
           <div class="notes-box">
             <div class="section-title" style="border: none; margin: 0 0 8px 0;">Inspection Notes</div>
-            <p style="margin: 0; font-size: 12px;">${returnData.productionNotes}</p>
+            <p style="margin: 0; font-size: 12px;">${escapeHtml(returnData.productionNotes)}</p>
           </div>
         ` : ''}
 
@@ -323,7 +324,7 @@ export function RCFViewer({ rcfNumber, grnNumber, returnData, onClose }: RCFView
               ⚠️ External Goods Detected
             </div>
             <p style="margin: 0; font-size: 12px; color: #991b1b;">
-              ${returnData.externalGoodsNotes || 'External goods (not from our inventory) were found during inspection.'}
+              ${escapeHtml(returnData.externalGoodsNotes || 'External goods (not from our inventory) were found during inspection.')}
             </p>
           </div>
         ` : ''}

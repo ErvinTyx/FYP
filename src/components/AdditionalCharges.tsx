@@ -6,7 +6,10 @@ import { AdditionalCharge } from "../types/additionalCharge";
 
 type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
 
+type UserRole = "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
+
 interface AdditionalChargesProps {
+  userRole?: UserRole;
   initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
   onConsumedSOANavigation?: () => void;
 }
@@ -53,7 +56,7 @@ function mapApiToCharge(api: {
   };
 }
 
-export function AdditionalCharges({ initialOpenFromSOA, onConsumedSOANavigation }: AdditionalChargesProps = {}) {
+export function AdditionalCharges({ userRole = "Other", initialOpenFromSOA, onConsumedSOANavigation }: AdditionalChargesProps = {}) {
   const [view, setView] = useState<"list" | "detail" | "receipt">("list");
   const [selectedCharge, setSelectedCharge] = useState<AdditionalCharge | null>(null);
   const [listKey, setListKey] = useState(0);
@@ -112,6 +115,7 @@ export function AdditionalCharges({ initialOpenFromSOA, onConsumedSOANavigation 
         onBack={handleBack}
         onUpdate={handleUpdate}
         onPrintReceipt={handlePrintReceipt}
+        userRole={userRole}
       />
     );
   }
@@ -126,6 +130,6 @@ export function AdditionalCharges({ initialOpenFromSOA, onConsumedSOANavigation 
   }
 
   return (
-    <AdditionalChargesList key={listKey} onViewDetails={handleViewDetails} />
+    <AdditionalChargesList key={listKey} onViewDetails={handleViewDetails} userRole={userRole} />
   );
 }

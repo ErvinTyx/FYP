@@ -13,8 +13,9 @@ import {
   TableRow,
 } from "../ui/table";
 import { StatusBadge } from "./StatusBadge";
+import { CreditNoteApprovalModal } from "./CreditNoteApprovalModal";
 import { RejectionModal } from "./RejectionModal";
-import { CreditNote, CreditNoteApplication } from "../../types/creditNote";
+import { CreditNote, CreditNoteApplicationHistoryItem } from "../../types/creditNote";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -29,7 +30,8 @@ interface CreditNoteDetailsProps {
   onApprove: (id: string) => void;
   onReject: (id: string, reason: string) => void;
   onApplyCredit?: (creditNote: CreditNote) => void;
-  userRole: "Admin" | "Finance" | "Staff" | "Viewer";
+  onViewDocument?: () => void;
+  userRole: "super_user" | "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
 }
 
 export function CreditNoteDetails({
@@ -38,15 +40,17 @@ export function CreditNoteDetails({
   onApprove,
   onReject,
   onApplyCredit,
+  onViewDocument,
   userRole,
 }: CreditNoteDetailsProps) {
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
   const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [autoPrint, setAutoPrint] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   // Application tracking state
-  const [applications, setApplications] = useState<CreditNoteApplication[]>([]);
+  const [applications, setApplications] = useState<CreditNoteApplicationHistoryItem[]>([]);
   const [totalApplied, setTotalApplied] = useState(0);
   const [remainingBalance, setRemainingBalance] = useState(0);
   const [loadingApplications, setLoadingApplications] = useState(false);
@@ -83,11 +87,12 @@ export function CreditNoteDetails({
     }
   }, [showPrintModal, autoPrint]);
 
-  const canApprove = (userRole === "Admin" || userRole === "Finance") && 
+  const canApprove = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && 
                      creditNote.status === "Pending Approval";
 
-  const handleApprove = () => {
+  const handleConfirmApprove = () => {
     onApprove(creditNote.id);
+    setIsApprovalModalOpen(false);
   };
 
   const handleReject = (reason: string) => {
@@ -138,7 +143,7 @@ export function CreditNoteDetails({
                   Reject
                 </Button>
                 <Button
-                  onClick={handleApprove}
+                  onClick={() => setIsApprovalModalOpen(true)}
                   className="bg-[#059669] hover:bg-[#047857] text-white h-10 px-6 rounded-lg"
                 >
                   <CheckCircle className="mr-2 h-4 w-4" />
@@ -397,12 +402,24 @@ export function CreditNoteDetails({
           </Card>
 
           {/* Application History */}
-          {applications.length > 0 && (
-            <Card className="border-[#E5E7EB]">
-              <CardHeader>
+          <Card className="border-[#E5E7EB]">
+            <CardHeader>
+              <div className="flex items-center justify-between">
                 <CardTitle className="text-[18px]">Application History</CardTitle>
-              </CardHeader>
-              <CardContent>
+                <Button
+                  onClick={() => (onViewDocument ? onViewDocument() : setShowPrintModal(true))}
+                  className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
+                  title="View and print credit note"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  View document
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {applications.length === 0 ? (
+                <p className="text-[#6B7280] text-sm">No applications yet.</p>
+              ) : (
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
@@ -422,11 +439,13 @@ export function CreditNoteDetails({
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="bg-[#F3F4F6] text-[#374151]">
-                            {app.targetInvoiceType === "deposit"
-                              ? "Deposit"
-                              : app.targetInvoiceType === "monthlyRental"
-                                ? "Monthly Rental"
-                                : "Additional Charge"}
+                            {"applicationType" in app && app.applicationType === "refund"
+                              ? "Refund"
+                              : app.targetInvoiceType === "deposit"
+                                ? "Deposit"
+                                : app.targetInvoiceType === "monthlyRental"
+                                  ? "Monthly Rental"
+                                  : "Additional Charge"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-[#059669] font-medium">
@@ -436,14 +455,18 @@ export function CreditNoteDetails({
                         <TableCell className="text-[#374151]">
                           {new Date(app.appliedAt).toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-[#6B7280]">{app.notes || "—"}</TableCell>
+                        <TableCell className="text-[#6B7280]">
+                          {"applicationType" in app && app.applicationType === "refund" && "refundStatus" in app && app.refundStatus
+                            ? app.refundStatus
+                            : app.notes || "—"}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
 
@@ -503,6 +526,16 @@ export function CreditNoteDetails({
                 <Printer className="mr-2 h-4 w-4" />
                 Print
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  window.print();
+                }}
+                title="Open print dialog to save as PDF"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Save as PDF
+              </Button>
               <Button variant="outline" onClick={() => setShowPrintModal(false)}>Close</Button>
             </div>
           </div>
@@ -542,6 +575,16 @@ export function CreditNoteDetails({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Approval Confirmation Modal */}
+      <CreditNoteApprovalModal
+        isOpen={isApprovalModalOpen}
+        onClose={() => setIsApprovalModalOpen(false)}
+        onApprove={handleConfirmApprove}
+        creditNoteNumber={creditNote.creditNoteNumber}
+        customer={creditNote.customer}
+        amount={creditNote.amount}
+      />
 
       {/* Rejection Modal */}
       <RejectionModal

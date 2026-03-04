@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Plus } from "lucide-react";
 import { Button } from "../ui/button";
 import { CreditNotesList } from "./CreditNotesList";
 import { CreditNoteForm } from "./CreditNoteForm";
 import { CreditNoteDetails } from "./CreditNoteDetails";
+import { CreditNoteDocumentPrint } from "./CreditNoteDocumentPrint";
 import { ApplyCreditModal } from "./ApplyCreditModal";
 import { CreditNote } from "../../types/creditNote";
 import { toast } from "sonner";
 
-type View = "list" | "create" | "edit" | "details";
+type View = "list" | "create" | "edit" | "details" | "document";
 
 function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
   return {
@@ -54,31 +56,45 @@ function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
 type SOANavigationAction = "view" | "viewDocument" | "downloadReceipt";
 
 interface CreditNotesMainProps {
+  userRole?: "super_user" | "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
   initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
   onConsumedSOANavigation?: () => void;
 }
 
 type OrderBy = "latest" | "earliest";
 
-export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }: CreditNotesMainProps = {}) {
+export function CreditNotesMain({ userRole = "Other", initialOpenFromSOA, onConsumedSOANavigation }: CreditNotesMainProps = {}) {
   const [currentView, setCurrentView] = useState<View>("list");
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [orderBy, setOrderBy] = useState<OrderBy>("latest");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [summary, setSummary] = useState<{ totalApproved: number; pendingAmount: number } | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userRole] = useState<"Admin" | "Finance" | "Staff" | "Viewer">("Admin");
+
+  const debouncedSearch = useDebounce(searchQuery, 400);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
+
+  const canCreateCreditNote = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
   const fetchCreditNotes = useCallback(async () => {
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
       const res = await fetch(`/api/credit-notes?${params}`);
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setCreditNotes(json.data.map((d: Record<string, unknown>) => mapApiToCreditNote(d)));
         setTotal(typeof json.total === "number" ? json.total : json.data.length);
+        setSummary(json.summary ?? null);
       } else {
         setCreditNotes([]);
         setTotal(0);
@@ -91,7 +107,7 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, orderBy]);
+  }, [page, pageSize, orderBy, debouncedSearch, statusFilter]);
 
   useEffect(() => {
     fetchCreditNotes();
@@ -218,13 +234,15 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
                 Create and manage credit notes for customer refunds and adjustments
               </p>
             </div>
-            <Button
-              onClick={handleCreateNew}
-              className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Create Credit Note
-            </Button>
+            {canCreateCreditNote && (
+              <Button
+                onClick={handleCreateNew}
+                className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Create Credit Note
+              </Button>
+            )}
           </div>
         </>
       )}
@@ -236,10 +254,18 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
           page={page}
           pageSize={pageSize}
           orderBy={orderBy}
+          searchQuery={searchQuery}
+          statusFilter={statusFilter}
+          onSearchChange={setSearchQuery}
+          onStatusFilterChange={setStatusFilter}
           onPageChange={setPage}
           onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
           onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
           onView={handleView}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          userRole={userRole}
+          summary={summary}
         />
       )}
 
@@ -258,7 +284,15 @@ export function CreditNotesMain({ initialOpenFromSOA, onConsumedSOANavigation }:
           onApprove={handleApprove}
           onReject={handleReject}
           onApplyCredit={handleApplyCredit}
+          onViewDocument={() => setCurrentView("document")}
           userRole={userRole}
+        />
+      )}
+
+      {currentView === "document" && selectedNote && (
+        <CreditNoteDocumentPrint
+          creditNote={selectedNote}
+          onBack={() => setCurrentView("details")}
         />
       )}
 

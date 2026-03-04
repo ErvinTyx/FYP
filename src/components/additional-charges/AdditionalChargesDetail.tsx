@@ -80,11 +80,14 @@ function mapApiChargeToDisplay(api: {
   };
 }
 
+type UserRole = "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
+
 interface AdditionalChargesDetailProps {
   charge: AdditionalCharge;
   onBack: () => void;
   onUpdate: (updatedCharge: AdditionalCharge) => void;
   onPrintReceipt?: () => void;
+  userRole?: UserRole;
 }
 
 export function AdditionalChargesDetail({
@@ -92,6 +95,7 @@ export function AdditionalChargesDetail({
   onBack,
   onUpdate,
   onPrintReceipt,
+  userRole = "Other",
 }: AdditionalChargesDetailProps) {
   const [charge, setCharge] = useState<AdditionalCharge>(initialCharge);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -250,6 +254,10 @@ export function AdditionalChargesDetail({
   };
 
   const proofDisplay = charge.proofOfPaymentUrl ?? charge.proofOfPayment;
+  // Only super_user, Admin, and Finance can approve/reject
+  const canApprove = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && charge.status === "Pending Approval";
+  // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
+  const canUploadProof = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
   return (
     <div className="space-y-6">
@@ -272,8 +280,38 @@ export function AdditionalChargesDetail({
         </div>
       </div>
 
-      
-
+      {/* Pending Approval - only visible to admin, super_user, finance */}
+      {canApprove && (
+        <Card className="border-[#F15929] bg-[#FFF7F5]">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[#231F20]">Payment Review Required</p>
+                <p className="text-[14px] text-[#6B7280] mt-1">
+                  Customer has submitted payment proof. Please review and approve or reject.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setRejectModalOpen(true)}
+                  className="h-10 px-6 rounded-lg border-[#DC2626] text-[#DC2626] hover:bg-[#FEF2F2]"
+                >
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Reject
+                </Button>
+                <Button
+                  onClick={() => setApproveModalOpen(true)}
+                  className="bg-[#059669] hover:bg-[#047857] text-white h-10 px-6 rounded-lg"
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Approve Payment
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Rejection Info */}
       {charge.status === "Rejected" && charge.rejectionReason && (
@@ -574,10 +612,11 @@ export function AdditionalChargesDetail({
         </CardContent>
       </Card>
 
-      {/* Upload Proof of Payment Section */}
-      {(charge.status === "Pending Payment" ||
-        charge.status === "Rejected" ||
-        isOverdue) &&
+      {/* Upload Proof of Payment Section - only super_user, Admin, Staff (Finance cannot upload) */}
+      {canUploadProof &&
+        (charge.status === "Pending Payment" ||
+          charge.status === "Rejected" ||
+          isOverdue) &&
         !proofDisplay && (
         <Card className="border-[#E5E5E5] bg-white shadow-sm rounded-lg">
           <CardHeader>
@@ -604,8 +643,8 @@ export function AdditionalChargesDetail({
         </Card>
       )}
 
-      {/* Payment Proof (Submitted - View Only) */}
-      {proofDisplay && (
+      {/* Payment Proof (Submitted - View Only) - Finance cannot view */}
+      {proofDisplay && userRole !== "Finance" && (
         <Card className="border-[#E5E7EB]">
           <CardHeader>
             <CardTitle className="text-[18px]">Payment Proof</CardTitle>
@@ -671,28 +710,7 @@ export function AdditionalChargesDetail({
         </Card>
       )}
 
-      {(charge.status === "Pending Approval" && (
-        <Card className="border-[#E5E7EB]">
-          <CardContent className="pt-6">
-            <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={() => setApproveModalOpen(true)}
-                className="bg-[#10B981] hover:bg-[#059669] text-white h-10 px-6 rounded-lg"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Approve Payment
-              </Button>
-              <Button
-                onClick={() => setRejectModalOpen(true)}
-                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white h-10 px-6 rounded-lg"
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                Reject Payment
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+      
 
       <UploadPopModal
         isOpen={uploadModalOpen}
@@ -705,6 +723,8 @@ export function AdditionalChargesDetail({
         onClose={() => setApproveModalOpen(false)}
         onApprove={handleApproveConfirmed}
         invoiceNo={charge.invoiceNo}
+        customerName={charge.customerName}
+        amount={payableAmount}
       />
       <RejectModal
         isOpen={rejectModalOpen}

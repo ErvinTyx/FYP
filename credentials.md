@@ -16,7 +16,6 @@ Quick reference for all accounts created by `prisma/seed.ts`.
 | Sales | sales@powermetalsteel.com | User@2024! |
 | Operations | operations@powermetalsteel.com | User@2024! |
 | Production | production@powermetalsteel.com | User@2024! |
-| Vendor | vendor@powermetalsteel.com | User@2024! |
 
 ---
 

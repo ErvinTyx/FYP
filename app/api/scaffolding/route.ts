@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     const scaffoldingItems = await prisma.scaffoldingItem.findMany({
       where,
       orderBy: {
-        itemCode: 'asc',
+        createdAt: 'desc',
       },
       include: {
         damageRepairs: {

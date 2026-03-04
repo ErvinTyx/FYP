@@ -8,32 +8,40 @@ export async function POST(request: NextRequest) {
 
     const errors: { email?: string; phone?: string } = {};
 
-    // Check email uniqueness
-    if (email) {
-      const existingEmail = await prisma.user.findUnique({
-        where: { email },
-        select: { id: true },
-      });
-      if (existingEmail) {
-        errors.email = 'This email address is already registered';
-      }
-    }
-
-    // Validate and check phone uniqueness
+    // Validate phone number format (does not reveal existence)
     if (phone) {
-      // Validate phone number format first
       const phoneValidation = validatePhoneNumber(phone, 'MY');
       if (!phoneValidation.isValid) {
         errors.phone = phoneValidation.error || 'Please enter a valid phone number';
-      } else {
-        // Only check uniqueness if format is valid
+      }
+    }
+
+    // Only check uniqueness if no format errors
+    if (!errors.phone) {
+      let emailExists = false;
+      let phoneExists = false;
+
+      if (email) {
+        const existingEmail = await prisma.user.findUnique({
+          where: { email },
+          select: { id: true },
+        });
+        emailExists = !!existingEmail;
+      }
+      if (phone) {
         const existingPhone = await prisma.user.findFirst({
           where: { phone },
           select: { id: true },
         });
-        if (existingPhone) {
-          errors.phone = 'This phone number is already registered';
-        }
+        phoneExists = !!existingPhone;
+      }
+
+      if (emailExists || phoneExists) {
+        // Generic message to prevent user enumeration (don't reveal which field exists)
+        return NextResponse.json(
+          { success: false, message: 'One or more values are already in use. Please use a different email or phone number.' },
+          { status: 400 }
+        );
       }
     }
 

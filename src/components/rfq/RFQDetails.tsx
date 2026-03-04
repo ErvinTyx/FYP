@@ -1,4 +1,5 @@
 import { ArrowLeft, Edit, FileText, User, Calendar, MapPin, Phone, Mail, Download } from 'lucide-react';
+import { escapeHtml } from '@/lib/escape-html';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -63,7 +64,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
 
       return `
   <div class="section">
-    <div class="section-title">Set: ${setName}</div>
+    <div class="section-title">Set: ${escapeHtml(setName)}</div>
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">Required Date</div>
@@ -89,7 +90,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
         ${items.map((item, index) => `
         <tr>
           <td>${index + 1}</td>
-          <td>${item.scaffoldingItemName}${item.notes ? `<br><span style="font-size: 12px; color: #6B7280;">${item.notes}</span>` : ''}</td>
+          <td>${escapeHtml(item.scaffoldingItemName)}${item.notes ? `<br><span style="font-size: 12px; color: #6B7280;">${escapeHtml(item.notes)}</span>` : ''}</td>
           <td class="text-right">${item.quantity}</td>
           <td class="text-right">${item.unit}</td>
           <td class="text-right">${Number(item.unitPrice).toFixed(2)}</td>
@@ -132,7 +133,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>RFQ ${rfq.rfqNumber}</title>
+  <title>RFQ ${escapeHtml(rfq.rfqNumber)}</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -252,7 +253,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
   <div class="header">
     <div class="company-name">Power Metal & Steel</div>
     <div class="doc-title">REQUEST FOR QUOTATION</div>
-    <div style="font-size: 16px; margin-top: 10px;">${rfq.rfqNumber}</div>
+    <div style="font-size: 16px; margin-top: 10px;">${escapeHtml(rfq.rfqNumber)}</div>
   </div>
 
   <div class="section">
@@ -260,16 +261,16 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">Customer Name</div>
-        <div class="info-value">${rfq.customerName}</div>
+        <div class="info-value">${escapeHtml(rfq.customerName)}</div>
       </div>
       <div class="info-item">
         <div class="info-label">Email</div>
-        <div class="info-value">${rfq.customerEmail}</div>
+        <div class="info-value">${escapeHtml(rfq.customerEmail)}</div>
       </div>
       ${rfq.customerPhone ? `
       <div class="info-item">
         <div class="info-label">Phone</div>
-        <div class="info-value">${rfq.customerPhone}</div>
+        <div class="info-value">${escapeHtml(rfq.customerPhone)}</div>
       </div>
       ` : ''}
     </div>
@@ -280,12 +281,12 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">Project Name</div>
-        <div class="info-value">${rfq.projectName}</div>
+        <div class="info-value">${escapeHtml(rfq.projectName)}</div>
       </div>
       ${rfq.projectLocation ? `
       <div class="info-item">
         <div class="info-label">Location</div>
-        <div class="info-value">${rfq.projectLocation}</div>
+        <div class="info-value">${escapeHtml(rfq.projectLocation)}</div>
       </div>
       ` : ''}
       <div class="info-item">
@@ -300,7 +301,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
     ${rfq.notes ? `
     <div class="info-item" style="margin-top: 10px;">
       <div class="info-label">Notes</div>
-      <div class="info-value">${rfq.notes}</div>
+      <div class="info-value">${escapeHtml(rfq.notes)}</div>
     </div>
     ` : ''}
   </div>
@@ -321,7 +322,7 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
     <div>
       <div class="signature-label">Prepared By</div>
       <div class="signature-box">
-        <div>${rfq.createdBy}</div>
+        <div>${escapeHtml(rfq.createdBy)}</div>
         <div style="font-size: 11px; color: #6B7280; margin-top: 5px;">
           Date: ${formatRfqDate(rfq.createdAt)}
         </div>

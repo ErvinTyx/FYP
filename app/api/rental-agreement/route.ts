@@ -6,6 +6,8 @@ import { computeTermOfHireFromRfqItems, getTotalRentalMonthFromDays, parseDaysFr
 // Roles allowed to manage rental agreements
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 
+const NRIC_REGEX = /^[0-9]{6}-[0-9]{2}-[0-9]{4}$/;
+
 /**
  * Generate a unique deposit number in format DEP-YYYYMMDD-XXX
  */
@@ -144,11 +146,12 @@ export async function GET(request: NextRequest) {
       orderBy: {
         createdAt: 'desc',
       },
-      // Always include rfq (for totalAmount in list); include items only when requested
+      // Always include rfq (for totalAmount in list); include items only when requested; include source agreement for "extended from" label
       include: {
         rfq: includeRfqItems
           ? { include: { items: true } }
           : true,
+        extendedFromAgreement: { select: { id: true, agreementNumber: true } },
       },
     });
 
@@ -212,7 +215,7 @@ export async function GET(request: NextRequest) {
     };
 
     const transformedAgreements = agreements.map((agreement) => {
-      const a = agreement as typeof agreement & { rfqId?: string | null; rfq?: RFQWithItems | null };
+      const a = agreement as typeof agreement & { rfqId?: string | null; rfq?: RFQWithItems | null; extendedFromAgreementId?: string | null; extendedFromAgreement?: { id: string; agreementNumber: string } | null };
       const versions = (versionsByAgreementId.get(agreement.id) ?? []).map((v) => ({
         id: v.id,
         versionNumber: v.versionNumber,
@@ -289,6 +292,8 @@ export async function GET(request: NextRequest) {
         updatedAt: agreement.updatedAt.toISOString(),
         rfqId: a.rfqId ?? null,
         rfq: rfqData,
+        extendedFromAgreementId: a.extendedFromAgreementId ?? null,
+        extendedFromAgreement: a.extendedFromAgreement ? { id: a.extendedFromAgreement.id, agreementNumber: a.extendedFromAgreement.agreementNumber } : null,
         deposits,
         versions,
       };
@@ -362,6 +367,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (ownerNRIC && !NRIC_REGEX.test(String(ownerNRIC))) {
+      return NextResponse.json(
+        { success: false, message: 'Owner NRIC No. must be in format XXXXXX-XX-XXXX and contain digits only.' },
+        { status: 400 }
+      );
+    }
+    if (hirerNRIC && !NRIC_REGEX.test(String(hirerNRIC))) {
+      return NextResponse.json(
+        { success: false, message: 'Hirer NRIC No. must be in format XXXXXX-XX-XXXX and contain digits only.' },
+        { status: 400 }
+      );
+    }
+
     // Autofill termOfHire from RFQ items when rfqId is provided and client did not send termOfHire (treat whitespace as empty)
     const termTrimmed = typeof termOfHire === 'string' ? termOfHire.trim() : '';
     let resolvedTermOfHire: string | null = termTrimmed !== '' ? termTrimmed : null;
@@ -372,22 +390,23 @@ export async function POST(request: NextRequest) {
     const termDays = parseDaysFromTermOfHireString(resolvedTermOfHire);
     const totalRentalMonth = termDays != null ? getTotalRentalMonthFromDays(termDays) : null;
 
-    // Auto-generate unique Rental Agreement Number (RA-YYYY-NNN)
-    const year = new Date().getFullYear();
-    const prefixRa = `RA-${year}-`;
-    const lastRa = await prisma.rentalAgreement.findFirst({
-      where: { agreementNumber: { startsWith: prefixRa } },
-      orderBy: { agreementNumber: 'desc' },
-    });
-    let nextRaNum = 1;
-    if (lastRa) {
-      const match = lastRa.agreementNumber.match(new RegExp(`${prefixRa}(\\d+)`));
-      if (match) nextRaNum = parseInt(match[1], 10) + 1;
+    // Auto-generate unique Rental Agreement Number (RA-YYYY-MM-DD-HHMM)
+    const now = new Date();
+    const y = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    let agreementNumber = `RA-${y}-${mm}-${dd}-${hh}${min}`;
+    const baseRa = agreementNumber;
+    let suffix = 1;
+    while (await prisma.rentalAgreement.findUnique({ where: { agreementNumber } })) {
+      suffix += 1;
+      agreementNumber = `${baseRa}-${suffix}`;
     }
-    const agreementNumber = `${prefixRa}${String(nextRaNum).padStart(3, '0')}`;
 
     // Auto-generate unique P/O Number (PO-YYYY-NNN)
-    const prefixPo = `PO-${year}-`;
+    const prefixPo = `PO-${y}-`;
     const agreementsWithPo = await prisma.rentalAgreement.findMany({
       where: { poNumber: { not: null, startsWith: prefixPo } },
       select: { poNumber: true },
@@ -596,6 +615,19 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { success: false, message: 'Agreement not found' },
         { status: 404 }
+      );
+    }
+
+    if (updateData.ownerNRIC != null && !NRIC_REGEX.test(String(updateData.ownerNRIC))) {
+      return NextResponse.json(
+        { success: false, message: 'Owner NRIC No. must be in format XXXXXX-XX-XXXX and contain digits only.' },
+        { status: 400 }
+      );
+    }
+    if (updateData.hirerNRIC != null && !NRIC_REGEX.test(String(updateData.hirerNRIC))) {
+      return NextResponse.json(
+        { success: false, message: 'Hirer NRIC No. must be in format XXXXXX-XX-XXXX and contain digits only.' },
+        { status: 400 }
       );
     }
 

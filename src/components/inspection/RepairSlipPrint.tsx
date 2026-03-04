@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { X, Printer, Download } from 'lucide-react';
+import { escapeHtml } from '@/lib/escape-html';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { OpenRepairSlip } from '../../types/inspection';
@@ -39,7 +40,7 @@ export function RepairSlipPrint({ repairSlip, onClose }: RepairSlipPrintProps) {
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Repair Slip - ${repairSlip.orpNumber}</title>
+          <title>Repair Slip - ${escapeHtml(repairSlip.orpNumber)}</title>
           <style>
             body { 
               font-family: Arial, sans-serif; 

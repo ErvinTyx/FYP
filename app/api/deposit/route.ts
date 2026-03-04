@@ -6,6 +6,7 @@ import { sendDepositRejectionEmail } from '@/lib/email';
 // Roles allowed to manage deposits
 const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 const APPROVAL_ROLES = ['super_user', 'admin', 'finance'];
+const UPLOAD_PROOF_ROLES = ['super_user', 'admin', 'sales'];
 
 /**
  * Generate a unique deposit number in format DEP-YYYYMMDD-XXX
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const agreementId = searchParams.get('agreementId');
     const customerName = searchParams.get('customerName');
+    const search = searchParams.get('search')?.trim() || undefined;
 
     // If id is provided, return single deposit
     if (id) {
@@ -160,6 +162,14 @@ export async function GET(request: NextRequest) {
         },
       };
     }
+    // Generic search: OR across depositNumber, agreement.agreementNumber, agreement.hirer
+    if (search) {
+      where.OR = [
+        { depositNumber: { contains: search } },
+        { agreement: { agreementNumber: { contains: search } } },
+        { agreement: { hirer: { contains: search } } },
+      ];
+    }
 
     // Pagination and order: page (default 1), pageSize (5, 10, 25, 50), orderBy (latest | earliest)
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
@@ -169,7 +179,29 @@ export async function GET(request: NextRequest) {
     const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
     const skip = (page - 1) * pageSize;
 
-    const total = await prisma.deposit.count({ where });
+    const now = new Date();
+    const [total, pendingPaymentCount, pendingApprovalCount, paidDeposits, overdueCount, expiredCount] = await Promise.all([
+      prisma.deposit.count({ where }),
+      prisma.deposit.count({ where: { AND: [where, { status: 'Pending Payment' }] } }),
+      prisma.deposit.count({ where: { AND: [where, { status: 'Pending Approval' }] } }),
+      prisma.deposit.findMany({
+        where: { AND: [where, { status: 'Paid' }] },
+        select: { depositAmount: true },
+      }),
+      prisma.deposit.count({
+        where: {
+          AND: [
+            where,
+            { status: { in: ['Pending Payment', 'Rejected'] } },
+            { dueDate: { lt: now } },
+          ],
+        },
+      }),
+      prisma.deposit.count({ where: { AND: [where, { status: 'Expired' }] } }),
+    ]);
+
+    const paidCount = paidDeposits.length;
+    const paidAmount = paidDeposits.reduce((sum, d) => sum + Number(d.depositAmount), 0);
 
     const deposits = await prisma.deposit.findMany({
       where,
@@ -242,6 +274,14 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       orderBy: orderByParam,
+      summary: {
+        pendingPaymentCount,
+        pendingApprovalCount,
+        paidCount,
+        paidAmount,
+        overdueCount,
+        expiredCount,
+      },
     });
   } catch (error) {
     console.error('Get deposits error:', error);
@@ -446,6 +486,14 @@ export async function PUT(request: NextRequest) {
 
     switch (action) {
       case 'upload-proof': {
+        // Only admin, super_user, and sales can upload proof of payment
+        const canUploadProof = session.user.roles?.some(role => UPLOAD_PROOF_ROLES.includes(role));
+        if (!canUploadProof) {
+          return NextResponse.json(
+            { success: false, message: 'Forbidden: Only admin, super_user, and sales can upload proof of payment' },
+            { status: 403 }
+          );
+        }
         // Validate current status allows proof upload
         const allowedStatuses = ['Pending Payment', 'Overdue', 'Rejected'];
         if (!allowedStatuses.includes(deposit.status)) {

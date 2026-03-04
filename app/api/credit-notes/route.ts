@@ -99,13 +99,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || undefined;
     const customerName = searchParams.get('customerName') || undefined;
+    const creditNoteNumber = searchParams.get('creditNoteNumber') || undefined;
+    const search = searchParams.get('search')?.trim() || undefined;
     const invoiceType = searchParams.get('invoiceType') || undefined;
     const dateFrom = searchParams.get('dateFrom') || undefined;
     const dateTo = searchParams.get('dateTo') || undefined;
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
-    if (customerName) where.customerName = { contains: customerName };
+    if (customerName) (where as Record<string, unknown>).customerName = { contains: customerName };
+    if (creditNoteNumber) (where as Record<string, unknown>).creditNoteNumber = { contains: creditNoteNumber };
+    if (search) {
+      (where as Record<string, unknown>).OR = [
+        { creditNoteNumber: { contains: search } },
+        { customerName: { contains: search } },
+      ];
+    }
     if (invoiceType) where.invoiceType = invoiceType;
     if (dateFrom || dateTo) {
       where.date = {};
@@ -120,7 +129,20 @@ export async function GET(request: NextRequest) {
     const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
     const skip = (page - 1) * pageSize;
 
-    const total = await prisma.creditNote.count({ where });
+    const [total, approvedNotes, pendingNotes] = await Promise.all([
+      prisma.creditNote.count({ where }),
+      prisma.creditNote.findMany({
+        where: { AND: [where, { status: 'Approved' }] },
+        select: { amount: true },
+      }),
+      prisma.creditNote.findMany({
+        where: { AND: [where, { status: 'Pending Approval' }] },
+        select: { amount: true },
+      }),
+    ]);
+
+    const totalApproved = approvedNotes.reduce((sum, n) => sum + Number(n.amount), 0);
+    const pendingAmount = pendingNotes.reduce((sum, n) => sum + Number(n.amount), 0);
 
     const list = await prisma.creditNote.findMany({
       where,
@@ -131,7 +153,15 @@ export async function GET(request: NextRequest) {
     });
 
     const serialized = list.map((cn) => serializeCreditNote(cn as Parameters<typeof serializeCreditNote>[0]));
-    return NextResponse.json({ success: true, data: serialized, total, page, pageSize, orderBy: orderByParam });
+    return NextResponse.json({
+      success: true,
+      data: serialized,
+      total,
+      page,
+      pageSize,
+      orderBy: orderByParam,
+      summary: { totalApproved, pendingAmount },
+    });
   } catch (error) {
     console.error('[Credit notes] GET error:', error);
     return NextResponse.json(

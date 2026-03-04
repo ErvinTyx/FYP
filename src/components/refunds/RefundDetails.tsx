@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, FileText, CheckCircle, XCircle, ExternalLink, Printer, Download } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ArrowLeft, FileText, CheckCircle, XCircle, ExternalLink } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -24,14 +24,9 @@ import {
   TableRow,
 } from "../ui/table";
 import { toast } from "sonner";
+import { formatRfqDate } from "../../lib/rfqDate";
 import type { Refund, RefundStatus } from "../../types/refund";
 import type { RelatedCreditNote } from "../../types/refund";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
 
 interface RefundDetailsData extends Refund {
   relatedCreditNotes?: RelatedCreditNote[];
@@ -39,9 +34,10 @@ interface RefundDetailsData extends Refund {
 
 interface RefundDetailsProps {
   refundId: string;
-  userRole: "Admin" | "Finance" | "Staff" | "Customer" | "super_user";
+  userRole: "Admin" | "Finance" | "Sales" | "Customer" | "super_user" | "Other";
   onBack: () => void;
   onRefetchList: () => void;
+  onPrintReceipt?: (refundId: string) => void;
 }
 
 export function RefundDetails({
@@ -49,6 +45,7 @@ export function RefundDetails({
   userRole,
   onBack,
   onRefetchList,
+  onPrintReceipt,
 }: RefundDetailsProps) {
   const [refund, setRefund] = useState<RefundDetailsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,19 +53,6 @@ export function RefundDetails({
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [actioning, setActioning] = useState(false);
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [autoPrint, setAutoPrint] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (showPrintModal && autoPrint) {
-      const t = setTimeout(() => {
-        window.print();
-        setAutoPrint(false);
-      }, 300);
-      return () => clearTimeout(t);
-    }
-  }, [showPrintModal, autoPrint]);
 
   const fetchRefund = useCallback(async () => {
     setLoading(true);
@@ -195,20 +179,151 @@ export function RefundDetails({
           <div className="space-y-1">
             <h1>{refund.refundNumber}</h1>
             <p className="text-[#374151]">Refund request details and approval workflow</p>
-            <div className="flex gap-2 mt-2">
-              <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(false); }}>
-                <FileText className="h-4 w-4 mr-2" />
-                View Document
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => { setShowPrintModal(true); setAutoPrint(true); }}>
-                <Download className="h-4 w-4 mr-2" />
-                Download Receipt
-              </Button>
-            </div>
           </div>
         </div>
         {getStatusBadge(refund.status)}
       </div>
+
+      {refund.status === "Rejected" && (refund.rejectionReason || refund.rejectedBy) && (
+        <Card className="border-[#DC2626] bg-[#FEE2E2]">
+          <CardHeader>
+            <CardTitle className="text-[18px] text-[#DC2626]">Rejection Reason</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {refund.rejectionReason && (
+              <p className="text-[#991B1B]">{refund.rejectionReason}</p>
+            )}
+            {refund.rejectedBy && (
+              <p className="text-[12px] text-[#991B1B]">
+                Rejected by {refund.rejectedBy}
+                {refund.rejectedAt && ` on ${formatRfqDate(refund.rejectedAt)}`}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Approved Status Info - View Receipt only shown when Approved */}
+      {refund.status === "Approved" && (
+        <Card className="border-[#059669] bg-[#F0FDF4]">
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-5 w-5 text-[#059669]" />
+                  <div>
+                    <p className="text-[#047857]">
+                      Refund Approved
+                    </p>
+                    <p className="text-[14px] text-[#6B7280] mt-1">
+                      Approved by {refund.approvedBy || "Admin"} on {formatRfqDate(refund.approvedAt)}
+                    </p>
+                  </div>
+                </div>
+                {onPrintReceipt && (
+                  <Button
+                    onClick={() => onPrintReceipt(refundId)}
+                    className="bg-[#F15929] hover:bg-[#D14620] text-white h-10 px-6 rounded-lg"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    View Receipt
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {canApprove && (
+        <Card className="border-[#F15929] bg-[#FFF7F5]">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[#231F20]">
+                  Refund Review Required
+                </p>
+                <p className="text-[14px] text-[#6B7280] mt-1">
+                  A refund request is pending. Please review and approve or reject.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRejectDialog(true)}
+                  className="h-10 px-6 rounded-lg border-[#DC2626] text-[#DC2626] hover:bg-[#FEF2F2]"
+                  disabled={actioning}
+                >
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Reject
+                </Button>
+                <Button
+                  onClick={() => setShowApproveDialog(true)}
+                  className="bg-[#059669] hover:bg-[#047857] text-white h-10 px-6 rounded-lg"
+                  disabled={actioning}
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Approve Refund
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve Refund</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to approve this refund of RM
+              {refund.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
+              for {refund.customerName}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleApprove}
+              className="bg-[#059669] hover:bg-[#047857]"
+              disabled={actioning}
+            >
+              Approve
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Refund</AlertDialogTitle>
+            <AlertDialogDescription>
+              Please provide a reason for rejecting this refund request.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Label htmlFor="rejectionReason">Rejection Reason</Label>
+            <Textarea
+              id="rejectionReason"
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              className="mt-2 min-h-[100px]"
+              placeholder="Explain why this refund is being rejected..."
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setRejectionReason("")}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleReject}
+              className="bg-[#DC2626] hover:bg-[#B91C1C]"
+              disabled={actioning || !rejectionReason.trim()}
+            >
+              Reject
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Card className="border-[#E5E7EB]">
         <CardHeader>
@@ -222,7 +337,7 @@ export function RefundDetails({
             </div>
             <div>
               <p className="text-[14px] text-[#6B7280]">Created Date</p>
-              <p className="text-[#111827]">{refund.createdAt.split("T")[0]}</p>
+              <p className="text-[#111827]">{formatRfqDate(refund.createdAt)}</p>
             </div>
             <div>
               <p className="text-[14px] text-[#6B7280]">Refund Amount</p>
@@ -308,7 +423,7 @@ export function RefundDetails({
                     <TableCell className="text-right">
                       RM{cn.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>
-                    <TableCell>{cn.date}</TableCell>
+                    <TableCell>{formatRfqDate(cn.date)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -380,165 +495,7 @@ export function RefundDetails({
         </CardContent>
       </Card>
 
-      {refund.status === "Rejected" && (refund.rejectionReason || refund.rejectedBy) && (
-        <Card className="border-[#DC2626] bg-[#FEE2E2]">
-          <CardHeader>
-            <CardTitle className="text-[18px] text-[#DC2626]">Rejection Reason</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {refund.rejectionReason && (
-              <p className="text-[#991B1B]">{refund.rejectionReason}</p>
-            )}
-            {refund.rejectedBy && (
-              <p className="text-[12px] text-[#991B1B]">
-                Rejected by {refund.rejectedBy}
-                {refund.rejectedAt && ` on ${refund.rejectedAt.split("T")[0]}`}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {refund.status === "Approved" && (refund.approvedBy || refund.approvedAt) && (
-        <Card className="border-[#059669] bg-[#D1FAE5]">
-          <CardHeader>
-            <CardTitle className="text-[18px] text-[#059669]">Approval Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {refund.approvedBy && (
-              <div className="flex justify-between">
-                <span className="text-[14px] text-[#065F46]">Approved By</span>
-                <span className="text-[14px] text-[#065F46]">{refund.approvedBy}</span>
-              </div>
-            )}
-            {refund.approvedAt && (
-              <div className="flex justify-between">
-                <span className="text-[14px] text-[#065F46]">Approved Date</span>
-                <span className="text-[14px] text-[#065F46]">{refund.approvedAt.split("T")[0]}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {canApprove && (
-        <Card className="border-[#E5E7EB]">
-          <CardHeader>
-            <CardTitle className="text-[18px]">Approval Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-3">
-              <Button
-                className="flex-1 bg-[#059669] hover:bg-[#047857] h-10"
-                onClick={() => setShowApproveDialog(true)}
-                disabled={actioning}
-              >
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Approve Refund
-              </Button>
-              <Button
-                variant="destructive"
-                className="flex-1 h-10 bg-[#DC2626] hover:bg-[#B91C1C]"
-                onClick={() => setShowRejectDialog(true)}
-                disabled={actioning}
-              >
-                <XCircle className="mr-2 h-4 w-4" />
-                Reject Refund
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Approve Refund</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to approve this refund of RM
-              {refund.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
-              for {refund.customerName}? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleApprove}
-              className="bg-[#059669] hover:bg-[#047857]"
-              disabled={actioning}
-            >
-              Approve
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reject Refund</AlertDialogTitle>
-            <AlertDialogDescription>
-              Please provide a reason for rejecting this refund request.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-4">
-            <Label htmlFor="rejectionReason">Rejection Reason</Label>
-            <Textarea
-              id="rejectionReason"
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-              className="mt-2 min-h-[100px]"
-              placeholder="Explain why this refund is being rejected..."
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setRejectionReason("")}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleReject}
-              className="bg-[#DC2626] hover:bg-[#B91C1C]"
-              disabled={actioning || !rejectionReason.trim()}
-            >
-              Reject
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto print:max-w-none print:max-h-none">
-          <div className="flex justify-between items-center print:hidden mb-4">
-            <DialogHeader>
-              <DialogTitle>Refund - Print Preview</DialogTitle>
-            </DialogHeader>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => window.print()}>
-                <Printer className="h-4 w-4 mr-2" />
-                Print
-              </Button>
-              <Button variant="outline" onClick={() => setShowPrintModal(false)}>Close</Button>
-            </div>
-          </div>
-          <div ref={printRef} className="space-y-4 p-4 border rounded-lg">
-            <div className="border-b-2 border-[#F15929] pb-4">
-              <h2 className="text-xl font-semibold text-[#231F20]">Power Metal & Steel</h2>
-              <p className="text-sm text-[#6B7280]">Refund</p>
-              <p className="text-lg font-medium mt-2">{refund.refundNumber}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <p><span className="text-[#6B7280]">Customer:</span> {refund.customerName}</p>
-              <p><span className="text-[#6B7280]">Created:</span> {refund.createdAt.split("T")[0]}</p>
-              <p><span className="text-[#6B7280]">Status:</span> {refund.status}</p>
-              <p><span className="text-[#6B7280]">Amount:</span> RM {refund.amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</p>
-              <p><span className="text-[#6B7280]">Invoice:</span> {refund.originalInvoice}</p>
-              <p><span className="text-[#6B7280]">Type:</span> {invoiceTypeLabel}</p>
-              {refund.creditNoteNumber && (
-                <p><span className="text-[#6B7280]">Credit Note:</span> {refund.creditNoteNumber}</p>
-              )}
-              <p className="col-span-2"><span className="text-[#6B7280]">Reason:</span> {refund.reason || "—"}</p>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      
     </div>
   );
 }

@@ -1,5 +1,7 @@
-import { Plus, Eye } from "lucide-react";
+import { useState } from "react";
+import { Plus, Eye, MoreVertical, CheckCircle, XCircle, Search } from "lucide-react";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import {
   Table,
@@ -23,7 +25,26 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "../ui/pagination";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
+import { RejectionModal } from "../monthly-rental/RejectionModal";
+import { formatRfqDate } from "../../lib/rfqDate";
 import type { Refund, RefundStatus } from "../../types/refund";
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
@@ -42,21 +63,84 @@ function invoiceTypeLabel(invoiceType: string): string {
   }
 }
 
+interface RefundSummary {
+  totalAmount: number;
+  pendingCount: number;
+  approvedCount: number;
+}
+
 interface RefundListProps {
   refunds: Refund[];
   total?: number;
   page?: number;
   pageSize?: number;
   orderBy?: OrderBy;
+  searchQuery?: string;
+  statusFilter?: string;
+  onSearchChange?: (value: string) => void;
+  onStatusFilterChange?: (value: string) => void;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   onOrderByChange?: (orderBy: OrderBy) => void;
   loading?: boolean;
   onCreateNew: () => void;
   onViewDetails: (refund: Refund) => void;
+  userRole?: "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
+  onApprove?: (refundId: string) => void;
+  onReject?: (refundId: string, reason: string) => void;
+  isProcessing?: boolean;
+  summary?: RefundSummary | null;
 }
 
-export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, loading, onCreateNew, onViewDetails }: RefundListProps) {
+export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderBy = "latest", searchQuery = "", statusFilter = "all", onSearchChange, onStatusFilterChange, onPageChange, onPageSizeChange, onOrderByChange, loading, onCreateNew, onViewDetails, userRole = "Other", onApprove, onReject, isProcessing = false, summary }: RefundListProps) {
+  const [showApproveDialog, setShowApproveDialog] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [selectedRefund, setSelectedRefund] = useState<Refund | null>(null);
+
+  const displayRefunds = refunds;
+
+  const totalAmount = summary?.totalAmount ?? refunds.reduce((acc, r) => acc + r.amount, 0);
+  const pendingCount = summary?.pendingCount ?? refunds.filter((r) => r.status === "Pending Approval").length;
+  const approvedCount = summary?.approvedCount ?? refunds.filter((r) => r.status === "Approved").length;
+
+  const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
+  const canCreateRefund = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
+
+  const handleApproveClick = (refund: Refund) => {
+    setSelectedRefund(refund);
+    setShowApproveDialog(true);
+  };
+
+  const handleRejectClick = (refund: Refund) => {
+    setSelectedRefund(refund);
+    setShowRejectModal(true);
+  };
+
+  const handleApprove = () => {
+    if (selectedRefund && onApprove) {
+      onApprove(selectedRefund.id);
+      setShowApproveDialog(false);
+      setSelectedRefund(null);
+    }
+  };
+
+  const handleReject = (reason: string) => {
+    if (selectedRefund && onReject) {
+      onReject(selectedRefund.id, reason);
+      setShowRejectModal(false);
+      setSelectedRefund(null);
+    }
+  };
+
+  const handleApproveDialogClose = () => {
+    setShowApproveDialog(false);
+    setSelectedRefund(null);
+  };
+
+  const handleRejectModalClose = () => {
+    setShowRejectModal(false);
+    setSelectedRefund(null);
+  };
   const getStatusBadge = (status: RefundStatus) => {
     switch (status) {
       case "Draft":
@@ -70,10 +154,6 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
     }
   };
 
-  const totalAmount = refunds.reduce((acc, r) => acc + r.amount, 0);
-  const pendingCount = refunds.filter((r) => r.status === "Pending Approval").length;
-  const approvedCount = refunds.filter((r) => r.status === "Approved").length;
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-start">
@@ -81,13 +161,15 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
           <h1>Refund Management</h1>
           <p className="text-[#374151]">Process and track refund requests across all invoice types</p>
         </div>
-        <Button
-          onClick={onCreateNew}
-          className="bg-[#F15929] hover:bg-[#D14821] h-10 px-6 rounded-lg"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Issue New Refund
-        </Button>
+        {canCreateRefund && (
+          <Button
+            onClick={onCreateNew}
+            className="bg-[#F15929] hover:bg-[#D14821] h-10 px-6 rounded-lg"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Issue New Refund
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -125,6 +207,28 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
             </p>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 max-w-[400px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
+          <Input
+            placeholder="Search by Refund ID, invoice, or customer..."
+            className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
+          <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="Pending Approval">Pending Approval</SelectItem>
+            <SelectItem value="Approved">Approved</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Card className="border-[#E5E7EB]">
@@ -185,14 +289,14 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
                     Loading...
                   </TableCell>
                 </TableRow>
-              ) : refunds.length === 0 ? (
+              ) : displayRefunds.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center text-[#6B7280] h-32">
-                    No refund records found. Click &quot;Issue New Refund&quot; to create one.
+                    No refund records found. {total === 0 ? 'Click "Issue New Refund" to create one.' : 'Try adjusting your search or filters.'}
                   </TableCell>
                 </TableRow>
               ) : (
-                refunds.map((refund) => (
+                displayRefunds.map((refund) => (
                   <TableRow key={refund.id} className="h-14 hover:bg-[#F3F4F6]">
                     <TableCell className="text-[#111827]">{refund.refundNumber}</TableCell>
                     <TableCell className="text-[#374151]">{refund.originalInvoice}</TableCell>
@@ -207,18 +311,45 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
                     </TableCell>
                     <TableCell>{getStatusBadge(refund.status)}</TableCell>
                     <TableCell className="text-[#374151]">
-                      {refund.createdAt.split("T")[0]}
+                      {formatRfqDate(refund.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="hover:bg-[#F3F4F6]"
-                        onClick={() => onViewDetails(refund)}
-                      >
-                        <Eye className="mr-1 h-4 w-4" />
-                        View
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-[#F3F4F6]" disabled={isProcessing}>
+                            <MoreVertical className="h-4 w-4 text-[#6B7280]" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[200px]">
+                          <DropdownMenuItem onClick={() => onViewDetails(refund)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            View Details
+                          </DropdownMenuItem>
+                          {canApproveReject && refund.status === "Pending Approval" && (onApprove || onReject) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {onApprove && (
+                                <DropdownMenuItem
+                                  onClick={() => handleApproveClick(refund)}
+                                  disabled={isProcessing}
+                                >
+                                  <CheckCircle className="mr-2 h-4 w-4 text-[#10B981]" />
+                                  Approve
+                                </DropdownMenuItem>
+                              )}
+                              {onReject && (
+                                <DropdownMenuItem
+                                  onClick={() => handleRejectClick(refund)}
+                                  disabled={isProcessing}
+                                >
+                                  <XCircle className="mr-2 h-4 w-4 text-[#DC2626]" />
+                                  Reject
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))
@@ -256,6 +387,41 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
           })()}
         </CardContent>
       </Card>
+
+      {selectedRefund && (
+        <AlertDialog open={showApproveDialog} onOpenChange={(open) => !open && handleApproveDialogClose()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Approve Refund</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to approve this refund of RM
+                {selectedRefund.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
+                for {selectedRefund.customerName}? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={handleApproveDialogClose}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleApprove}
+                className="bg-[#059669] hover:bg-[#047857]"
+                disabled={isProcessing}
+              >
+                Approve
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {selectedRefund && (
+        <RejectionModal
+          isOpen={showRejectModal}
+          onClose={handleRejectModalClose}
+          onReject={handleReject}
+          invoiceNumber={selectedRefund.refundNumber}
+          entityType="refund"
+        />
+      )}
     </div>
   );
 }

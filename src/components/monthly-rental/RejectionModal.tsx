@@ -10,19 +10,21 @@ import {
   DialogDescription,
 } from "../ui/dialog";
 
-interface RejectModalProps {
+interface RejectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onReject: (reason: string) => void;
-  invoiceNo: string;
+  invoiceNumber: string;
+  entityType?: "invoice" | "refund";
 }
 
-export function RejectModal({
+export function RejectionModal({
   isOpen,
   onClose,
   onReject,
-  invoiceNo,
-}: RejectModalProps) {
+  invoiceNumber,
+  entityType = "invoice",
+}: RejectionModalProps) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
 
@@ -55,10 +57,12 @@ export function RejectModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <XCircle className="h-5 w-5 text-[#DC2626]" />
-            Reject Payment
+            {entityType === "refund" ? "Reject Refund" : "Reject Payment"}
           </DialogTitle>
           <DialogDescription>
-            You are about to reject the payment for additional charge {invoiceNo}. Please provide a detailed reason.
+            {entityType === "refund"
+              ? `You are about to reject the refund ${invoiceNumber}. Please provide a detailed reason.`
+              : `You are about to reject the payment for invoice ${invoiceNumber}. Please provide a detailed reason.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -83,7 +87,10 @@ export function RejectModal({
 
           <div className="bg-[#FEF2F2] border border-[#FEE2E2] rounded-lg p-4">
             <p className="text-[14px] text-[#991B1B]">
-              <strong>Important:</strong> The customer will be notified of this rejection and can re-upload payment proof. Make sure to provide clear instructions on what needs to be corrected.
+              <strong>Important:</strong>{" "}
+              {entityType === "refund"
+                ? "The customer will be notified of this rejection."
+                : "The customer will be notified of this rejection and can re-upload payment proof. Make sure to provide clear instructions on what needs to be corrected."}
             </p>
           </div>
         </div>

@@ -26,6 +26,7 @@ import {
   FileX,
   PackageOpen,
   AlertCircle,
+  ShieldX,
 } from "lucide-react";
 
 import { Button } from "./components/ui/button";
@@ -131,10 +132,66 @@ export type SOANavigation = {
   action: SOANavigationAction;
 } | null;
 
+// Page-level role permissions: only pages with restrictions are listed.
+// Pages not in this map (profile, customer-portal, customer-content-view) have no restriction.
+const PAGE_ALLOWED_ROLES: Partial<Record<Page, string[]>> = {
+  "user-management": ["admin", "super_user"],
+  "scaffolding-management": ["admin", "super_user", "sales", "production"],
+  "inspection-maintenance": ["operations", "production", "admin", "super_user"],
+  "rental-agreement": ["sales", "admin", "super_user"],
+  "delivery-return-requests": ["admin", "super_user", "sales"],
+  "delivery-management": ["admin", "super_user", "operations", "production"],
+  "return-management": ["admin", "super_user", "operations", "production"],
+  "billing-dashboard": ["admin", "super_user", "sales", "finance"],
+  "manage-deposits": ["admin", "super_user", "sales", "finance"],
+  "monthly-rental": ["admin", "super_user", "sales", "finance"],
+  "credit-notes": ["admin", "super_user", "sales", "finance"],
+  "refund-management": ["admin", "super_user", "sales", "finance"],
+  "additional-charges": ["admin", "super_user", "sales", "finance"],
+  "statement-of-account": ["admin", "super_user", "sales", "finance"],
+  "project-closure": ["admin", "super_user", "sales", "operations"],
+  "report-generation": ["admin", "super_user", "finance"],
+  "content-management": ["admin", "super_user"],
+  "rfq-management": ["sales", "admin", "super_user"],
+};
+
+function canAccessPage(page: Page, roles: string[]): boolean {
+  const allowed = PAGE_ALLOWED_ROLES[page];
+  if (!allowed) return true; // No restriction
+  return roles.some((r) => allowed.includes(r));
+}
+
+// Fallback order for initial page when user logs in - matches menu order
+const DEFAULT_PAGE_ORDER: Page[] = [
+  "user-management",
+  "billing-dashboard",
+  "scaffolding-management",
+  "inspection-maintenance",
+  "rfq-management",
+  "rental-agreement",
+  "delivery-return-requests",
+  "delivery-management",
+  "return-management",
+  "project-closure",
+  "manage-deposits",
+  "monthly-rental",
+  "credit-notes",
+  "refund-management",
+  "additional-charges",
+  "statement-of-account",
+  "report-generation",
+  "content-management",
+];
+
+function getFirstAllowedPageFromRoles(roles: string[]): Page {
+  return DEFAULT_PAGE_ORDER.find((p) => canAccessPage(p, roles)) ?? "billing-dashboard";
+}
+
 export default function App() {
   const { data: session, status } = useSession();
   const [authScreen, setAuthScreen] = useState<AuthScreen>("portal-selector");
   const [userRole, setUserRole] = useState<string>("");
+  const [userRoles, setUserRoles] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState<Page>("billing-dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [systemMode, setSystemMode] = useState<SystemMode>("ERP");
@@ -237,6 +294,7 @@ export default function App() {
       // Get primary role (first role or default)
       const primaryRole = roles[0] || "admin";
       setUserRole(primaryRole);
+      setUserRoles(roles);
       
       // Only set the initial page on first authentication, not on session refresh
       if (!hasInitializedPageRef.current) {
@@ -247,9 +305,9 @@ export default function App() {
           setSystemMode("CRM");
           setCurrentPage("customer-portal");
         } else {
-          // All other roles go to ERP portal
+          // All other roles go to ERP portal - use first allowed page
           setSystemMode("ERP");
-          setCurrentPage("billing-dashboard");
+          setCurrentPage(getFirstAllowedPageFromRoles(roles));
         }
         
         // Go directly to dashboard
@@ -263,21 +321,32 @@ export default function App() {
     }
   }, [status, session]);
 
+  // Redirect to first allowed page if currentPage becomes inaccessible (e.g. role change)
+  useEffect(() => {
+    if (status !== "authenticated" || userRole === "customer" || userRoles.length === 0) return;
+    const page = currentPage as Page;
+    if (PAGE_ALLOWED_ROLES[page] && !canAccessPage(page, userRoles)) {
+      setCurrentPage(getFirstAllowedPageFromRoles(userRoles));
+    }
+  }, [userRoles, currentPage, status, userRole]);
+
   // BUG FIX: Removed duplicate useEffect that was resetting page state on every session refresh.
   // The first useEffect (lines 240-273) already handles session sync with hasInitializedPageRef guard.
 
   // Unified login handler - determines portal based on role
   const handleUnifiedLogin = (role: string) => {
+    const roles = [role];
     setUserRole(role);
+    setUserRoles(roles);
     
     // Customer goes to CRM portal
     if (role === "customer") {
       setSystemMode("CRM");
       setCurrentPage("customer-portal");
     } else {
-      // All other roles go to ERP portal
+      // All other roles go to ERP portal - use first allowed page
       setSystemMode("ERP");
-      setCurrentPage("billing-dashboard");
+      setCurrentPage(getFirstAllowedPageFromRoles(roles));
     }
     
     // Go directly to dashboard
@@ -434,14 +503,24 @@ export default function App() {
       return []; // No menu items for customers - they can only access profile via dropdown
     }
 
-    // ERP Mode - Internal Staff
-    const erpItems = [
+    // ERP Mode - Internal Staff - filter items by role
+    const allSections = [
+      ...(canAccessPage("user-management", userRoles)
+        ? [
+            {
+              section: "User Management",
+              items: [
+                { id: "user-management" as Page, label: "Users List", icon: Users },
+              ],
+            },
+          ]
+        : []),
       {
         section: "Inventory Management",
         items: [
           { id: "scaffolding-management" as Page, label: "Scaffolding Items", icon: Package },
           { id: "inspection-maintenance" as Page, label: "Inspection & Maintenance", icon: ClipboardCheck },
-        ],
+        ].filter((item) => canAccessPage(item.id, userRoles)),
       },
       {
         section: "Sales & Orders",
@@ -452,7 +531,7 @@ export default function App() {
           { id: "delivery-management" as Page, label: "Delivery Management", icon: Truck },
           { id: "return-management" as Page, label: "Return Management", icon: PackageCheck },
           { id: "project-closure" as Page, label: "Project Closure", icon: FileX },
-        ],
+        ].filter((item) => canAccessPage(item.id, userRoles)),
       },
       {
         section: "Billing & Payments",
@@ -464,39 +543,32 @@ export default function App() {
           { id: "refund-management" as Page, label: "Refunds", icon: RotateCcw },
           { id: "additional-charges" as Page, label: "Additional Charges", icon: AlertCircle },
           { id: "statement-of-account" as Page, label: "Statement of Account", icon: FileText },
-        ],
+        ].filter((item) => canAccessPage(item.id, userRoles)),
       },
       {
         section: "Reports",
         items: [
           { id: "report-generation" as Page, label: "Report Generation", icon: BarChart3 },
-        ],
+        ].filter((item) => canAccessPage(item.id, userRoles)),
       },
       {
         section: "Content",
         items: [
           { id: "content-management" as Page, label: "Manage Content", icon: Newspaper },
-        ],
+        ].filter((item) => canAccessPage(item.id, userRoles)),
       },
     ];
 
-    // Add user management section only for admin and super_user
-    if (userRole === "admin" || userRole === "super_user") {
-      return [
-        {
-          section: "User Management",
-          items: [
-            { id: "user-management" as Page, label: "Users List", icon: Users },
-          ],
-        },
-        ...erpItems,
-      ];
-    }
-
-    return erpItems;
+    // Remove sections with no items
+    return allSections.filter((s) => s.items.length > 0);
   };
 
   const menuItems = getMenuItems();
+
+  const getFirstAllowedPage = (): Page => {
+    const first = menuItems[0]?.items[0];
+    return first?.id ?? "billing-dashboard";
+  };
 
   const renderPage = () => {
     // Restrict customers to only profile page and customer-portal (development message)
@@ -520,6 +592,29 @@ export default function App() {
       );
     }
 
+    // Role-based access check for ERP users - show Access Denied for restricted pages
+    if (userRole !== "customer" && PAGE_ALLOWED_ROLES[currentPage] && !canAccessPage(currentPage, userRoles)) {
+      return (
+        <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
+          <div className="text-center space-y-6 max-w-md">
+            <div className="w-24 h-24 mx-auto bg-[#FEE2E2] rounded-full flex items-center justify-center">
+              <ShieldX className="h-12 w-12 text-[#DC2626]" />
+            </div>
+            <h1 className="text-2xl font-semibold text-[#111827]">Access Denied</h1>
+            <p className="text-[#6B7280]">
+              You don&apos;t have permission to view this page.
+            </p>
+            <Button
+              onClick={() => setCurrentPage(getFirstAllowedPage())}
+              className="bg-[#F15929] hover:bg-[#D14820] text-white"
+            >
+              Go to Dashboard
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
     switch (currentPage) {
       case "user-management":
         return <UserManagement userRole={userRole} />;
@@ -538,7 +633,7 @@ export default function App() {
       case "manage-deposits":
         return (
           <ManageDepositFlow
-            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"}
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "manage-deposits" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />
@@ -546,6 +641,7 @@ export default function App() {
       case "monthly-rental":
         return (
           <MonthlyRentalBilling
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "monthly-rental" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />
@@ -553,6 +649,7 @@ export default function App() {
       case "credit-notes":
         return (
           <CreditNotes
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "credit-notes" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />
@@ -560,7 +657,7 @@ export default function App() {
       case "refund-management":
         return (
           <RefundManagementMain
-            userRole={userRole === "super_user" || userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : "Staff"}
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "refund-management" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />
@@ -568,6 +665,7 @@ export default function App() {
       case "additional-charges":
         return (
           <AdditionalCharges
+            userRole={userRole === "super_user" ? "super_user" : userRole === "admin" ? "Admin" : userRole === "finance" ? "Finance" : userRole === "sales" ? "Sales" : "Other"}
             initialOpenFromSOA={soaNavigation?.page === "additional-charges" ? { entityId: soaNavigation.entityId, action: soaNavigation.action } : null}
             onConsumedSOANavigation={() => setSOANavigation(null)}
           />

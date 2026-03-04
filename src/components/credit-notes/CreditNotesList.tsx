@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Eye, MoreVertical } from "lucide-react";
+import { Search, Eye, MoreVertical, CheckCircle, XCircle } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -24,6 +24,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import {
@@ -34,10 +35,17 @@ import {
   PaginationPrevious,
 } from "../ui/pagination";
 import { StatusBadge } from "./StatusBadge";
+import { CreditNoteApprovalModal } from "./CreditNoteApprovalModal";
+import { RejectionModal } from "./RejectionModal";
 import { CreditNote } from "../../types/creditNote";
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
 type OrderBy = "latest" | "earliest";
+
+interface CreditNotesSummary {
+  totalApproved: number;
+  pendingAmount: number;
+}
 
 interface CreditNotesListProps {
   creditNotes: CreditNote[];
@@ -45,10 +53,18 @@ interface CreditNotesListProps {
   page?: number;
   pageSize?: number;
   orderBy?: OrderBy;
+  searchQuery?: string;
+  statusFilter?: string;
+  onSearchChange?: (value: string) => void;
+  onStatusFilterChange?: (value: string) => void;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   onOrderByChange?: (orderBy: OrderBy) => void;
   onView: (id: string) => void;
+  onApprove?: (id: string) => void;
+  onReject?: (id: string, reason: string) => void;
+  userRole?: "super_user" | "Admin" | "Finance" | "Sales" | "Viewer" | "Other";
+  summary?: CreditNotesSummary | null;
 }
 
 export function CreditNotesList({
@@ -57,29 +73,61 @@ export function CreditNotesList({
   page = 1,
   pageSize = 10,
   orderBy = "latest",
+  searchQuery = "",
+  statusFilter = "all",
+  onSearchChange,
+  onStatusFilterChange,
   onPageChange,
   onPageSizeChange,
   onOrderByChange,
   onView,
+  onApprove,
+  onReject,
+  userRole = "Viewer",
+  summary,
 }: CreditNotesListProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [selectedNoteForApproval, setSelectedNoteForApproval] = useState<CreditNote | null>(null);
+  const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
+  const [selectedNoteForRejection, setSelectedNoteForRejection] = useState<CreditNote | null>(null);
 
-  const filteredNotes = creditNotes.filter((note) => {
-    const matchesSearch =
-      note.creditNoteNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      note.customer.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || note.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const canApproveReject = (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && (onApprove != null || onReject != null);
 
-  const totalApproved = creditNotes
+  const displayNotes = creditNotes;
+
+  const totalApproved = summary?.totalApproved ?? creditNotes
     .filter((note) => note.status === "Approved")
     .reduce((acc, note) => acc + note.amount, 0);
 
-  const pendingAmount = creditNotes
+  const pendingAmount = summary?.pendingAmount ?? creditNotes
     .filter((note) => note.status === "Pending Approval")
     .reduce((acc, note) => acc + note.amount, 0);
+
+  const handleApproveClick = (note: CreditNote) => {
+    setSelectedNoteForApproval(note);
+    setApprovalModalOpen(true);
+  };
+
+  const handleRejectClick = (note: CreditNote) => {
+    setSelectedNoteForRejection(note);
+    setRejectionModalOpen(true);
+  };
+
+  const handleApprove = () => {
+    if (selectedNoteForApproval && onApprove) {
+      onApprove(selectedNoteForApproval.id);
+      setApprovalModalOpen(false);
+      setSelectedNoteForApproval(null);
+    }
+  };
+
+  const handleReject = (reason: string) => {
+    if (selectedNoteForRejection && onReject) {
+      onReject(selectedNoteForRejection.id, reason);
+      setRejectionModalOpen(false);
+      setSelectedNoteForRejection(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -123,11 +171,11 @@ export function CreditNotesList({
           <Input
             placeholder="Search by credit note # or customer..."
             className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
           <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
@@ -193,14 +241,14 @@ export function CreditNotesList({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredNotes.length === 0 ? (
+              {displayNotes.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-[#6B7280]">
                     No credit notes found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredNotes.map((note) => (
+                displayNotes.map((note) => (
                   <TableRow key={note.id} className="h-14 hover:bg-[#F3F4F6]">
                     <TableCell className="text-[#374151]">{note.customer}</TableCell>
                     <TableCell className="text-[#374151]">
@@ -236,6 +284,23 @@ export function CreditNotesList({
                             <Eye className="h-4 w-4 mr-2" />
                             View
                           </DropdownMenuItem>
+                          {canApproveReject && note.status === "Pending Approval" && (onApprove != null || onReject != null) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {onApprove != null && (
+                                <DropdownMenuItem onClick={() => handleApproveClick(note)}>
+                                  <CheckCircle className="mr-2 h-4 w-4 text-[#10B981]" />
+                                  Approve
+                                </DropdownMenuItem>
+                              )}
+                              {onReject != null && (
+                                <DropdownMenuItem onClick={() => handleRejectClick(note)}>
+                                  <XCircle className="mr-2 h-4 w-4 text-[#DC2626]" />
+                                  Reject
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -275,6 +340,32 @@ export function CreditNotesList({
           })()}
         </CardContent>
       </Card>
+
+      {approvalModalOpen && selectedNoteForApproval && onApprove != null && (
+        <CreditNoteApprovalModal
+          isOpen={approvalModalOpen}
+          onClose={() => {
+            setApprovalModalOpen(false);
+            setSelectedNoteForApproval(null);
+          }}
+          onApprove={handleApprove}
+          creditNoteNumber={selectedNoteForApproval.creditNoteNumber}
+          customer={selectedNoteForApproval.customer}
+          amount={selectedNoteForApproval.amount}
+        />
+      )}
+
+      {rejectionModalOpen && selectedNoteForRejection && onReject != null && (
+        <RejectionModal
+          isOpen={rejectionModalOpen}
+          onClose={() => {
+            setRejectionModalOpen(false);
+            setSelectedNoteForRejection(null);
+          }}
+          onReject={handleReject}
+          creditNoteNumber={selectedNoteForRejection.creditNoteNumber}
+        />
+      )}
     </div>
   );
 }

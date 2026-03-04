@@ -1,17 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { MonthlyRentalInvoiceList } from './MonthlyRentalInvoiceList';
 import { MonthlyRentalInvoiceDetails } from './MonthlyRentalInvoiceDetails';
+import { MonthlyRentalReceiptPrint } from './MonthlyRentalReceiptPrint';
 import { MonthlyRentalInvoice } from '../../types/monthly-rental';
 import { toast } from 'sonner';
 import { uploadPaymentProof } from '@/lib/upload';
 import { Loader2 } from 'lucide-react';
 
-type View = 'list' | 'details';
+type View = 'list' | 'details' | 'receipt';
 
 type SOANavigationAction = 'view' | 'viewDocument' | 'downloadReceipt';
 
 interface MonthlyRentalBillingProps {
-  userRole?: 'super_user' | 'Admin' | 'Finance' | 'Staff' | 'Customer';
+  userRole?: 'super_user' | 'Admin' | 'Finance' | 'Sales' | 'Customer' | 'Other';
   initialOpenFromSOA?: { entityId: string; action: SOANavigationAction } | null;
   onConsumedSOANavigation?: () => void;
 }
@@ -26,21 +28,40 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [orderBy, setOrderBy] = useState<OrderBy>('latest');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [summary, setSummary] = useState<{
+    pendingPaymentCount: number;
+    pendingApprovalCount: number;
+    paidCount: number;
+    paidAmount: number;
+    overdueCount: number;
+  } | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const debouncedSearch = useDebounce(searchQuery, 400);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
 
   // Fetch invoices from API
   const fetchInvoices = useCallback(async () => {
     try {
       setIsLoading(true);
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
+      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
       const response = await fetch(`/api/monthly-rental?${params}`);
       const data = await response.json();
       
       if (data.success) {
         setInvoices(data.invoices || []);
         setTotal(typeof data.total === 'number' ? data.total : (data.invoices?.length ?? 0));
+        setSummary(data.summary ?? null);
       } else {
         console.error('Failed to fetch invoices:', data.message);
         toast.error(data.message || 'Failed to load invoices');
@@ -51,7 +72,7 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
     } finally {
       setIsLoading(false);
     }
-  }, [page, pageSize, orderBy]);
+  }, [page, pageSize, orderBy, debouncedSearch, statusFilter]);
 
   // Load invoices when page, pageSize, or orderBy change
   useEffect(() => {
@@ -210,6 +231,11 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
     toast.info('Items return is handled through the Return Request module');
   };
 
+  const handlePrintReceipt = (invoiceId: string) => {
+    setSelectedInvoiceId(invoiceId);
+    setCurrentView('receipt');
+  };
+
   const selectedInvoice = selectedInvoiceId
     ? invoices.find(inv => inv.id === selectedInvoiceId)
     : null;
@@ -241,12 +267,20 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
             page={page}
             pageSize={pageSize}
             orderBy={orderBy}
+            searchQuery={searchQuery}
+            statusFilter={statusFilter}
+            onSearchChange={setSearchQuery}
+            onStatusFilterChange={setStatusFilter}
             onPageChange={setPage}
             onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
             onOrderByChange={(o) => { setOrderBy(o); setPage(1); }}
             onView={handleView}
             onEditPayment={handleEditPayment}
+            onApprove={handleApprove}
+            onReject={handleReject}
             userRole={userRole}
+            isProcessing={isProcessing}
+            summary={summary}
           />
         </>
       )}
@@ -259,8 +293,16 @@ export function MonthlyRentalBilling({ userRole = 'Admin', initialOpenFromSOA, o
           onApprove={handleApprove}
           onReject={handleReject}
           onMarkAsReturned={handleMarkAsReturned}
+          onPrintReceipt={handlePrintReceipt}
           userRole={userRole}
           isProcessing={isProcessing}
+        />
+      )}
+
+      {currentView === 'receipt' && selectedInvoice && (
+        <MonthlyRentalReceiptPrint
+          invoice={selectedInvoice}
+          onBack={handleBack}
         />
       )}
     </div>

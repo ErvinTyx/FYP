@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, Plus, Trash2, Send, CalendarDays, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Send, CalendarDays, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -79,7 +79,10 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     startDate: string | null; endDate: string | null; agreementNo: string;
   }>>([]);
   const [returnItemsLoading, setReturnItemsLoading] = useState(false);
-  const [returnItemsAgreementId, setReturnItemsAgreementId] = useState<string | null>(null);
+  const [returnItemsAgreementId, setReturnItemsAgreementId] = useState<string | null>(
+    editingNote?.reason === "Returned Items" && editingNote?.sourceId ? editingNote.sourceId : null
+  );
+  const [returnItemsAgreements, setReturnItemsAgreements] = useState<Array<{ id: string; agreementNumber: string }>>([]);
 
   // Track if we're in initial edit loading mode - when true, skip overwriting items and source from API
   const isInitialEditLoadRef = useRef(!!editingNote && editingNote.items && editingNote.items.length > 0);
@@ -362,6 +365,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     if (reason !== "Returned Items" || !selectedCustomer) {
       setReturnItemsData([]);
       setReturnItemsAgreementId(null);
+      setReturnItemsAgreements([]);
       return;
     }
 
@@ -371,41 +375,58 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     const name = selectedCustomer.customerName;
     setReturnItemsLoading(true);
 
-    fetch(`/api/credit-notes/return-items?customerName=${encodeURIComponent(name)}&invoiceType=${encodeURIComponent(invoiceType)}`)
+    let url = `/api/credit-notes/return-items?customerName=${encodeURIComponent(name)}&invoiceType=${encodeURIComponent(invoiceType)}`;
+    if (returnItemsAgreementId) {
+      url += `&agreementId=${encodeURIComponent(returnItemsAgreementId)}`;
+    }
+
+    fetch(url)
       .then((r) => r.json())
       .then((json) => {
-        if (json.success && Array.isArray(json.items)) {
-          setReturnItemsData(json.items);
-          setReturnItemsAgreementId(json.agreementId || null);
+        if (json.success) {
+          const agreementsList = Array.isArray(json.agreements) ? json.agreements : [];
+          setReturnItemsAgreements(agreementsList);
 
-          // Auto-populate credit note line items from return items
-          if (json.items.length > 0) {
-            const newItems: CreditNoteItem[] = json.items.map((ri: typeof returnItemsData[0], idx: number) => ({
-              id: `ret-${idx}`,
-              description: ri.name,
-              quantity: ri.quantity,
-              previousPrice: ri.previousPrice,
-              currentPrice: ri.currentPrice,
-              unitPrice: ri.unitPrice,
-              amount: ri.previousPrice - ri.currentPrice, // credit = original - charged
-            }));
-            setItems(newItems);
-            // Set auto originalInvoice label
-            setOriginalInvoice("Auto - Returned Items");
+          if (Array.isArray(json.items)) {
+            setReturnItemsData(json.items);
+            // Auto-select when single agreement only (avoid re-fetch by not including in deps)
+            if (agreementsList.length === 1) {
+              setReturnItemsAgreementId((prev) => prev || agreementsList[0].id);
+            }
+
+            // Auto-populate credit note line items from return items
+            if (json.items.length > 0) {
+              const newItems: CreditNoteItem[] = json.items.map((ri: (typeof returnItemsData)[0], idx: number) => ({
+                id: `ret-${idx}`,
+                description: ri.name,
+                quantity: ri.quantity,
+                previousPrice: ri.previousPrice,
+                currentPrice: ri.currentPrice,
+                unitPrice: ri.unitPrice,
+                amount: ri.previousPrice - ri.currentPrice, // credit = original - charged
+              }));
+              setItems(newItems);
+              setOriginalInvoice("Auto - Returned Items");
+            } else {
+              setItems([]);
+            }
           } else {
+            setReturnItemsData([]);
             setItems([]);
           }
         } else {
           setReturnItemsData([]);
+          setReturnItemsAgreements([]);
           setItems([]);
         }
       })
       .catch(() => {
         setReturnItemsData([]);
+        setReturnItemsAgreements([]);
         setItems([]);
       })
       .finally(() => setReturnItemsLoading(false));
-  }, [reason, selectedCustomer, invoiceType]);
+  }, [reason, selectedCustomer, invoiceType, returnItemsAgreementId]);
 
   const handleSelectCustomer = (c: CustomerOption) => {
     setSelectedCustomer(c);
@@ -471,6 +492,43 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     ]);
   };
 
+  const handleRemoveItem = (itemId: string) => {
+    if (invoiceType !== "monthlyRental" && invoiceType !== "additionalCharge") return;
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+  };
+
+  const handleResetLineItems = () => {
+    if (invoiceType === "monthlyRental" && monthlyInvoiceItems.length > 0) {
+      setItems(
+        monthlyInvoiceItems.map((invItem) => ({
+          id: invItem.id,
+          description: invItem.scaffoldingItemName,
+          quantity: invItem.quantityBilled,
+          previousPrice: invItem.lineTotal,
+          currentPrice: invItem.lineTotal,
+          unitPrice: invItem.unitPrice,
+          amount: 0,
+        }))
+      );
+    } else if (invoiceType === "additionalCharge" && additionalChargeItems.length > 0) {
+      setItems(
+        additionalChargeItems.map((ci) => ({
+          id: ci.id,
+          description: ci.itemName,
+          quantity: ci.quantity,
+          previousPrice: ci.amount,
+          currentPrice: ci.amount,
+          unitPrice: ci.unitPrice,
+          amount: 0,
+        }))
+      );
+    }
+  };
+
+  const canResetLineItems =
+    (invoiceType === "monthlyRental" && items.length < monthlyInvoiceItems.length) ||
+    (invoiceType === "additionalCharge" && items.length < additionalChargeItems.length);
+
   const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
   const totalCurrentPrice = items.reduce((sum, item) => sum + (item.currentPrice || 0), 0);
 
@@ -491,11 +549,15 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     return results;
   };
 
-  const buildPayload = () => ({
+  const buildPayload = () => {
+    const effectiveAgreementId = reason === "Returned Items"
+      ? (returnItemsAgreementId ?? (returnItemsAgreements.length === 1 ? returnItemsAgreements[0]?.id : undefined))
+      : undefined;
+    return {
     customerName: selectedCustomer?.customerName ?? "",
     customerId: selectedCustomer?.customerId ?? "",
     invoiceType,
-    sourceId: reason === "Returned Items" ? (returnItemsAgreementId || undefined) : (sourceId || undefined),
+    sourceId: reason === "Returned Items" ? effectiveAgreementId : (sourceId || undefined),
     originalInvoice: reason === "Returned Items" ? "Auto - Returned Items" : originalInvoice,
     reason,
     reasonDescription: reasonDescription || undefined,
@@ -508,7 +570,8 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       currentPrice: i.currentPrice,
       amount: i.amount,
     })),
-  });
+  };
+  };
 
   const validate = (forSubmit: boolean) => {
     if (!selectedCustomer) {
@@ -520,15 +583,25 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       toast.error("Please select the original invoice");
       return false;
     }
-    if (reason === "Returned Items" && items.length === 0) {
-      toast.error("No return items found for this customer");
-      return false;
+    if (reason === "Returned Items") {
+      if (returnItemsAgreements.length > 1 && !returnItemsAgreementId) {
+        toast.error("Please select an agreement");
+        return false;
+      }
+      if (items.length === 0) {
+        toast.error("No return items found for this customer");
+        return false;
+      }
     }
     if (forSubmit) {
       if (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") {
+        if (items.length === 0) {
+          toast.error("At least one line item is required");
+          return false;
+        }
         // For monthly rental and additional charges: check description, amount, and validate currentPrice <= previousPrice
         if (items.some((i) => !i.description || i.amount <= 0)) {
-          toast.error("Please complete all line items with valid adjusted amounts");
+          toast.error("Please complete all line items with valid adjusted amounts greater than 0");
           return false;
         }
         // Validate that adjusted amount doesn't exceed original amount
@@ -647,17 +720,39 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
           </div>
 
           <div className="space-y-2">
-            <label className="text-[14px] text-[#374151]">Invoice type</label>
-            <Select value={invoiceType} onValueChange={(v) => setInvoiceType(v as CreditNoteInvoiceType)}>
+            <label className="text-[14px] text-[#374151]">Reason <span className="text-[#DC2626]">*</span></label>
+            <Select value={reason} onValueChange={(v) => setReason(v as CreditNote["reason"])}>
               <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="deposit">Deposit</SelectItem>
-                <SelectItem value="monthlyRental">Monthly Rental</SelectItem>
-                <SelectItem value="additionalCharge">Additional Charge</SelectItem>
+                {REASONS.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[14px] text-[#374151]">Invoice type</label>
+              <Select value={invoiceType} onValueChange={(v) => setInvoiceType(v as CreditNoteInvoiceType)}>
+                <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="deposit">Deposit</SelectItem>
+                  <SelectItem value="monthlyRental">Monthly Rental</SelectItem>
+                  <SelectItem value="additionalCharge">Additional Charge</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[14px] text-[#374151]">Date</label>
+              <Input type="date" value={date} disabled className="h-10 bg-[#F3F4F6] rounded-md" />
+            </div>
           </div>
 
           {/* Hide invoice selection when reason is "Returned Items" — items are auto-fetched from returns */}
@@ -686,35 +781,34 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
             </div>
           )}
           {reason === "Returned Items" && selectedCustomer && (
-            <div className="p-3 bg-[#EFF6FF] border border-[#BFDBFE] rounded-lg">
-              <p className="text-sm text-[#1E40AF]">
-                <CalendarDays className="inline h-4 w-4 mr-1 -mt-0.5" />
-                Invoice selection is not required for returned items. The system will automatically calculate charges based on completed return requests.
-              </p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[14px] text-[#374151]">Reason <span className="text-[#DC2626]">*</span></label>
-              <Select value={reason} onValueChange={(v) => setReason(v as CreditNote["reason"])}>
+              <label className="text-[14px] text-[#374151]">
+                Agreement <span className="text-[#DC2626]">*</span>
+              </label>
+              <Select
+                value={returnItemsAgreementId ?? ""}
+                onValueChange={(v) => {
+                  setReturnItemsAgreementId(v || null);
+                }}
+                disabled={!selectedCustomer || returnItemsLoading || returnItemsAgreements.length === 0}
+              >
                 <SelectTrigger className="h-10 bg-white border-[#D1D5DB] rounded-md">
-                  <SelectValue />
+                  <SelectValue placeholder={returnItemsAgreements.length === 0 ? "No agreements with returns" : "Select agreement..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  {REASONS.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {r}
+                  {returnItemsAgreements.map((ag) => (
+                    <SelectItem key={ag.id} value={ag.id}>
+                      {ag.agreementNumber}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-sm text-[#6B7280]">
+                <CalendarDays className="inline h-4 w-4 mr-1 -mt-0.5" />
+                Charges are calculated from completed return requests for the selected agreement.
+              </p>
             </div>
-            <div className="space-y-2">
-              <label className="text-[14px] text-[#374151]">Date</label>
-              <Input type="date" value={date} disabled className="h-10 bg-[#F3F4F6] rounded-md" />
-            </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-[14px] text-[#374151]">Additional details</label>
@@ -800,14 +894,14 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                             {retData.endDate || "N/A"}
                           </div>
                           <div>
-                            <span className="font-medium text-[#1E40AF]">Actual:</span>{" "}
-                            {retData.actualDays} days ({retData.actualMonths} mo)
+                            <span className="font-medium text-[#1E40AF]">Actual Usage:</span>{" "}
+                            {retData.actualDays} days ({retData.actualMonths} month)
                           </div>
                           <div>
                             <span className="font-medium text-[#1E40AF]">Charged:</span>{" "}
-                            {retData.chargedMonths} mo
+                            {retData.chargedMonths} month
                             {retData.chargedMonths > retData.actualMonths && (
-                              <span className="text-[#D97706]"> (min {retData.minimumMonths} mo)</span>
+                              <span className="text-[#D97706]"> (min {retData.minimumMonths} month)</span>
                             )}
                           </div>
                         </div>
@@ -837,10 +931,39 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
             </div>
           )}
 
-          {reason !== "Returned Items" && (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") &&
-            items.map((item) => (
+          {reason !== "Returned Items" && (invoiceType === "monthlyRental" || invoiceType === "additionalCharge") && (
+            <>
+              {canResetLineItems && (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleResetLineItems}
+                    title="Restore all removed line items"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset line items
+                  </Button>
+                </div>
+              )}
+              {items.map((item) => (
               <Card key={item.id} className="border-[#E5E7EB] bg-[#F9FAFB]">
                 <CardContent className="pt-4 pb-4">
+                  <div className="flex justify-end mb-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-[#6B7280] hover:text-red-600 hover:bg-red-50"
+                      onClick={() => handleRemoveItem(item.id)}
+                      disabled={items.length <= 1}
+                      title="Remove line item"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-[14px] text-[#374151]">Description</label>
@@ -878,6 +1001,8 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                 </CardContent>
               </Card>
             ))}
+            </>
+          )}
 
           {invoiceType === "deposit" && items.length === 1 && (
             <div className="flex justify-end">

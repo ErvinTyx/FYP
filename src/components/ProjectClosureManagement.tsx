@@ -138,6 +138,7 @@ interface ClosureRequest {
   requestDate: string;
   termOfHire?: string;
   rentalStartDate: string;
+  extendedFromAgreement?: { id: string; agreementNumber: string } | null;
   minimumRentalPeriodDays: number; // fixed 30
   actualRentalPeriodDays: number | null; // parsed from termOfHire for validation
   returnStatus: "completed" | "pending" | "in-progress";
@@ -164,6 +165,8 @@ interface ProjectClosureRow {
     hirerSignatoryName?: string | null;
     termOfHire?: string | null;
     rentalStartDate?: string | null;
+    extendedFromAgreementId?: string | null;
+    extendedFromAgreement?: { id: string; agreementNumber: string } | null;
     additionalChargeStatus?: string | null;
     monthlyRentalPaymentStatus?: string | null;
     depositStatus?: string | null;
@@ -209,6 +212,7 @@ function rowToClosureRequest(row: ProjectClosureRow): ClosureRequest {
     requestDate,
     termOfHire: agreement.termOfHire ?? undefined,
     rentalStartDate: agreement.rentalStartDate ?? "",
+    extendedFromAgreement: agreement.extendedFromAgreement ?? null,
     minimumRentalPeriodDays: MINIMUM_RENTAL_PERIOD_DAYS,
     actualRentalPeriodDays,
     returnStatus: returnProcessComplete ? "completed" : "pending",
@@ -472,7 +476,14 @@ export function ProjectClosureManagement() {
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
-                        <div className="text-[#231F20]">{request.projectName}</div>
+                        <div className="text-[#231F20]">
+                          {request.projectName}
+                          {request.extendedFromAgreement?.agreementNumber && (
+                            <span className="ml-1 text-[12px] text-[#6B7280]">
+                              (Extended from {request.extendedFromAgreement.agreementNumber})
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[12px] text-[#6B7280]">
                           {request.termOfHire ?? (request.actualRentalPeriodDays != null ? `Rental: ${request.actualRentalPeriodDays} days` : "—")}
                         </div>
@@ -503,8 +514,8 @@ export function ProjectClosureManagement() {
                                 <XCircle className="h-5 w-5 text-[#EF4444]" />
                               )}
                             </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Minimum Rental Period</p>
+                            <TooltipContent className="text-xs text-primary-foreground font-sans">
+                              <p className="text-xs text-primary-foreground font-sans">Minimum Rental Period</p>
                             </TooltipContent>
                           </Tooltip>
                           <Tooltip>
@@ -517,10 +528,10 @@ export function ProjectClosureManagement() {
                                 <XCircle className="h-5 w-5 text-[#EF4444]" />
                               )}
                             </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Return Process Status</p>
+                            <TooltipContent className="text-xs text-primary-foreground font-sans">
+                              <p className="text-xs text-primary-foreground font-sans">Return Process Status</p>
                               {request.returnCompletion && (
-                                <p className="text-xs mt-1">
+                                <p className="text-xs text-primary-foreground font-sans mt-1">
                                   {request.returnCompletion.isComplete
                                     ? "All items returned"
                                     : request.returnCompletion.totalDelivered === 0
@@ -540,13 +551,13 @@ export function ProjectClosureManagement() {
                                 <AlertCircle className="h-5 w-5 text-[#9CA3AF]" />
                               )}
                             </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Payment Status</p>
+                            <TooltipContent className="text-xs text-primary-foreground font-sans">
+                              <p className="text-xs text-primary-foreground font-sans">Payment Status</p>
                               {request.paymentStatus && (
-                                <div className="text-xs mt-1 space-y-0.5">
-                                  <p>Monthly Rental: {request.paymentStatus.monthlyRental.paidCount}/{request.paymentStatus.monthlyRental.expectedMonths} Paid</p>
-                                  <p>Deposit: {!request.paymentStatus.deposit.exists ? 'N/A' : request.paymentStatus.deposit.isComplete ? 'Paid' : request.paymentStatus.deposit.status}</p>
-                                  <p>Damage/Repair: {
+                                <div className="text-xs text-primary-foreground font-sans mt-1 space-y-0.5">
+                                  <p className="text-xs text-primary-foreground font-sans">Monthly Rental: {request.paymentStatus.monthlyRental.paidCount}/{request.paymentStatus.monthlyRental.expectedMonths} Paid</p>
+                                  <p className="text-xs text-primary-foreground font-sans">Deposit: {!request.paymentStatus.deposit.exists ? 'N/A' : request.paymentStatus.deposit.isComplete ? 'Paid' : request.paymentStatus.deposit.status}</p>
+                                  <p className="text-xs text-primary-foreground font-sans">Damage/Repair: {
                                     !request.paymentStatus.additionalCharges.hasDamage 
                                       ? 'N/A' 
                                       : request.paymentStatus.additionalCharges.hasUnprocessedDamage
@@ -637,7 +648,14 @@ export function ProjectClosureManagement() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-[12px] text-[#6B7280]">Project Name</p>
-                    <p className="text-[#231F20]">{selectedRequest.projectName}</p>
+                    <p className="text-[#231F20]">
+                      {selectedRequest.projectName}
+                      {selectedRequest.extendedFromAgreement?.agreementNumber && (
+                        <span className="ml-1 text-[12px] text-[#6B7280]">
+                          (Extended from {selectedRequest.extendedFromAgreement.agreementNumber})
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1015,7 +1033,14 @@ export function ProjectClosureManagement() {
               Are you sure you want to approve this project closure request?
               <br />
               <br />
-              <span className="text-[#231F20]">Project: {selectedRequest?.projectName}</span>
+              <span className="text-[#231F20]">
+                Project: {selectedRequest?.projectName}
+                {selectedRequest?.extendedFromAgreement?.agreementNumber && (
+                  <span className="ml-1 text-[#6B7280] text-sm">
+                    (Extended from {selectedRequest.extendedFromAgreement.agreementNumber})
+                  </span>
+                )}
+              </span>
               <br />
               <span className="text-[#231F20]">Request ID: {selectedRequest?.closureRequestNumber ?? "—"}</span>
               <br />

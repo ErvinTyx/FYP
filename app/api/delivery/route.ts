@@ -5,7 +5,7 @@ import { createChargeForDelivery } from '@/lib/additional-charge-utils';
 import { calculateBillingPeriod, getCycleNumber } from '@/lib/billing-helpers';
 
 // Roles allowed to manage delivery requests
-const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
+const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations', 'production'];
 
 /**
  * Auto-generate first monthly rental invoice when delivery is completed.
@@ -682,7 +682,9 @@ export async function POST(request: NextRequest) {
 
     if (existingRequest) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:POST',message:'Request ID already exists',data:{requestId,agreementNo},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') {
+        fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:POST',message:'Request ID already exists',data:{requestId,agreementNo},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+      }
       // #endregion
       return NextResponse.json(
         { success: false, message: 'A delivery request with this ID already exists' },
@@ -700,7 +702,9 @@ export async function POST(request: NextRequest) {
       const incomingSetNames = sets.map((s: { setName: string }) => s.setName);
       const duplicates = sets.filter((s: { setName: string }) => existingSetNames.has(s.setName));
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:POST',message:'Duplicate set check',data:{agreementNo,requestId,incomingSetNames,existingSetNamesArray:[...existingSetNames],duplicateSetNames:duplicates.map((s: { setName: string }) => s.setName)},timestamp:Date.now(),hypothesisId:'A,B'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') {
+        fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:POST',message:'Duplicate set check',data:{agreementNo,requestId,incomingSetNames,existingSetNamesArray:[...existingSetNames],duplicateSetNames:duplicates.map((s: { setName: string }) => s.setName)},timestamp:Date.now(),hypothesisId:'A,B'})}).catch(()=>{});
+      }
       // #endregion
       if (duplicates.length > 0) {
         const names = duplicates.map((s: { setName: string }) => s.setName).join(', ');
@@ -794,7 +798,9 @@ export async function POST(request: NextRequest) {
     }
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:POST',message:'Delivery request created',data:{requestId:newRequest?.requestId},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') {
+      fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:POST',message:'Delivery request created',data:{requestId:newRequest?.requestId},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+    }
     // #endregion
     return NextResponse.json({
       success: true,
@@ -804,7 +810,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Create delivery request error:', error);
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:POST',message:'Create delivery request error',data:{error: String(error), stack: error instanceof Error ? error.stack : undefined},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+    if (process.env.NODE_ENV === 'development') {
+      fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'delivery/route.ts:POST',message:'Create delivery request error',data:{error: String(error), stack: error instanceof Error ? error.stack : undefined},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+    }
     // #endregion
     return NextResponse.json(
       { success: false, message: 'An error occurred while creating the delivery request' },

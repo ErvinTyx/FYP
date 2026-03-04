@@ -80,12 +80,20 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || undefined;
     const customerName = searchParams.get('customerName') || undefined;
+    const search = searchParams.get('search')?.trim() || undefined;
     const invoiceType = searchParams.get('invoiceType') || undefined;
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (customerName) where.customerName = { contains: customerName };
     if (invoiceType) where.invoiceType = invoiceType;
+    if (search) {
+      (where as Record<string, unknown>).OR = [
+        { refundNumber: { contains: search } },
+        { customerName: { contains: search } },
+        { originalInvoice: { contains: search } },
+      ];
+    }
 
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
     const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
@@ -94,7 +102,17 @@ export async function GET(request: NextRequest) {
     const orderDir = orderByParam === 'earliest' ? 'asc' : 'desc';
     const skip = (page - 1) * pageSize;
 
-    const total = await prisma.refund.count({ where });
+    const [total, approvedRefunds, pendingCount] = await Promise.all([
+      prisma.refund.count({ where }),
+      prisma.refund.findMany({
+        where: { AND: [where, { status: 'Approved' }] },
+        select: { amount: true },
+      }),
+      prisma.refund.count({ where: { AND: [where, { status: 'Pending Approval' }] } }),
+    ]);
+
+    const totalAmount = approvedRefunds.reduce((sum, r) => sum + Number(r.amount), 0);
+    const approvedCount = approvedRefunds.length;
 
     const list = await prisma.refund.findMany({
       where,
@@ -104,7 +122,15 @@ export async function GET(request: NextRequest) {
       take: pageSize,
     });
     const data = list.map((r) => serializeRefund(r as Parameters<typeof serializeRefund>[0]));
-    return NextResponse.json({ success: true, data, total, page, pageSize, orderBy: orderByParam });
+    return NextResponse.json({
+      success: true,
+      data,
+      total,
+      page,
+      pageSize,
+      orderBy: orderByParam,
+      summary: { totalAmount, pendingCount, approvedCount },
+    });
   } catch (error) {
     console.error('[Refunds] GET error:', error);
     return NextResponse.json(
@@ -130,11 +156,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      invoiceType,
-      sourceId,
-      originalInvoice,
-      customerName,
-      customerId,
       creditNoteId,
       amount,
       refundMethod,
@@ -144,12 +165,6 @@ export async function POST(request: NextRequest) {
       attachments,
     } = body;
 
-    if (!invoiceType || !sourceId || !originalInvoice || !customerName || !customerId) {
-      return NextResponse.json(
-        { success: false, message: 'invoiceType, sourceId, originalInvoice, customerName, customerId are required' },
-        { status: 400 }
-      );
-    }
     if (!creditNoteId) {
       return NextResponse.json(
         { success: false, message: 'creditNoteId is required — please select a credit note' },
@@ -164,14 +179,24 @@ export async function POST(request: NextRequest) {
       );
     }
     const validStatus = status === 'Draft' || status === 'Pending Approval' ? status : 'Draft';
-    const validType = ['deposit', 'monthlyRental', 'additionalCharge'].includes(invoiceType) ? invoiceType : 'deposit';
 
-    // Validate credit note exists, is approved, and belongs to the same source
+    // Fetch credit note and derive invoice fields from it
     const toNum = (v: unknown) =>
       typeof v === 'number' ? v : Number((v as { toNumber?: () => number })?.toNumber?.() ?? 0);
     const creditNote = await prisma.creditNote.findUnique({
       where: { id: creditNoteId },
-      select: { id: true, creditNoteNumber: true, amount: true, sourceId: true, status: true },
+      select: {
+        id: true,
+        creditNoteNumber: true,
+        amount: true,
+        sourceId: true,
+        agreementId: true,
+        invoiceType: true,
+        originalInvoice: true,
+        customerName: true,
+        customerId: true,
+        status: true,
+      },
     });
     if (!creditNote) {
       return NextResponse.json(
@@ -185,12 +210,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (creditNote.sourceId !== sourceId) {
+
+    // Derive invoice fields from credit note (for return-item CNs, sourceId may be agreementId)
+    const invoiceType = creditNote.invoiceType || 'monthlyRental';
+    const sourceId = creditNote.sourceId ?? creditNote.agreementId ?? '';
+    const originalInvoice = creditNote.originalInvoice || creditNote.creditNoteNumber || 'N/A';
+    const customerName = creditNote.customerName || '';
+    const customerId = creditNote.customerId || `${customerName}|`;
+
+    if (!sourceId) {
       return NextResponse.json(
-        { success: false, message: 'Credit note does not belong to the selected invoice' },
+        { success: false, message: 'Credit note has no source reference; cannot create refund' },
         { status: 400 }
       );
     }
+
+    const validType = ['deposit', 'monthlyRental', 'additionalCharge'].includes(invoiceType) ? invoiceType : 'monthlyRental';
 
     // Calculate remaining balance for this specific credit note
     const cnAmount = toNum(creditNote.amount);
@@ -200,7 +235,7 @@ export async function POST(request: NextRequest) {
     });
     const totalApplied = cnApps.reduce((s, a) => s + toNum(a.amountApplied), 0);
     const cnRefunds = await prisma.refund.findMany({
-      where: { creditNoteId, status: 'Approved' },
+      where: { creditNoteId },
       select: { amount: true },
     });
     const totalRefunded = cnRefunds.reduce((s, r) => s + toNum(r.amount), 0);

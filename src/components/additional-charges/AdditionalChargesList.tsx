@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, Eye, Upload, CheckCircle, XCircle, MoreVertical } from "lucide-react";
+import { useDebounce } from "@/hooks/useDebounce";
+import { Search, Eye, Upload, CheckCircle, XCircle, MoreVertical, DollarSign, FileText, Calendar, AlertCircle } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -95,11 +96,14 @@ function mapApiChargeToDisplay(api: {
   };
 }
 
+type UserRole = "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
+
 interface AdditionalChargesListProps {
   onViewDetails: (charge: AdditionalCharge) => void;
+  userRole?: UserRole;
 }
 
-export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListProps) {
+export function AdditionalChargesList({ onViewDetails, userRole = "Other" }: AdditionalChargesListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [charges, setCharges] = useState<AdditionalCharge[]>([]);
@@ -108,21 +112,42 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
   const [pageSize, setPageSize] = useState(10);
   const [orderBy, setOrderBy] = useState<OrderBy>("latest");
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<{
+    pendingPaymentCount: number;
+    pendingApprovalCount: number;
+    paidCount: number;
+    paidAmount: number;
+    overdueCount: number;
+  } | null>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [selectedCharge, setSelectedCharge] = useState<AdditionalCharge | null>(null);
 
+  const debouncedSearch = useDebounce(searchTerm, 400);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
+
+  // Only super_user, Admin, and Finance can approve/reject; Sales cannot
+  const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
+  // Only super_user, Admin, and Sales can upload proof; Finance and Staff cannot
+  const canUploadProof = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
+
   const fetchCharges = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), orderBy });
+      if (debouncedSearch.trim()) params.set("customerName", debouncedSearch.trim());
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
       const res = await fetch(`/api/additional-charges?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       const result = await res.json();
       if (result.success && Array.isArray(result.data)) {
         setCharges(result.data.map(mapApiChargeToDisplay));
         setTotal(typeof result.total === "number" ? result.total : result.data.length);
+        setSummary(result.summary ?? null);
       }
     } catch (e) {
       console.error(e);
@@ -130,30 +155,25 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, orderBy]);
+  }, [page, pageSize, orderBy, debouncedSearch, statusFilter]);
 
   useEffect(() => {
     fetchCharges();
   }, [fetchCharges]);
 
-  const filteredCharges = charges.filter((charge) => {
-    const matchesSearch =
-      charge.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      charge.doId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      charge.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      charge.id.toLowerCase().includes(searchTerm.toLowerCase());
+  const displayCharges = charges;
 
-    const isOverdue =
-      new Date(charge.dueDate) < new Date() &&
-      (charge.status === "Pending Payment" || charge.status === "Pending Approval");
-
-    const matchesStatus =
-      statusFilter === "all" ||
-      charge.status === statusFilter ||
-      (statusFilter === "Overdue" && isOverdue);
-
-    return matchesSearch && matchesStatus;
-  });
+  const pendingPaymentCount = summary?.pendingPaymentCount ?? charges.filter((c) => c.status === "Pending Payment").length;
+  const pendingApprovalCount = summary?.pendingApprovalCount ?? charges.filter((c) => c.status === "Pending Approval").length;
+  const paidCount = summary?.paidCount ?? charges.filter((c) => c.status === "Paid").length;
+  const paidAmount = summary?.paidAmount ?? charges.filter((c) => c.status === "Paid").reduce((sum, c) => sum + c.totalCharges, 0);
+  const overdueCount =
+    summary?.overdueCount ??
+    charges.filter(
+      (c) =>
+        (c.status === "Pending Payment" || c.status === "Pending Approval") &&
+        new Date(c.dueDate) < new Date()
+    ).length;
 
   const handleUploadPop = (chargeId: string) => {
     const charge = charges.find((c) => c.id === chargeId);
@@ -276,39 +296,107 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
         </p>
       </div>
 
-      <Card className="border-[#E5E7EB]">
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#9CA3AF] h-4 w-4" />
-              <Input
-                placeholder="Search by Invoice, DO, Customer, or Charge ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-10 border-[#D1D5DB] rounded-md"
-              />
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="border-[#E5E7EB]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[14px] text-[#6B7280]">Pending Payment</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-[#FEF3C7] flex items-center justify-center">
+                <DollarSign className="h-6 w-6 text-[#F59E0B]" />
+              </div>
+              <div>
+                <p className="text-[#111827]">{pendingPaymentCount}</p>
+                <p className="text-[12px] text-[#6B7280]">Awaiting payment</p>
+              </div>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-[200px] h-10 border-[#D1D5DB] rounded-md">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="Pending Payment">Pending Payment</SelectItem>
-                <SelectItem value="Pending Approval">Pending Approval</SelectItem>
-                <SelectItem value="Paid">Paid</SelectItem>
-                <SelectItem value="Rejected">Rejected</SelectItem>
-                <SelectItem value="Overdue">Overdue</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card className="border-[#E5E7EB]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[14px] text-[#6B7280]">Pending Approval</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-[#DBEAFE] flex items-center justify-center">
+                <FileText className="h-6 w-6 text-[#3B82F6]" />
+              </div>
+              <div>
+                <p className="text-[#111827]">{pendingApprovalCount}</p>
+                <p className="text-[12px] text-[#6B7280]">Need review</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-[#E5E7EB]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[14px] text-[#6B7280]">Paid Charges</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-[#D1FAE5] flex items-center justify-center">
+                <Calendar className="h-6 w-6 text-[#059669]" />
+              </div>
+              <div>
+                <p className="text-[#111827]">{paidCount}</p>
+                <p className="text-[12px] text-[#059669]">RM{paidAmount.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-[#E5E7EB]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[14px] text-[#6B7280]">Overdue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-[#FFEDD5] flex items-center justify-center">
+                <AlertCircle className="h-6 w-6 text-[#EA580C]" />
+              </div>
+              <div>
+                <p className="text-[#111827]">{overdueCount}</p>
+                <p className="text-[12px] text-[#EA580C]">Need attention</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 max-w-[400px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
+          <Input
+            placeholder="Search by Invoice, DO, Customer, or Charge ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="Pending Payment">Pending Payment</SelectItem>
+            <SelectItem value="Pending Approval">Pending Approval</SelectItem>
+            <SelectItem value="Paid">Paid</SelectItem>
+            <SelectItem value="Rejected">Rejected</SelectItem>
+            <SelectItem value="Overdue">Overdue</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       <Card className="border-[#E5E7EB]">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-[18px]">
-            Additional Charges List ({total > 0 ? total : filteredCharges.length})
+            Additional Charges List ({total > 0 ? total : displayCharges.length})
           </CardTitle>
           <div className="flex items-center gap-3 text-sm text-[#6B7280]">
             <span>Order:</span>
@@ -352,14 +440,14 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCharges.length === 0 ? (
+                  {displayCharges.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-[#9CA3AF]">
                         No additional charges found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredCharges.map((charge) => {
+                    displayCharges.map((charge) => {
                       const isOverdue =
                         new Date(charge.dueDate) < new Date() &&
                         (charge.status === "Pending Payment" ||
@@ -404,13 +492,13 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Details
                                 </DropdownMenuItem>
-                                {charge.status === "Pending Payment" && (
+                                {canUploadProof && charge.status === "Pending Payment" && (
                                   <DropdownMenuItem onClick={() => handleUploadPop(charge.id)}>
                                     <Upload className="mr-2 h-4 w-4" />
                                     Upload POP
                                   </DropdownMenuItem>
                                 )}
-                                {charge.status === "Pending Approval" && (
+                                {canApproveReject && charge.status === "Pending Approval" && (
                                   <>
                                     <DropdownMenuItem onClick={() => handleApprove(charge.id)}>
                                       <CheckCircle className="mr-2 h-4 w-4 text-[#10B981]" />
@@ -422,13 +510,13 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
                                     </DropdownMenuItem>
                                   </>
                                 )}
-                                {charge.status === "Rejected" && (
+                                {canUploadProof && charge.status === "Rejected" && (
                                   <DropdownMenuItem onClick={() => handleUploadPop(charge.id)}>
                                     <Upload className="mr-2 h-4 w-4" />
                                     Re-upload POP
                                   </DropdownMenuItem>
                                 )}
-                                {isOverdue && charge.status === "Pending Approval" && (
+                                {canUploadProof && isOverdue && charge.status === "Pending Approval" && (
                                   <DropdownMenuItem onClick={() => handleUploadPop(charge.id)}>
                                     <Upload className="mr-2 h-4 w-4" />
                                     Upload POP
@@ -496,6 +584,8 @@ export function AdditionalChargesList({ onViewDetails }: AdditionalChargesListPr
             }}
             onApprove={handleApproveConfirmed}
             invoiceNo={selectedCharge.invoiceNo}
+            customerName={selectedCharge.customerName}
+            amount={selectedCharge.totalCharges}
           />
           <RejectModal
             isOpen={rejectModalOpen}

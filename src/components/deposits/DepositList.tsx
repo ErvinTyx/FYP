@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Eye, FileText, Calendar, DollarSign, AlertCircle, MoreVertical, Upload, CalendarClock, XCircle, Ban } from "lucide-react";
+import { Search, Eye, FileText, Calendar, DollarSign, AlertCircle, MoreVertical, Upload, CalendarClock, XCircle, Ban, CheckCircle } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -44,10 +44,21 @@ import {
 } from "../ui/pagination";
 import { DepositStatusBadge } from "./DepositStatusBadge";
 import { UploadProofModal } from "./UploadProofModal";
+import { ApprovalModal } from "./ApprovalModal";
+import { RejectionModal } from "./RejectionModal";
 import { Deposit } from "../../types/deposit";
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
 type OrderBy = "latest" | "earliest";
+
+interface DepositSummary {
+  pendingPaymentCount: number;
+  pendingApprovalCount: number;
+  paidCount: number;
+  paidAmount: number;
+  overdueCount: number;
+  expiredCount: number;
+}
 
 interface DepositListProps {
   deposits: Deposit[];
@@ -55,53 +66,50 @@ interface DepositListProps {
   page?: number;
   pageSize?: number;
   orderBy?: OrderBy;
+  searchQuery?: string;
+  statusFilter?: string;
+  onSearchChange?: (value: string) => void;
+  onStatusFilterChange?: (value: string) => void;
   onPageChange?: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   onOrderByChange?: (orderBy: OrderBy) => void;
   onView: (id: string) => void;
   onUploadProof?: (depositId: string, file: File) => void;
+  onApprove?: (depositId: string, referenceNumber: string) => void;
+  onReject?: (depositId: string, reason: string) => void;
   onResetDueDate?: (depositId: string, newDueDate: string) => void;
   onMarkExpired?: (depositId: string) => void;
-  userRole: "super_user" | "Admin" | "Finance" | "Staff" | "Customer";
+  userRole: "super_user" | "Admin" | "Finance" | "Sales" | "Customer" | "Other";
   isProcessing?: boolean;
+  summary?: DepositSummary | null;
 }
 
-export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orderBy = "latest", onPageChange, onPageSizeChange, onOrderByChange, onView, onUploadProof, onResetDueDate, onMarkExpired, userRole, isProcessing }: DepositListProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orderBy = "latest", searchQuery = "", statusFilter = "all", onSearchChange, onStatusFilterChange, onPageChange, onPageSizeChange, onOrderByChange, onView, onUploadProof, onApprove, onReject, onResetDueDate, onMarkExpired, userRole, isProcessing, summary }: DepositListProps) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [selectedDepositForUpload, setSelectedDepositForUpload] = useState<Deposit | null>(null);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [selectedDepositForApproval, setSelectedDepositForApproval] = useState<Deposit | null>(null);
+  const [rejectionModalOpen, setRejectionModalOpen] = useState(false);
+  const [selectedDepositForRejection, setSelectedDepositForRejection] = useState<Deposit | null>(null);
   const [resetDueDateModalOpen, setResetDueDateModalOpen] = useState(false);
   const [selectedDepositForReset, setSelectedDepositForReset] = useState<Deposit | null>(null);
   const [newDueDate, setNewDueDate] = useState("");
   const [confirmExpireModalOpen, setConfirmExpireModalOpen] = useState(false);
   const [selectedDepositForExpire, setSelectedDepositForExpire] = useState<Deposit | null>(null);
 
-  const filteredDeposits = deposits.filter((deposit) => {
-    const depositNumber = deposit.depositNumber || deposit.depositId || '';
-    const invoiceNo = deposit.invoiceNo || deposit.agreement?.agreementNumber || '';
-    const customerName = deposit.customerName || deposit.agreement?.hirer || '';
-    
-    const matchesSearch =
-      depositNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || deposit.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const displayDeposits = deposits;
 
-  const pendingPaymentCount = deposits.filter((d) => d.status === "Pending Payment").length;
-  const pendingApprovalCount = deposits.filter((d) => d.status === "Pending Approval").length;
-  const paidCount = deposits.filter((d) => d.status === "Paid").length;
-  const paidAmount = deposits
-    .filter((d) => d.status === "Paid")
-    .reduce((sum, d) => sum + d.depositAmount, 0);
-
-  // Count overdue and expired deposits
-  const overdueCount = deposits.filter((d) => d.status === "Overdue").length;
-  const expiredCount = deposits.filter((d) => d.status === "Expired").length;
+  const pendingPaymentCount = summary?.pendingPaymentCount ?? deposits.filter((d) => d.status === "Pending Payment").length;
+  const pendingApprovalCount = summary?.pendingApprovalCount ?? deposits.filter((d) => d.status === "Pending Approval").length;
+  const paidCount = summary?.paidCount ?? deposits.filter((d) => d.status === "Paid").length;
+  const paidAmount = summary?.paidAmount ?? deposits.filter((d) => d.status === "Paid").reduce((sum, d) => sum + d.depositAmount, 0);
+  const overdueCount = summary?.overdueCount ?? deposits.filter((d) => d.status === "Overdue").length;
+  const expiredCount = summary?.expiredCount ?? deposits.filter((d) => d.status === "Expired").length;
   
   const canManageDeposits = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
+  const canApproveReject = userRole === "super_user" || userRole === "Admin" || userRole === "Finance";
+  // Only super_user, Admin, and Staff (sales) can upload proof; Finance cannot
+  const canUploadProof = userRole === "super_user" || userRole === "Admin" || userRole === "Sales";
 
   const handleResetDueDate = () => {
     if (selectedDepositForReset && onResetDueDate && newDueDate) {
@@ -117,6 +125,32 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
       onMarkExpired(selectedDepositForExpire.id);
       setConfirmExpireModalOpen(false);
       setSelectedDepositForExpire(null);
+    }
+  };
+
+  const handleApproveClick = (deposit: Deposit) => {
+    setSelectedDepositForApproval(deposit);
+    setApprovalModalOpen(true);
+  };
+
+  const handleRejectClick = (deposit: Deposit) => {
+    setSelectedDepositForRejection(deposit);
+    setRejectionModalOpen(true);
+  };
+
+  const handleApprove = (referenceId: string) => {
+    if (selectedDepositForApproval && onApprove) {
+      onApprove(selectedDepositForApproval.id, referenceId);
+      setApprovalModalOpen(false);
+      setSelectedDepositForApproval(null);
+    }
+  };
+
+  const handleReject = (reason: string) => {
+    if (selectedDepositForRejection && onReject) {
+      onReject(selectedDepositForRejection.id, reason);
+      setRejectionModalOpen(false);
+      setSelectedDepositForRejection(null);
     }
   };
 
@@ -198,13 +232,13 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
         <div className="relative flex-1 max-w-[400px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
           <Input
-            placeholder="Search by deposit ID, invoice, or customer..."
+            placeholder="Search by Agreement ID, invoice, or customer..."
             className="pl-10 h-10 bg-white border-[#D1D5DB] rounded-md"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => onStatusFilterChange?.(v)}>
           <SelectTrigger className="w-[200px] h-10 bg-white border-[#D1D5DB] rounded-md">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
@@ -262,7 +296,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
           <Table>
             <TableHeader>
               <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
-                <TableHead>Invoice No.</TableHead>
+                <TableHead>Rental Agreement No.</TableHead>
                 <TableHead>Customer Name</TableHead>
                 <TableHead>Deposit Amount</TableHead>
                 <TableHead>Status</TableHead>
@@ -272,14 +306,14 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDeposits.length === 0 ? (
+              {displayDeposits.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-[#6B7280]">
                     No deposits found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredDeposits.map((deposit) => {
+                displayDeposits.map((deposit) => {
                   const displayInvoiceNo = deposit.invoiceNo || deposit.agreement?.agreementNumber || deposit.depositNumber || '-';
                   const displayCustomerName = deposit.customerName || deposit.agreement?.hirer || 'Unknown';
                   const displayLastUpdated = deposit.lastUpdated || deposit.updatedAt || deposit.createdAt;
@@ -320,8 +354,8 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
                               View Details
                             </DropdownMenuItem>
                             
-                            {/* Upload proof for Pending Payment, Overdue, or Rejected */}
-                            {onUploadProof && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && (
+                            {/* Upload proof for Pending Payment, Overdue, or Rejected - only super_user, Admin, Staff (Finance cannot upload) */}
+                            {onUploadProof && canUploadProof && (deposit.status === "Pending Payment" || deposit.status === "Rejected" || deposit.status === "Overdue") && (
                               <DropdownMenuItem 
                                 onClick={() => {
                                   setSelectedDepositForUpload(deposit);
@@ -332,6 +366,31 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
                                 <Upload className="mr-2 h-4 w-4" />
                                 {deposit.status === "Rejected" ? "Re-Upload Proof" : "Upload Proof"}
                               </DropdownMenuItem>
+                            )}
+                            
+                            {/* Approve/Reject actions for Pending Approval */}
+                            {canApproveReject && deposit.status === "Pending Approval" && (onApprove || onReject) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                {onApprove && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleApproveClick(deposit)}
+                                    disabled={isProcessing}
+                                  >
+                                    <CheckCircle className="mr-2 h-4 w-4 text-[#10B981]" />
+                                    Approve
+                                  </DropdownMenuItem>
+                                )}
+                                {onReject && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleRejectClick(deposit)}
+                                    disabled={isProcessing}
+                                  >
+                                    <XCircle className="mr-2 h-4 w-4 text-[#DC2626]" />
+                                    Reject
+                                  </DropdownMenuItem>
+                                )}
+                              </>
                             )}
                             
                             {/* Admin actions for Overdue deposits */}
@@ -425,6 +484,34 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
           }}
           depositInvoiceNo={selectedDepositForUpload.invoiceNo || selectedDepositForUpload.depositNumber || ''}
           isReupload={selectedDepositForUpload.status === "Rejected"}
+        />
+      )}
+
+      {/* Approval Modal */}
+      {approvalModalOpen && selectedDepositForApproval && onApprove && (
+        <ApprovalModal
+          isOpen={approvalModalOpen}
+          onClose={() => {
+            setApprovalModalOpen(false);
+            setSelectedDepositForApproval(null);
+          }}
+          onApprove={handleApprove}
+          depositId={selectedDepositForApproval.depositNumber || selectedDepositForApproval.depositId || selectedDepositForApproval.id}
+          customerName={selectedDepositForApproval.customerName || selectedDepositForApproval.agreement?.hirer || 'Unknown'}
+          amount={selectedDepositForApproval.depositAmount}
+        />
+      )}
+
+      {/* Rejection Modal */}
+      {rejectionModalOpen && selectedDepositForRejection && onReject && (
+        <RejectionModal
+          isOpen={rejectionModalOpen}
+          onClose={() => {
+            setRejectionModalOpen(false);
+            setSelectedDepositForRejection(null);
+          }}
+          onReject={handleReject}
+          depositId={selectedDepositForRejection.depositNumber || selectedDepositForRejection.depositId || selectedDepositForRejection.id}
         />
       )}
 
