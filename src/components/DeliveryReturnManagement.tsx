@@ -640,7 +640,9 @@ export default function DeliveryReturnManagement({
         })),
       }));
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DeliveryReturnManagement.tsx:handleCreateDeliveryRequest',message:'Create delivery request payload',data:{requestId,agreementNo:agreement.agreementNumber,validSetNames:validSets.map(s=>s.setName),selectedSetNames:[...selectedSetNames],deliverySetNames:deliverySets.map(s=>s.setName),deliveryRequestsCount:deliveryRequests.filter(dr=>dr.agreementNo===agreement.agreementNumber).length},timestamp:Date.now(),hypothesisId:'B,C,D'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') {
+        fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DeliveryReturnManagement.tsx:handleCreateDeliveryRequest',message:'Create delivery request payload',data:{requestId,agreementNo:agreement.agreementNumber,validSetNames:validSets.map(s=>s.setName),selectedSetNames:[...selectedSetNames],deliverySetNames:deliverySets.map(s=>s.setName),deliveryRequestsCount:deliveryRequests.filter(dr=>dr.agreementNo===agreement.agreementNumber).length},timestamp:Date.now(),hypothesisId:'B,C,D'})}).catch(()=>{});
+      }
       // #endregion
 
       const response = await fetch('/api/delivery', {
@@ -661,7 +663,9 @@ export default function DeliveryReturnManagement({
 
       const data = await response.json();
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DeliveryReturnManagement.tsx:handleCreateDeliveryRequest',message:'Create delivery response',data:{success:data.success,message:data.message,status:response.status},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') {
+        fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DeliveryReturnManagement.tsx:handleCreateDeliveryRequest',message:'Create delivery response',data:{success:data.success,message:data.message,status:response.status},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
+      }
       // #endregion
       if (data.success) {
         await fetchDeliveryRequests();

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Printer, Download, FileText, Calendar, Truck, MapPin, Phone, Mail, Package, CheckCircle } from 'lucide-react';
+import { escapeHtml } from '@/lib/escape-html';
 
 interface DeliveryOrderProps {
   requestId: string;
@@ -162,28 +163,28 @@ export default function DeliveryOrderGeneration({
         <div class="info-section">
           <div class="info-box">
             <div class="info-label">DO Number:</div>
-            <div class="info-value">${doNumber}</div>
+            <div class="info-value">${escapeHtml(doNumber)}</div>
             <div class="info-label">Date:</div>
             <div class="info-value">${new Date().toLocaleDateString('en-MY')}</div>
             <div class="info-label">Request ID:</div>
-            <div class="info-value">${requestId}</div>
+            <div class="info-value">${escapeHtml(requestId)}</div>
             <div class="info-label">Agreement No:</div>
-            <div class="info-value">${agreementNo}</div>
+            <div class="info-value">${escapeHtml(agreementNo)}</div>
           </div>
 
           <div class="info-box">
             <div class="info-label">Customer:</div>
-            <div class="info-value">${customerName}</div>
+            <div class="info-value">${escapeHtml(customerName)}</div>
             <div class="info-label">Phone:</div>
-            <div class="info-value">${customerPhone}</div>
+            <div class="info-value">${escapeHtml(customerPhone)}</div>
             <div class="info-label">Email:</div>
-            <div class="info-value">${customerEmail}</div>
+            <div class="info-value">${escapeHtml(customerEmail)}</div>
           </div>
         </div>
 
         <div class="info-box">
           <div class="info-label">Delivery Address:</div>
-          <div class="info-value">${deliveryAddress}</div>
+          <div class="info-value">${escapeHtml(deliveryAddress)}</div>
           <div class="info-label">Scheduled Delivery Date:</div>
           <div class="info-value">${new Date(scheduledDeliveryDate).toLocaleDateString('en-MY')}</div>
         </div>
@@ -205,9 +206,9 @@ export default function DeliveryOrderGeneration({
             ${setDetails.items.map((item, index) => `
               <tr>
                 <td>${index + 1}</td>
-                <td>${item.name}</td>
+                <td>${escapeHtml(item.name)}</td>
                 <td>${item.quantity}</td>
-                <td>${item.unit}</td>
+                <td>${escapeHtml(item.unit)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -216,7 +217,7 @@ export default function DeliveryOrderGeneration({
         ${specialInstructions ? `
           <div class="instructions">
             <div class="info-label">Special Instructions:</div>
-            <div>${specialInstructions}</div>
+            <div>${escapeHtml(specialInstructions)}</div>
           </div>
         ` : ''}
 

@@ -197,12 +197,7 @@ export function ForgotPasswordCodeEntry({
             </p>
           </div>
 
-          {/* Demo Code Info */}
-          <div className="mb-6 p-3 bg-[#F3F4F6] rounded-lg">
-            <p className="text-xs text-[#6B7280]">
-              Demo: Use code <span className="text-[#231F20]">123456</span>
-            </p>
-          </div>
+          
 
           {/* Actions */}
           <div className="space-y-4">

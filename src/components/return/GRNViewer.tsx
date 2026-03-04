@@ -1,4 +1,5 @@
 import { Printer, X, FileText, Truck, User, Phone, MapPin, Calendar, Package } from 'lucide-react';
+import { escapeHtml } from '@/lib/escape-html';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 
@@ -60,7 +61,7 @@ export function GRNViewer({ grnNumber, returnData, onClose }: GRNViewerProps) {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Goods Received Note - ${grnNumber}</title>
+        <title>Goods Received Note - ${escapeHtml(grnNumber)}</title>
         <style>
           @media print {
             @page { margin: 20mm; size: A4; }
@@ -194,11 +195,11 @@ export function GRNViewer({ grnNumber, returnData, onClose }: GRNViewerProps) {
         <div class="info-section">
           <div class="info-box">
             <div class="info-label">GRN Number:</div>
-            <div class="info-value" style="font-size: 16px; font-weight: bold; color: #F15929;">${grnNumber}</div>
+            <div class="info-value" style="font-size: 16px; font-weight: bold; color: #F15929;">${escapeHtml(grnNumber)}</div>
             <div class="info-label">Receipt Date:</div>
-            <div class="info-value">${receiptDate}</div>
+            <div class="info-value">${escapeHtml(receiptDate)}</div>
             <div class="info-label">Request ID:</div>
-            <div class="info-value">${returnData.orderId}</div>
+            <div class="info-value">${escapeHtml(returnData.orderId)}</div>
             <div class="info-label">Return Type:</div>
             <div class="info-value">
               <span class="badge ${returnData.returnType === 'Partial' ? 'badge-partial' : 'badge-full'}">
@@ -209,14 +210,14 @@ export function GRNViewer({ grnNumber, returnData, onClose }: GRNViewerProps) {
 
           <div class="info-box">
             <div class="info-label">Customer Name:</div>
-            <div class="info-value">${returnData.customer}</div>
+            <div class="info-value">${escapeHtml(returnData.customer)}</div>
             ${returnData.customerContact ? `
               <div class="info-label">Contact:</div>
-              <div class="info-value">${returnData.customerContact}</div>
+              <div class="info-value">${escapeHtml(returnData.customerContact)}</div>
             ` : ''}
             ${returnData.pickupAddress ? `
               <div class="info-label">Pickup Address:</div>
-              <div class="info-value">${returnData.pickupAddress}</div>
+              <div class="info-value">${escapeHtml(returnData.pickupAddress)}</div>
             ` : ''}
           </div>
         </div>
@@ -227,22 +228,22 @@ export function GRNViewer({ grnNumber, returnData, onClose }: GRNViewerProps) {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
               <div>
                 <div class="info-label">Driver Name:</div>
-                <div class="info-value">${returnData.pickupDriver}</div>
+                <div class="info-value">${escapeHtml(returnData.pickupDriver)}</div>
               </div>
               <div>
                 <div class="info-label">Driver Contact:</div>
-                <div class="info-value">${returnData.driverContact || '-'}</div>
+                <div class="info-value">${escapeHtml(returnData.driverContact || '-')}</div>
               </div>
               ${returnData.pickupDate ? `
                 <div>
                   <div class="info-label">Pickup Date:</div>
-                  <div class="info-value">${new Date(returnData.pickupDate).toLocaleDateString('en-MY')}</div>
+                  <div class="info-value">${escapeHtml(new Date(returnData.pickupDate).toLocaleDateString('en-MY'))}</div>
                 </div>
               ` : ''}
               ${returnData.pickupTimeSlot ? `
                 <div>
                   <div class="info-label">Time Slot:</div>
-                  <div class="info-value">${returnData.pickupTimeSlot}</div>
+                  <div class="info-value">${escapeHtml(returnData.pickupTimeSlot)}</div>
                 </div>
               ` : ''}
             </div>
@@ -269,8 +270,8 @@ export function GRNViewer({ grnNumber, returnData, onClose }: GRNViewerProps) {
             ${returnData.items.map((item, index) => `
               <tr>
                 <td>${index + 1}</td>
-                <td>${item.name}</td>
-                <td>${item.category}</td>
+                <td>${escapeHtml(item.name)}</td>
+                <td>${escapeHtml(item.category)}</td>
                 <td style="font-weight: bold;">${item.quantityReturned}</td>
                 <td>${item.quantity}</td>
               </tr>
