@@ -286,12 +286,24 @@ export function RentalAgreement() {
       toast.error('Security Deposit (Month) cannot be negative.');
       return;
     }
+    if (typeof formData.securityDeposit === 'number' && formData.securityDeposit > 1000) {
+      toast.error('Security Deposit (Month) cannot exceed 1000.');
+      return;
+    }
     if (typeof formData.minimumCharges === 'number' && formData.minimumCharges < 0) {
       toast.error('Minimum Charges (Month) cannot be negative.');
       return;
     }
+    if (typeof formData.minimumCharges === 'number' && formData.minimumCharges > 1000) {
+      toast.error('Minimum Charges (Month) cannot exceed 1000.');
+      return;
+    }
     if (typeof formData.defaultInterest === 'number' && formData.defaultInterest < 0) {
       toast.error('Default Interest (% per month) cannot be negative.');
+      return;
+    }
+    if (typeof formData.defaultInterest === 'number' && formData.defaultInterest > 100) {
+      toast.error('Default Interest (% per month) cannot exceed 100.');
       return;
     }
 
@@ -383,12 +395,24 @@ export function RentalAgreement() {
       toast.error('Security Deposit (Month) cannot be negative.');
       return;
     }
+    if (typeof formData.securityDeposit === 'number' && formData.securityDeposit > 1000) {
+      toast.error('Security Deposit (Month) cannot exceed 1000.');
+      return;
+    }
     if (typeof formData.minimumCharges === 'number' && formData.minimumCharges < 0) {
       toast.error('Minimum Charges (Month) cannot be negative.');
       return;
     }
+    if (typeof formData.minimumCharges === 'number' && formData.minimumCharges > 1000) {
+      toast.error('Minimum Charges (Month) cannot exceed 1000.');
+      return;
+    }
     if (typeof formData.defaultInterest === 'number' && formData.defaultInterest < 0) {
       toast.error('Default Interest (% per month) cannot be negative.');
+      return;
+    }
+    if (typeof formData.defaultInterest === 'number' && formData.defaultInterest > 100) {
+      toast.error('Default Interest (% per month) cannot exceed 100.');
       return;
     }
 
@@ -1193,6 +1217,8 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     min={0}
+                    max={1000}
+                    step={1}
                     placeholder="0"
                     value={formData.securityDeposit === undefined ? '' : formData.securityDeposit}
                     onChange={(e) => {
@@ -1200,8 +1226,8 @@ export function RentalAgreement() {
                         setFormData({ ...formData, securityDeposit: undefined });
                         return;
                       }
-                      const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const n = parseInt(e.target.value, 10);
+                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.min(1000, Math.max(0, n)) });
                     }}
                   />
                 </div>
@@ -1210,6 +1236,8 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     min={0}
+                    max={1000}
+                    step={1}
                     placeholder="0"
                     value={formData.minimumCharges === undefined ? '' : formData.minimumCharges}
                     onChange={(e) => {
@@ -1217,8 +1245,8 @@ export function RentalAgreement() {
                         setFormData({ ...formData, minimumCharges: undefined });
                         return;
                       }
-                      const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const n = parseInt(e.target.value, 10);
+                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.min(1000, Math.max(0, n)) });
                     }}
                   />
                 </div>
@@ -1228,6 +1256,7 @@ export function RentalAgreement() {
                     type="number"
                     step="0.1"
                     min={0}
+                    max={100}
                     placeholder="0.0"
                     value={formData.defaultInterest === undefined ? '' : formData.defaultInterest}
                     onChange={(e) => {
@@ -1236,7 +1265,8 @@ export function RentalAgreement() {
                         return;
                       }
                       const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, defaultInterest: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const rounded = Number.isNaN(n) ? undefined : Math.min(100, Math.max(0, Math.round(n * 10) / 10));
+                      setFormData({ ...formData, defaultInterest: rounded });
                     }}
                   />
                 </div>
@@ -1487,6 +1517,8 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     min={0}
+                    max={1000}
+                    step={1}
                     placeholder="0"
                     value={formData.securityDeposit === undefined ? '' : formData.securityDeposit}
                     onChange={(e) => {
@@ -1494,8 +1526,8 @@ export function RentalAgreement() {
                         setFormData({ ...formData, securityDeposit: undefined });
                         return;
                       }
-                      const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const n = parseInt(e.target.value, 10);
+                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.min(1000, Math.max(0, n)) });
                     }}
                   />
                 </div>
@@ -1504,6 +1536,8 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     min={0}
+                    max={1000}
+                    step={1}
                     placeholder="0"
                     value={formData.minimumCharges === undefined ? '' : formData.minimumCharges}
                     onChange={(e) => {
@@ -1511,8 +1545,8 @@ export function RentalAgreement() {
                         setFormData({ ...formData, minimumCharges: undefined });
                         return;
                       }
-                      const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const n = parseInt(e.target.value, 10);
+                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.min(1000, Math.max(0, n)) });
                     }}
                   />
                 </div>
@@ -1522,6 +1556,7 @@ export function RentalAgreement() {
                     type="number"
                     step="0.1"
                     min={0}
+                    max={100}
                     placeholder="0.0"
                     value={formData.defaultInterest === undefined ? '' : formData.defaultInterest}
                     onChange={(e) => {
@@ -1530,7 +1565,8 @@ export function RentalAgreement() {
                         return;
                       }
                       const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, defaultInterest: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const rounded = Number.isNaN(n) ? undefined : Math.min(100, Math.max(0, Math.round(n * 10) / 10));
+                      setFormData({ ...formData, defaultInterest: rounded });
                     }}
                   />
                 </div>
