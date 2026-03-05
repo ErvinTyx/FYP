@@ -6,11 +6,11 @@ import { CreditNotesList } from "./CreditNotesList";
 import { CreditNoteForm } from "./CreditNoteForm";
 import { CreditNoteDetails } from "./CreditNoteDetails";
 import { CreditNoteDocumentPrint } from "./CreditNoteDocumentPrint";
-import { ApplyCreditModal } from "./ApplyCreditModal";
+import { ApplyCreditPage } from "./ApplyCreditPage";
 import { CreditNote } from "../../types/creditNote";
 import { toast } from "sonner";
 
-type View = "list" | "create" | "edit" | "details" | "document";
+type View = "list" | "create" | "edit" | "details" | "document" | "apply";
 
 function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
   return {
@@ -182,15 +182,22 @@ export function CreditNotesMain({ userRole = "Other", initialOpenFromSOA, onCons
     }
   };
 
-  // Apply credit modal state
+  // Apply credit page state (full-page view)
   const [applyCreditNote, setApplyCreditNote] = useState<CreditNote | null>(null);
 
   const handleApplyCredit = (cn: CreditNote) => {
     setApplyCreditNote(cn);
+    setCurrentView("apply");
+  };
+
+  const handleBackFromApply = () => {
+    setApplyCreditNote(null);
+    setCurrentView("details");
   };
 
   const handleCreditApplied = async () => {
     setApplyCreditNote(null);
+    setCurrentView("details");
     // Refresh the detail by re-fetching credit notes
     await fetchCreditNotes();
     // Re-select current note to refresh details
@@ -296,12 +303,10 @@ export function CreditNotesMain({ userRole = "Other", initialOpenFromSOA, onCons
         />
       )}
 
-      {/* Apply Credit Modal */}
-      {applyCreditNote && (
-        <ApplyCreditModal
-          isOpen={!!applyCreditNote}
-          onClose={() => setApplyCreditNote(null)}
+      {currentView === "apply" && applyCreditNote && (
+        <ApplyCreditPage
           creditNote={applyCreditNote}
+          onBack={handleBackFromApply}
           onApplied={handleCreditApplied}
         />
       )}

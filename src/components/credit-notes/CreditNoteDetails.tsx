@@ -362,7 +362,7 @@ export function CreditNoteDetails({
                   <CreditCard className="h-5 w-5 text-[#F15929]" />
                   Credit Balance
                 </CardTitle>
-                {remainingBalance > 0 && (userRole === "Admin" || userRole === "Finance") && onApplyCredit && (
+                {remainingBalance > 0 && (userRole === "super_user" || userRole === "Admin" || userRole === "Finance") && onApplyCredit && (
                   <Button
                     onClick={() => onApplyCredit(creditNote)}
                     className="bg-[#F15929] hover:bg-[#D14E24] text-white h-10 px-6 rounded-lg"
