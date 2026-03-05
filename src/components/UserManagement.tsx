@@ -4,7 +4,7 @@ import {
   UserPlus, 
   Upload,
   Download, 
-  MoreHorizontal, 
+  MoreVertical, 
   Search, 
   Edit, 
   Trash2,
@@ -62,9 +62,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
-import { Checkbox } from "./ui/checkbox";
 import { Avatar, AvatarFallback } from "./ui/avatar";
-import { Card, CardContent } from "./ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "./ui/pagination";
 import { Separator } from "./ui/separator";
 import { Textarea } from "./ui/textarea";
 
@@ -76,8 +82,7 @@ type DbStatus = 'pending' | 'pending_verification' | 'active' | 'inactive';
 // Admin roles that can perform administrative actions
 const ADMIN_ROLES = ['super_user', 'admin'];
 
-// Pagination settings
-const ITEMS_PER_PAGE = 10;
+const PAGE_SIZES = [5, 10, 25, 50] as const;
 
 interface User {
   id: string;
@@ -177,6 +182,7 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
   const [isRejecting, setIsRejecting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -260,68 +266,15 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
   });
 
   // Pagination calculations
-  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
   const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when filters or page size change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, userTypeFilter, statusFilter]);
-
-  // Pagination handlers
-  const handlePreviousPage = () => {
-    setCurrentPage(prev => Math.max(1, prev - 1));
-  };
-
-  const handleNextPage = () => {
-    setCurrentPage(prev => Math.min(totalPages, prev + 1));
-  };
-
-  const handlePageClick = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  // Generate page numbers to display
-  const getPageNumbers = () => {
-    const pages: (number | string)[] = [];
-    
-    if (totalPages <= 5) {
-      // Show all pages if 5 or less
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
-    } else {
-      // Always show first page
-      pages.push(1);
-      
-      if (currentPage > 3) {
-        pages.push('...');
-      }
-      
-      // Show pages around current page
-      const start = Math.max(2, currentPage - 1);
-      const end = Math.min(totalPages - 1, currentPage + 1);
-      
-      for (let i = start; i <= end; i++) {
-        if (!pages.includes(i)) {
-          pages.push(i);
-        }
-      }
-      
-      if (currentPage < totalPages - 2) {
-        pages.push('...');
-      }
-      
-      // Always show last page
-      if (!pages.includes(totalPages)) {
-        pages.push(totalPages);
-      }
-    }
-    
-    return pages;
-  };
+  }, [searchTerm, userTypeFilter, statusFilter, pageSize]);
 
   // Export users to CSV
   const handleExportUsers = () => {
@@ -1321,161 +1274,163 @@ export function UserManagement({ userRole = '' }: UserManagementProps) {
       </div>
 
       {/* Data Table */}
-      <div className="bg-white rounded-lg border border-[#E5E7EB] overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
-              <TableHead className="w-[40px]">
-                <Checkbox />
-              </TableHead>
-              <TableHead className="w-[200px]">Name</TableHead>
-              <TableHead className="w-[240px]">Email</TableHead>
-              <TableHead className="w-[160px]">User Type</TableHead>
-              <TableHead className="w-[140px]">Status</TableHead>
-              <TableHead className="w-[120px]">Role</TableHead>
-              <TableHead className="w-[140px]">Last Login</TableHead>
-              <TableHead className="w-[120px] text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedUsers.map((user) => (
-              <TableRow key={user.id} className="h-14 hover:bg-[#F3F4F6]">
-                <TableCell>
-                  <Checkbox />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="bg-[#E5E7EB] text-[#374151]">
-                        {getInitials(user.firstName + " " + user.lastName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-[#111827]">{user.firstName} {user.lastName}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-[#374151]">{user.email}</TableCell>
-                <TableCell>
-                  <Badge 
-                    className={getUserTypeBadgeColor(user.userType)}
-                  >
-                    {getUserTypeIcon(user.userType)}
-                    <span className="ml-1.5">{user.userType}</span>
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {user.status === 'Active' ? (
-                    <Badge className="bg-[#059669] hover:bg-[#047857]">
-                      <CheckCircle className="mr-1 h-3 w-3" />
-                      Active
-                    </Badge>
-                  ) : user.status === 'Pending Approval' ? (
-                    <Badge className="bg-[#F59E0B] hover:bg-[#D97706]">
-                      <Clock className="mr-1 h-3 w-3" />
-                      Pending
-                    </Badge>
-                  ) : user.status === 'Pending Verification' ? (
-                    <Badge className="bg-[#3B82F6] hover:bg-[#2563EB]">
-                      <Mail className="mr-1 h-3 w-3" />
-                      Pending Verification
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-[#6B7280] hover:bg-[#4B5563]">
-                      <XCircle className="mr-1 h-3 w-3" />
-                      Inactive
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {user.role ? (
-                    <Badge 
-                      variant="secondary"
-                      className="bg-[#F3F4F6] text-[#374151] hover:bg-[#E5E7EB]"
-                    >
-                      {user.role}
-                    </Badge>
-                  ) : (
-                    <span className="text-[#9CA3AF] text-sm">—</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-[#374151]">{user.lastLogin}</TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-[#F3F4F6]">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleViewDetails(user)}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        View Details
-                      </DropdownMenuItem>
-                      {isAdmin && user.status !== 'Pending Approval' && user.status !== 'Pending Verification' && (
-                        <DropdownMenuItem onClick={() => handleEditUser(user)}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                      )}
-                      {isAdmin && user.status === 'Pending Verification' && (
-                        <DropdownMenuItem 
-                          onClick={() => handleResendSetupPassword(user)}
-                          disabled={isResendingSetup}
-                        >
-                          <Mail className="mr-2 h-4 w-4" />
-                          {isResendingSetup ? 'Sending...' : 'Resend Setup Password'}
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <p className="text-[#6B7280]">
-          Showing {filteredUsers.length === 0 ? 0 : startIndex + 1} - {Math.min(endIndex, filteredUsers.length)} of {filteredUsers.length} users
-        </p>
-        {totalPages > 1 && (
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              className="h-10 px-4"
-              onClick={handlePreviousPage}
-              disabled={currentPage === 1}
-            >
-              Previous
-            </Button>
-            {getPageNumbers().map((page, index) => (
-              typeof page === 'number' ? (
-                <Button
-                  key={index}
-                  variant={currentPage === page ? "default" : "outline"}
-                  className={`h-10 px-4 ${currentPage === page ? 'bg-[#1E40AF] hover:bg-[#1E3A8A]' : ''}`}
-                  onClick={() => handlePageClick(page)}
-                >
-                  {page}
-                </Button>
-              ) : (
-                <span key={index} className="h-10 px-2 flex items-center text-[#6B7280]">
-                  {page}
-                </span>
-              )
-            ))}
-            <Button 
-              variant="outline" 
-              className="h-10 px-4"
-              onClick={handleNextPage}
-              disabled={currentPage === totalPages}
-            >
-              Next
-            </Button>
+      <Card className="border-[#E5E7EB]">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-[18px]">User List</CardTitle>
+          <div className="flex items-center gap-3 text-sm text-[#6B7280]">
+            <span>Rows per page:</span>
+            <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v) as 5 | 10 | 25 | 50)}>
+              <SelectTrigger className="w-[70px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZES.map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        )}
-      </div>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-[#F9FAFB] hover:bg-[#F9FAFB]">
+                <TableHead className="w-[200px]">Name</TableHead>
+                <TableHead className="w-[240px]">Email</TableHead>
+                <TableHead className="w-[160px]">User Type</TableHead>
+                <TableHead className="w-[140px]">Status</TableHead>
+                <TableHead className="w-[120px]">Role</TableHead>
+                <TableHead className="w-[140px]">Last Login</TableHead>
+                <TableHead className="w-[120px] text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedUsers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-[#6B7280]">
+                    No users found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedUsers.map((user) => (
+                  <TableRow key={user.id} className="h-14 hover:bg-[#F3F4F6]">
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="bg-[#E5E7EB] text-[#374151]">
+                            {getInitials(user.firstName + " " + user.lastName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-[#111827]">{user.firstName} {user.lastName}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-[#374151]">{user.email}</TableCell>
+                    <TableCell>
+                      <Badge 
+                        className={getUserTypeBadgeColor(user.userType)}
+                      >
+                        {getUserTypeIcon(user.userType)}
+                        <span className="ml-1.5">{user.userType}</span>
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {user.status === 'Active' ? (
+                        <Badge className="bg-[#059669] hover:bg-[#047857]">
+                          <CheckCircle className="mr-1 h-3 w-3" />
+                          Active
+                        </Badge>
+                      ) : user.status === 'Pending Approval' ? (
+                        <Badge className="bg-[#F59E0B] hover:bg-[#D97706]">
+                          <Clock className="mr-1 h-3 w-3" />
+                          Pending
+                        </Badge>
+                      ) : user.status === 'Pending Verification' ? (
+                        <Badge className="bg-[#3B82F6] hover:bg-[#2563EB]">
+                          <Mail className="mr-1 h-3 w-3" />
+                          Pending Verification
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-[#6B7280] hover:bg-[#4B5563]">
+                          <XCircle className="mr-1 h-3 w-3" />
+                          Inactive
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {user.role ? (
+                        <Badge 
+                          variant="secondary"
+                          className="bg-[#F3F4F6] text-[#374151] hover:bg-[#E5E7EB]"
+                        >
+                          {user.role}
+                        </Badge>
+                      ) : (
+                        <span className="text-[#9CA3AF] text-sm">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-[#374151]">{user.lastLogin}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0 hover:bg-[#F3F4F6]">
+                            <MoreVertical className="h-4 w-4 text-[#6B7280]" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[200px]">
+                          <DropdownMenuItem onClick={() => handleViewDetails(user)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            View Details
+                          </DropdownMenuItem>
+                          {isAdmin && user.status !== 'Pending Approval' && user.status !== 'Pending Verification' && (
+                            <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                          )}
+                          {isAdmin && user.status === 'Pending Verification' && (
+                            <DropdownMenuItem 
+                              onClick={() => handleResendSetupPassword(user)}
+                              disabled={isResendingSetup}
+                            >
+                              <Mail className="mr-2 h-4 w-4" />
+                              {isResendingSetup ? 'Sending...' : 'Resend Setup Password'}
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          {totalPages > 1 && filteredUsers.length > 0 && (
+            <Pagination className="mt-4">
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); if (currentPage > 1) setCurrentPage((p) => p - 1); }}
+                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
+                    aria-disabled={currentPage <= 1}
+                  />
+                </PaginationItem>
+                <PaginationItem>
+                  <span className="px-2 text-sm text-[#6B7280]">Page {currentPage} of {totalPages}</span>
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); if (currentPage < totalPages) setCurrentPage((p) => p + 1); }}
+                    className={currentPage >= totalPages ? "pointer-events-none opacity-50" : undefined}
+                    aria-disabled={currentPage >= totalPages}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
+        </CardContent>
+      </Card>
         </>
       )}
 
