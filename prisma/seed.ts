@@ -1167,6 +1167,19 @@ async function main() {
     "Partial", "Full", "Partial", "Partial", "Full", "Partial", "Partial", "Full", "Partial", "Partial",
     "Full", "Partial", "Partial", "Full", "Partial", "Partial", "Full", "Partial", "Partial", "Full",
     "Partial", "Partial", "Full", "Partial", "Partial", "Full", "Partial", "Partial", "Full", "Partial"];
+  const SAMPLE_DELIVERY_TIME_SLOTS = ["09:00 - 12:00", "13:00 - 16:00", "16:00 - 18:00"];
+  const SAMPLE_DRIVER_NAMES = [
+    "Ahmad Razak",
+    "Tan Wei Ming",
+    "Siti Nur Aisyah",
+    "Lim Chee Keong",
+    "Raj Kumar",
+    "Nurul Huda",
+    "Lee Jun Hao",
+    "Mohd Faizal",
+    "Chong Mei Ling",
+    "Faridah Binti Aziz",
+  ];
   const SAMPLE_TOTAL_SETS = [1, 2, 2, 1, 2, 3, 1, 2, 2, 1, 2, 3, 1, 2, 2, 1, 2, 3, 1, 2, 2, 1, 2, 3, 1, 2, 2, 1, 2, 3, 1, 2, 2, 1, 2, 3, 1, 2, 2, 1, 2, 3, 1, 2, 2, 1, 2, 3, 1, 2];
   const SAMPLE_TOTAL_RENTAL_MONTHS = [3, 4, 5, 3, 4, 6, 3, 4, 5, 3, 4, 6, 3, 4, 5, 3, 4, 6, 3, 4, 5, 3, 4, 6, 3, 4, 5, 3, 4, 6, 3, 4, 5, 3, 4, 6, 3, 4, 5, 3, 4, 6, 3, 4, 5, 3, 4, 6, 3, 4];
   // Return request sample data (50 each)
@@ -1601,6 +1614,17 @@ async function main() {
           deliveryFee: deliveryFeeAmount,
         },
       });
+      const scheduleDate = new Date(SAMPLE_DELIVERY_REQUEST_DATES[i] + "T00:00:00.000Z");
+      const scheduleTimeSlot = SAMPLE_DELIVERY_TIME_SLOTS[(i + s) % SAMPLE_DELIVERY_TIME_SLOTS.length];
+      await prisma.deliverySchedule.create({
+        data: {
+          deliverySetId: deliverySet.id,
+          scheduledDate: scheduleDate,
+          scheduledTimeSlot: scheduleTimeSlot,
+          confirmedAt: scheduleDate,
+          confirmedBy: salesUser.id,
+        },
+      });
       allDeliverySetIdsThisRequest.push(deliverySet.id);
       if (firstSetId === null) firstSetId = deliverySet.id;
       const setItems = itemsBySet.get(setName) ?? [];
@@ -1628,11 +1652,18 @@ async function main() {
     firstDeliverySetIds.push(firstSetId ?? "");
     createdDeliveryRequestIds.push(deliveryRequest.id);
     for (const dsId of allDeliverySetIdsThisRequest) {
-      const driverIndex = (i + allDeliverySetIdsThisRequest.indexOf(dsId)) % 10;
+      let driverIndex = (i + allDeliverySetIdsThisRequest.indexOf(dsId)) % SAMPLE_DRIVER_NAMES.length;
+      let driverName = SAMPLE_DRIVER_NAMES[driverIndex];
+      let safetyCounter = 0;
+      while (driverName === deliveryRequest.customerName && safetyCounter < SAMPLE_DRIVER_NAMES.length) {
+        driverIndex = (driverIndex + 1) % SAMPLE_DRIVER_NAMES.length;
+        driverName = SAMPLE_DRIVER_NAMES[driverIndex];
+        safetyCounter++;
+      }
       await prisma.deliveryDispatch.create({
         data: {
           deliverySetId: dsId,
-          driverName: `Driver ${driverIndex + 1}`,
+          driverName,
           driverContact: `+60 12-${String(3456789 + driverIndex).padStart(7, "0")}`,
           vehicleNumber: `VH-${String(1000 + i + (allDeliverySetIdsThisRequest.indexOf(dsId) * 2)).slice(-4)}`,
           dispatchedAt: new Date(SAMPLE_DELIVERY_REQUEST_DATES[i] + "T08:00:00.000Z"),
