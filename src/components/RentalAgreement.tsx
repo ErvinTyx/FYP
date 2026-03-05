@@ -135,6 +135,8 @@ export function RentalAgreement() {
   const [isSignatureMode, setIsSignatureMode] = useState(false);
   const [signatureType, setSignatureType] = useState<'owner' | 'hirer'>('owner');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const uploadFileInputRef = useRef<HTMLInputElement>(null);
   
   const ownerCanvasRef = useRef<HTMLCanvasElement>(null);
   const hirerCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -596,6 +598,7 @@ export function RentalAgreement() {
     }
 
     try {
+      setIsUploading(true);
       const uploadResult = await uploadFile(uploadedFile, {
         folder: 'agreements/signed',
         maxSizeMB: 10,
@@ -629,6 +632,7 @@ export function RentalAgreement() {
         await fetchAgreements();
         setIsUploadDialogOpen(false);
         setUploadedFile(null);
+        uploadFileInputRef.current && (uploadFileInputRef.current.value = '');
         setSelectedAgreement(null);
       } else {
         toast.error(data.message || 'Failed to upload signed document');
@@ -636,6 +640,8 @@ export function RentalAgreement() {
     } catch (error) {
       console.error('Error uploading signed document:', error);
       toast.error('Failed to connect to server');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -2146,7 +2152,17 @@ export function RentalAgreement() {
       </Dialog>
 
       {/* Upload Signed Agreement Dialog */}
-      <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+      <Dialog
+        open={isUploadDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setUploadedFile(null);
+            uploadFileInputRef.current && (uploadFileInputRef.current.value = '');
+            setSelectedAgreement(null);
+          }
+          setIsUploadDialogOpen(open);
+        }}
+      >
         <DialogContent className="max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Upload Signed Agreement</DialogTitle>
@@ -2196,6 +2212,7 @@ export function RentalAgreement() {
                 <Label>Select Document *</Label>
                 <div className="flex flex-col gap-2">
                   <Input
+                    ref={uploadFileInputRef}
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png"
                     onChange={handleFileChange}
@@ -2251,6 +2268,7 @@ export function RentalAgreement() {
                 onClick={() => {
                   setIsUploadDialogOpen(false);
                   setUploadedFile(null);
+                  uploadFileInputRef.current && (uploadFileInputRef.current.value = '');
                   setSelectedAgreement(null);
                 }}
               >
@@ -2260,9 +2278,13 @@ export function RentalAgreement() {
               <Button
                 className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]"
                 onClick={handleUploadSignedDocument}
-                disabled={!uploadedFile}
+                disabled={!uploadedFile || isUploading}
               >
-                <Upload className="mr-2 h-4 w-4" />
+                {isUploading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
                 Upload Document
               </Button>
             </div>

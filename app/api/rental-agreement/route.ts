@@ -677,6 +677,10 @@ export async function PUT(request: NextRequest) {
       String(dataForUpdate.signedDocumentUrl).trim() !== '';
     if (hasSignedDocumentUrl) {
       dataForUpdate.signedStatus = 'completed';
+      // Set uploader from session when not provided by client
+      if (dataForUpdate.signedDocumentUploadedBy == null || String(dataForUpdate.signedDocumentUploadedBy).trim() === '') {
+        dataForUpdate.signedDocumentUploadedBy = session.user.email ?? session.user.name ?? null;
+      }
     }
 
     const isNewDocumentUpload =
