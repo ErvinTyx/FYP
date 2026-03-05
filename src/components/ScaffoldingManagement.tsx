@@ -1023,6 +1023,7 @@ export function ScaffoldingManagement() {
                             onChange={(e) => updateDamageRepairEntry(index, 'partsLabourCostPerUnit', parseFloat(e.target.value) || 0)}
                           />
                         </div>
+                        <p className="text-xs text-muted-foreground">Please fill in only one of the two fields above.</p>
                         <button
                           type="button"
                           className="inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium hover:bg-red-50 text-red-600 hover:text-red-700 h-8 px-2.5 mt-1 cursor-pointer border-0 bg-transparent"
@@ -1303,6 +1304,7 @@ export function ScaffoldingManagement() {
                             onChange={(e) => updateDamageRepairEntry(index, 'partsLabourCostPerUnit', parseFloat(e.target.value) || 0)}
                           />
                         </div>
+                        <p className="text-xs text-muted-foreground">Please fill in only one of the two fields above.</p>
                         <button
                           type="button"
                           className="inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium hover:bg-red-50 text-red-600 hover:text-red-700 h-8 px-2.5 mt-1 cursor-pointer border-0 bg-transparent"

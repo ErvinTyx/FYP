@@ -364,7 +364,7 @@ export function ProjectClosureManagement() {
   const getStatusBadge = (status: ClosureStatus) => {
     switch (status) {
       case "active":
-        return <Badge className="bg-[#6B7280] text-white">Active</Badge>;
+        return <Badge className="bg-[#3B82F6] text-white">Active</Badge>;
       case "pending":
         return <Badge className="bg-[#F59E0B] text-white">Pending Review</Badge>;
       case "approved":
@@ -984,7 +984,7 @@ export function ProjectClosureManagement() {
                 </div>
               </div>
 
-              {/* Overall Validation Status: Approved (green) when status is approved; else Ready for Approval or Cannot Approve */}
+              {/* Overall Validation Status: Approved (green) when status is approved; yellow when all validations pass before request; green when pending+canApprove; else red */}
               <div className="bg-[#F3F4F6] rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[#231F20]">Overall Validation Status</span>
@@ -992,15 +992,31 @@ export function ProjectClosureManagement() {
                     <Badge className="bg-[#10B981] text-white">
                       Approved
                     </Badge>
-                  ) : canApprove(selectedRequest) ? (
-                    <Badge className="bg-[#10B981] text-white">
-                      All Requirements Met - Ready for Approval
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-[#EF4444] text-white">
-                      Requirements Not Met - Cannot Approve
-                    </Badge>
-                  )}
+                  ) : (() => {
+                    const allValidationsPass =
+                      selectedRequest.validationChecks.rentalPeriodMet &&
+                      selectedRequest.validationChecks.returnProcessComplete &&
+                      (selectedRequest.paymentStatus?.isAllComplete ?? false);
+                    if (allValidationsPass && selectedRequest.status === "active") {
+                      return (
+                        <Badge className="bg-[#F59E0B] text-white">
+                          All Requirements Met – Ready for Project Closure Request
+                        </Badge>
+                      );
+                    }
+                    if (canApprove(selectedRequest)) {
+                      return (
+                        <Badge className="bg-[#10B981] text-white">
+                          All Requirements Met - Ready for Approval
+                        </Badge>
+                      );
+                    }
+                    return (
+                      <Badge className="bg-[#EF4444] text-white">
+                        Requirements Not Met - Cannot Approve
+                      </Badge>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
