@@ -16,7 +16,7 @@ This endpoint also transforms user data into a frontend-friendly structure, cate
 This is a REST-based API that does not require additional URL parameters. It returns a list of users based on the authenticated user’s roles.
 
 **Signature:**
-`GET /api/users`
+`GET /api/user-management`
 
 ---
 
