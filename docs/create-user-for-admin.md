@@ -1,50 +1,127 @@
-# Create User API for administrator
+# Create User API (Admin)
 
-This API endpoint allows users to create user.
+This API allows **Admin and Super Admin** users to create a new internal staff user. The user is created with status `pending_verification`; a password-setup token is generated and an email is sent so the user can set their password. No password is sent in the request. The action is audit-logged.
 
+---
 
+## Signature
+
+**Signature:**
+`POST /api/user-management`
+
+---
 
 ## Inputs
 
-The request body should contain the following fields:
+### Headers
 
-| Field             | Type   | Description                                                                                             |
-|-------------------|--------|---------------------------------------------------------------------------------------------------------|
-| `firstName`       | string | The first name of the user.                                                                   |
-| `lastName`        | string | The last name of the user.                                                                    |
-| `email`           | string | The email address of the user.                                                                 |
-| `phone`           | string | The phone number of the user.                                                                |
-| `password`        | string | The password for the user account.                                                            |
-| `role`            | string | The role of the user. (Must be one of the following: admin, sales, finance, support, operations, production) |
-| `status`          | string | The status of the user. (Must be one of the following: active, inactive)                        |
-| `lastLogin`       | string | The last login date and time of the user. (Format: YYYY-MM-DD HH:MM:SS)                        |
-| `createdAt`       | string | The creation date and time of the user. (Format: YYYY-MM-DD HH:MM:SS)                           |
-| `createdBy`       | string | The user who created the user.                                                               |
-| `passwordSet`     | boolean | A boolean indicating whether the user has set their password.                                 |
-| `isInternal`      | boolean | A boolean indicating whether the user is an internal staff.                                   |
-| `csrfToken`       | string | The CSRF token. (Required for security)                                                        |
+* Authorization token (session-based authentication)
+* `Content-Type: application/json`
+
+### Request Body
+
+| Field     | Type   | Description                                                                 | Required |
+| --------- | ------ | --------------------------------------------------------------------------- | -------- |
+| firstName | String | User first name                                                             | Yes      |
+| lastName  | String | User last name                                                              | Yes      |
+| email     | String | User email (must be unique; valid email format)                              | Yes      |
+| role      | String | Role name (e.g. `admin`, `sales`, `finance`, `support`, `operations`, `production`). Must exist in DB. | Yes      |
+| phone     | String | Contact phone number (optional; must be unique and valid format if provided) | No       |
+| status    | String | One of: `pending`, `pending_verification`, `active`, `inactive`. Default: `pending_verification` | No       |
+
+---
+
+## Access Control Rules
+
+| Condition                              | Result           |
+| -------------------------------------- | ---------------- |
+| Not authenticated                      | 401 Unauthorized |
+| Authenticated but not Admin/SuperAdmin  | 403 Forbidden    |
+| Admin / Super Admin                    | Allowed          |
+
+---
+
+## Validation Rules
+
+* `firstName`, `lastName`, `email`, and `role` are required.
+* Email must be unique and valid format.
+* Phone (if provided) must be valid and unique.
+* `status` must be one of: `pending`, `pending_verification`, `active`, `inactive`.
+* `role` must match an existing role in the database.
+
+---
 
 ## Outputs
 
-The API will respond with a JSON object containing the following fields:
+### Successful Response
 
-| Field      | Type   | Description                                                                 |
-|------------|--------|----------------------------------------------------------------------------|
-| `success`  | boolean| A boolean indicating whether the user was successfully created, updated, or deleted. |
-| `errorCode`| string | A string indicating the type of error (if any). |
-| `message`  | string | A string describing the error message (if any). |
+**HTTP 200**
 
-## Error Codes
+```json
+{
+  "success": true,
+  "message": "User created successfully. A password setup email has been sent.",
+  "emailSent": true,
+  "user": {
+    "id": "clx123abc",
+    "email": "jane.doe@example.com",
+    "firstName": "Jane",
+    "lastName": "Doe",
+    "phone": "0123456789",
+    "status": "pending_verification",
+    "roles": ["sales"],
+    "createdAt": "2025-03-05T10:00:00.000Z"
+  }
+}
+```
 
-The API may return the following error codes:
+If the password-setup email fails to send, `emailSent` is `false` and the message indicates that the admin should contact the user.
 
-| Code      | Description                                                                 |
-|-----------|----------------------------------------------------------------------------|
-| 400       | If any of the required fields are missing.                          |
-| 401       | If the user is not authorized to perform the action.                |
-| 403      | If the user is not authorized to perform the action.                |
-| 404      | If the user with the specified ID is not found.                      |
-| 500       | If an error occurs during the user creation, update, or deletion. |
+---
+
+## Error Responses
+
+### Bad Request – Missing required fields
+
+**HTTP 400**
+
+```json
+{
+  "success": false,
+  "message": "First name, last name, email, and role are required"
+}
+```
+
+### Bad Request – Invalid email / phone / status / role
+
+**HTTP 400**
+
+Examples:
+
+* `"Invalid email format"`
+* `"Invalid status. Must be pending, pending_verification, active, or inactive"`
+* `"A user with this email already exists"`
+* `"A user with this phone number already exists"`
+* `"Invalid role: <role>"`
+
+### Unauthorized / Forbidden
+
+**HTTP 401 / 403**
+
+Standard responses as in other user-management endpoints.
+
+### Internal Server Error
+
+**HTTP 500**
+
+```json
+{
+  "success": false,
+  "message": "An error occurred while creating the user"
+}
+```
+
+---
 
 ## Example Request
 
@@ -53,10 +130,16 @@ POST /api/user-management
 Content-Type: application/json
 
 {
-  "firstName": "John",
+  "firstName": "Jane",
   "lastName": "Doe",
-  "email": "john.doe@example.com",
-  "phone": "1234567890",
-  "role": "admin",
-  "csrfToken": "abc123"
+  "email": "jane.doe@example.com",
+  "phone": "0123456789",
+  "role": "sales"
 }
+```
+
+---
+
+## Audit Logging
+
+User creation is recorded in the audit log (who created, new user email/name/role/status, client IP).
