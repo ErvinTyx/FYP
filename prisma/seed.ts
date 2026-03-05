@@ -1823,20 +1823,30 @@ async function main() {
   console.log(`  - Created 15 OpenRepairSlips with RepairItems (estimatedCost/actualCost set).`);
 
   console.log("Creating 50 Deposits linked to RentalAgreements...");
+  const DEPOSIT_STATUSES = ["Pending Payment", "Pending Approval", "Paid", "Rejected", "Overdue", "Expired"];
   const createdDepositIds: string[] = [];
   for (let i = 0; i < 50; i++) {
     const ag = createdAgreements[i];
     const dueDate = new Date(SAMPLE_DEPOSIT_DUE_DATES[i] + "T00:00:00.000Z");
-    const approvedAt = new Date(SAMPLE_DEPOSIT_APPROVED_DATES[i] + "T00:00:00.000Z");
+    const status = DEPOSIT_STATUSES[i % DEPOSIT_STATUSES.length];
+    const approvedAtDate = new Date(SAMPLE_DEPOSIT_APPROVED_DATES[i] + "T00:00:00.000Z");
+    const rejectedAtDate = new Date(SAMPLE_DEPOSIT_DUE_DATES[i] + "T12:00:00.000Z");
     const dep = await prisma.deposit.create({
       data: {
         depositNumber: SAMPLE_DEPOSIT_NUMBERS[i],
         agreementId: ag.id,
         depositAmount: ag.securityDeposit,
-        status: "Paid",
+        status,
         dueDate,
-        approvedAt,
-        referenceNumber: `SEED-${i + 1}`,
+        ...(status === "Paid" && {
+          approvedAt: approvedAtDate,
+          referenceNumber: `SEED-${i + 1}`,
+        }),
+        ...(status === "Rejected" && {
+          rejectedAt: rejectedAtDate,
+          rejectedBy: salesUser.id,
+          rejectionReason: "Seed data – sample rejection",
+        }),
       },
     });
     createdDepositIds.push(dep.id);
@@ -1863,7 +1873,8 @@ async function main() {
     const baseAmount = Math.round((monthlyRental / 30) * daysInPeriod * 100) / 100;
     const totalAmount = baseAmount;
     const dueDate = new Date(SAMPLE_MRI_DUE_DATES[i] + "T00:00:00.000Z");
-    const status = i % 3 === 0 ? "Pending Payment" : "Paid";
+    const MRI_STATUSES = ["Pending Payment", "Pending Approval", "Paid", "Rejected", "Overdue"];
+    const status = MRI_STATUSES[i % MRI_STATUSES.length];
     const inv = await prisma.monthlyRentalInvoice.create({
       data: {
         invoiceNumber: SAMPLE_MRI_NUMBERS[i],
@@ -1885,6 +1896,11 @@ async function main() {
         ...(status === "Paid" && {
           approvedAt: new Date(dueDate.getTime() + 2 * 24 * 60 * 60 * 1000),
           referenceNumber: `MRI-PAY-${i + 1}`,
+        }),
+        ...(status === "Rejected" && {
+          rejectedAt: new Date(dueDate.getTime() + 24 * 60 * 60 * 1000),
+          rejectedBy: salesUser.id,
+          rejectionReason: "Seed data – sample rejection",
         }),
       },
     });
@@ -1922,7 +1938,8 @@ async function main() {
     const returnedDate = SAMPLE_RETURN_REQUEST_DATES[i];
     const dueDate = new Date(SAMPLE_AC_DUE_DATES[i] + "T00:00:00.000Z");
     const totalCharges = (i % 5 === 0 ? 150 : i % 5 === 1 ? 200 : 100);
-    const status = i % 2 === 0 ? "approved" : "pending_payment";
+    const AC_STATUSES = ["pending_payment", "pending_approval", "approved", "rejected"];
+    const status = AC_STATUSES[i % AC_STATUSES.length];
     const ac = await prisma.additionalCharge.create({
       data: {
         invoiceNo: SAMPLE_AC_INVOICE_NOS[i],
@@ -1935,6 +1952,10 @@ async function main() {
         status,
         ...(status === "approved" && {
           approvalDate: new Date(dueDate.getTime() - 24 * 60 * 60 * 1000),
+        }),
+        ...(status === "rejected" && {
+          rejectionDate: new Date(dueDate.getTime() + 24 * 60 * 60 * 1000),
+          rejectionReason: "Seed data – sample rejection",
         }),
       },
     });
@@ -1962,6 +1983,9 @@ async function main() {
     const invoiceType = isMonthly ? "monthlyRental" : "deposit";
     const originalInvoice = isMonthly ? createdMonthlyInvoiceNumbers[i] : SAMPLE_DEPOSIT_NUMBERS[i];
     const amount = isMonthly ? Math.round((createdAgreements[i].securityDeposit * 0.1) * 100) / 100 : Math.round(createdAgreements[i].securityDeposit * 0.05 * 100) / 100;
+    const CN_STATUSES = ["Pending Approval", "Approved", "Rejected"];
+    const cnStatus = CN_STATUSES[i % CN_STATUSES.length];
+    const cnDate = new Date(SAMPLE_CN_DATES[i] + "T00:00:00.000Z");
     const cn = await prisma.creditNote.create({
       data: {
         creditNoteNumber: SAMPLE_CN_NUMBERS[i],
@@ -1973,10 +1997,17 @@ async function main() {
         agreementId: ag.id,
         amount,
         reason: SAMPLE_CN_REASONS[i],
-        date: new Date(SAMPLE_CN_DATES[i] + "T00:00:00.000Z"),
-        status: "Approved",
+        date: cnDate,
+        status: cnStatus,
         createdBy: salesUser.id,
-        approvedAt: new Date(SAMPLE_CN_DATES[i] + "T12:00:00.000Z"),
+        ...(cnStatus === "Approved" && {
+          approvedAt: new Date(SAMPLE_CN_DATES[i] + "T12:00:00.000Z"),
+        }),
+        ...(cnStatus === "Rejected" && {
+          rejectedAt: new Date(SAMPLE_CN_DATES[i] + "T12:00:00.000Z"),
+          rejectedBy: salesUser.id,
+          rejectionReason: "Seed data – sample rejection",
+        }),
       },
     });
     createdCreditNoteIds.push(cn.id);
@@ -2004,6 +2035,8 @@ async function main() {
     const sourceId = cn?.sourceId ?? (invoiceType === "deposit" ? createdDepositIds[i] : createdMonthlyInvoiceIds[i]);
     const originalInvoice = cn?.originalInvoice ?? (invoiceType === "deposit" ? SAMPLE_DEPOSIT_NUMBERS[i] : createdMonthlyInvoiceNumbers[i]);
     const amount = Number(cn?.amount ?? 50);
+    const REFUND_STATUSES = ["Pending Approval", "Approved", "Rejected"];
+    const refundStatus = REFUND_STATUSES[i % REFUND_STATUSES.length];
     await prisma.refund.create({
       data: {
         refundNumber: SAMPLE_REFUND_NUMBERS[i],
@@ -2017,9 +2050,16 @@ async function main() {
         amount,
         refundMethod: i % 3 === 0 ? "Bank Transfer" : i % 3 === 1 ? "eWallet" : "Cash",
         reason: "Credit note refund",
-        status: "Approved",
+        status: refundStatus,
         createdBy: salesUser.id,
-        approvedAt: new Date(SAMPLE_CN_DATES[i] + "T14:00:00.000Z"),
+        ...(refundStatus === "Approved" && {
+          approvedAt: new Date(SAMPLE_CN_DATES[i] + "T14:00:00.000Z"),
+        }),
+        ...(refundStatus === "Rejected" && {
+          rejectedAt: new Date(SAMPLE_CN_DATES[i] + "T14:00:00.000Z"),
+          rejectedBy: salesUser.id,
+          rejectionReason: "Seed data – sample rejection",
+        }),
       },
     });
   }
