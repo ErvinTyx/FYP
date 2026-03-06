@@ -639,11 +639,6 @@ export default function DeliveryReturnManagement({
           scaffoldingItemId: item.scaffoldingItemId,
         })),
       }));
-      // #region agent log
-      if (process.env.NODE_ENV === 'development') {
-        fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DeliveryReturnManagement.tsx:handleCreateDeliveryRequest',message:'Create delivery request payload',data:{requestId,agreementNo:agreement.agreementNumber,validSetNames:validSets.map(s=>s.setName),selectedSetNames:[...selectedSetNames],deliverySetNames:deliverySets.map(s=>s.setName),deliveryRequestsCount:deliveryRequests.filter(dr=>dr.agreementNo===agreement.agreementNumber).length},timestamp:Date.now(),hypothesisId:'B,C,D'})}).catch(()=>{});
-      }
-      // #endregion
 
       const response = await fetch('/api/delivery', {
         method: 'POST',
@@ -662,11 +657,6 @@ export default function DeliveryReturnManagement({
       });
 
       const data = await response.json();
-      // #region agent log
-      if (process.env.NODE_ENV === 'development') {
-        fetch('http://127.0.0.1:7242/ingest/3d2590d8-86ad-4922-ad03-c79aa639f05e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DeliveryReturnManagement.tsx:handleCreateDeliveryRequest',message:'Create delivery response',data:{success:data.success,message:data.message,status:response.status},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
-      }
-      // #endregion
       if (data.success) {
         await fetchDeliveryRequests();
         setShowCreateDeliveryModal(false);
@@ -3369,7 +3359,7 @@ export default function DeliveryReturnManagement({
                           // If no returnable items left, show message
                           if (returnableItems.length === 0) {
                             return (
-                              <div key={setData.setId} className="border-t border-gray-200 pt-3">
+                              <div key={`${setIndex}-${setData.setId}`} className="border-t border-gray-200 pt-3">
                                 <div className="flex items-center justify-between mb-2">
                                   <p className="text-sm font-medium text-gray-900">{setData.setName}</p>
                                   <button
@@ -3393,7 +3383,7 @@ export default function DeliveryReturnManagement({
                           }
                           
                           return (
-                            <div key={setData.setId} className="border-t border-gray-200 pt-3">
+                            <div key={`${setIndex}-${setData.setId}`} className="border-t border-gray-200 pt-3">
                               <div className="flex items-center justify-between mb-2">
                                 <p className="text-sm font-medium text-gray-900">{setData.setName}</p>
                                 <button
@@ -3417,9 +3407,9 @@ export default function DeliveryReturnManagement({
                                   // Use a stable index based on scaffoldingItemId for error lookup
                                   const itemErrorKey = setData.items.findIndex(i => i.scaffoldingItemId === item.scaffoldingItemId);
                                   const itemError = returnFormErrors.itemErrors?.[`${setIndex}-${itemErrorKey}`];
-                                  
+                                  const itemKey = `${setIndex}-${setData.setId}-${item.scaffoldingItemId ?? 'noid'}-${itemIndex}`;
                                   return (
-                                    <div key={`${setData.setId}-${item.scaffoldingItemId ?? itemIndex}`} className="flex items-center space-x-2">
+                                    <div key={itemKey} className="flex items-center space-x-2">
                                       <div className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700">
                                         {item.name || 'Unknown item'}
                                         <span className="text-xs text-gray-500 ml-2">(Returnable: {returnable} / {delivered})</span>
