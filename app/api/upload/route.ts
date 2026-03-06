@@ -15,8 +15,26 @@ const ALLOWED_TYPES = [
   'application/pdf'
 ];
 
-// Allowlist to prevent path traversal
-const ALLOWED_FOLDERS = ['identity-documents', 'content', 'general'] as const;
+// Allowlist to prevent path traversal (must match folders used by upload lib and components)
+const ALLOWED_FOLDERS = [
+  'identity-documents',
+  'content',
+  'general',
+  'agreements/signed',
+  'payment-proofs',
+  'credit-notes',
+  'refunds',
+  'scaffolding',
+  'returns/driver',
+  'returns/warehouse',
+  'returns/damage',
+  'returns/external-goods',
+  'deliveries/packing',
+  'deliveries/delivery',
+  'inspections/before',
+  'inspections/after',
+  'inspections/damage',
+] as const;
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     if (!ALLOWED_FOLDERS.includes(rawFolder as (typeof ALLOWED_FOLDERS)[number])) {
       return NextResponse.json(
-        { success: false, message: 'Invalid folder. Allowed: identity-documents, content, general' },
+        { success: false, message: `Invalid folder. Allowed: ${ALLOWED_FOLDERS.join(', ')}` },
         { status: 400 }
       );
     }

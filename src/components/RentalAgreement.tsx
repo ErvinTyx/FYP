@@ -135,6 +135,8 @@ export function RentalAgreement() {
   const [isSignatureMode, setIsSignatureMode] = useState(false);
   const [signatureType, setSignatureType] = useState<'owner' | 'hirer'>('owner');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const uploadFileInputRef = useRef<HTMLInputElement>(null);
   
   const ownerCanvasRef = useRef<HTMLCanvasElement>(null);
   const hirerCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -284,12 +286,24 @@ export function RentalAgreement() {
       toast.error('Security Deposit (Month) cannot be negative.');
       return;
     }
+    if (typeof formData.securityDeposit === 'number' && formData.securityDeposit > 1000) {
+      toast.error('Security Deposit (Month) cannot exceed 1000.');
+      return;
+    }
     if (typeof formData.minimumCharges === 'number' && formData.minimumCharges < 0) {
       toast.error('Minimum Charges (Month) cannot be negative.');
       return;
     }
+    if (typeof formData.minimumCharges === 'number' && formData.minimumCharges > 1000) {
+      toast.error('Minimum Charges (Month) cannot exceed 1000.');
+      return;
+    }
     if (typeof formData.defaultInterest === 'number' && formData.defaultInterest < 0) {
       toast.error('Default Interest (% per month) cannot be negative.');
+      return;
+    }
+    if (typeof formData.defaultInterest === 'number' && formData.defaultInterest > 100) {
+      toast.error('Default Interest (% per month) cannot exceed 100.');
       return;
     }
 
@@ -381,12 +395,24 @@ export function RentalAgreement() {
       toast.error('Security Deposit (Month) cannot be negative.');
       return;
     }
+    if (typeof formData.securityDeposit === 'number' && formData.securityDeposit > 1000) {
+      toast.error('Security Deposit (Month) cannot exceed 1000.');
+      return;
+    }
     if (typeof formData.minimumCharges === 'number' && formData.minimumCharges < 0) {
       toast.error('Minimum Charges (Month) cannot be negative.');
       return;
     }
+    if (typeof formData.minimumCharges === 'number' && formData.minimumCharges > 1000) {
+      toast.error('Minimum Charges (Month) cannot exceed 1000.');
+      return;
+    }
     if (typeof formData.defaultInterest === 'number' && formData.defaultInterest < 0) {
       toast.error('Default Interest (% per month) cannot be negative.');
+      return;
+    }
+    if (typeof formData.defaultInterest === 'number' && formData.defaultInterest > 100) {
+      toast.error('Default Interest (% per month) cannot exceed 100.');
       return;
     }
 
@@ -596,6 +622,7 @@ export function RentalAgreement() {
     }
 
     try {
+      setIsUploading(true);
       const uploadResult = await uploadFile(uploadedFile, {
         folder: 'agreements/signed',
         maxSizeMB: 10,
@@ -629,6 +656,7 @@ export function RentalAgreement() {
         await fetchAgreements();
         setIsUploadDialogOpen(false);
         setUploadedFile(null);
+        uploadFileInputRef.current && (uploadFileInputRef.current.value = '');
         setSelectedAgreement(null);
       } else {
         toast.error(data.message || 'Failed to upload signed document');
@@ -636,6 +664,8 @@ export function RentalAgreement() {
     } catch (error) {
       console.error('Error uploading signed document:', error);
       toast.error('Failed to connect to server');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -1187,6 +1217,8 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     min={0}
+                    max={1000}
+                    step={1}
                     placeholder="0"
                     value={formData.securityDeposit === undefined ? '' : formData.securityDeposit}
                     onChange={(e) => {
@@ -1194,8 +1226,8 @@ export function RentalAgreement() {
                         setFormData({ ...formData, securityDeposit: undefined });
                         return;
                       }
-                      const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const n = parseInt(e.target.value, 10);
+                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.min(1000, Math.max(0, n)) });
                     }}
                   />
                 </div>
@@ -1204,6 +1236,8 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     min={0}
+                    max={1000}
+                    step={1}
                     placeholder="0"
                     value={formData.minimumCharges === undefined ? '' : formData.minimumCharges}
                     onChange={(e) => {
@@ -1211,8 +1245,8 @@ export function RentalAgreement() {
                         setFormData({ ...formData, minimumCharges: undefined });
                         return;
                       }
-                      const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const n = parseInt(e.target.value, 10);
+                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.min(1000, Math.max(0, n)) });
                     }}
                   />
                 </div>
@@ -1222,6 +1256,7 @@ export function RentalAgreement() {
                     type="number"
                     step="0.1"
                     min={0}
+                    max={100}
                     placeholder="0.0"
                     value={formData.defaultInterest === undefined ? '' : formData.defaultInterest}
                     onChange={(e) => {
@@ -1230,7 +1265,8 @@ export function RentalAgreement() {
                         return;
                       }
                       const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, defaultInterest: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const rounded = Number.isNaN(n) ? undefined : Math.min(100, Math.max(0, Math.round(n * 10) / 10));
+                      setFormData({ ...formData, defaultInterest: rounded });
                     }}
                   />
                 </div>
@@ -1481,6 +1517,8 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     min={0}
+                    max={1000}
+                    step={1}
                     placeholder="0"
                     value={formData.securityDeposit === undefined ? '' : formData.securityDeposit}
                     onChange={(e) => {
@@ -1488,8 +1526,8 @@ export function RentalAgreement() {
                         setFormData({ ...formData, securityDeposit: undefined });
                         return;
                       }
-                      const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const n = parseInt(e.target.value, 10);
+                      setFormData({ ...formData, securityDeposit: Number.isNaN(n) ? undefined : Math.min(1000, Math.max(0, n)) });
                     }}
                   />
                 </div>
@@ -1498,6 +1536,8 @@ export function RentalAgreement() {
                   <Input
                     type="number"
                     min={0}
+                    max={1000}
+                    step={1}
                     placeholder="0"
                     value={formData.minimumCharges === undefined ? '' : formData.minimumCharges}
                     onChange={(e) => {
@@ -1505,8 +1545,8 @@ export function RentalAgreement() {
                         setFormData({ ...formData, minimumCharges: undefined });
                         return;
                       }
-                      const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const n = parseInt(e.target.value, 10);
+                      setFormData({ ...formData, minimumCharges: Number.isNaN(n) ? undefined : Math.min(1000, Math.max(0, n)) });
                     }}
                   />
                 </div>
@@ -1516,6 +1556,7 @@ export function RentalAgreement() {
                     type="number"
                     step="0.1"
                     min={0}
+                    max={100}
                     placeholder="0.0"
                     value={formData.defaultInterest === undefined ? '' : formData.defaultInterest}
                     onChange={(e) => {
@@ -1524,7 +1565,8 @@ export function RentalAgreement() {
                         return;
                       }
                       const n = parseFloat(e.target.value);
-                      setFormData({ ...formData, defaultInterest: Number.isNaN(n) ? undefined : Math.max(0, n) });
+                      const rounded = Number.isNaN(n) ? undefined : Math.min(100, Math.max(0, Math.round(n * 10) / 10));
+                      setFormData({ ...formData, defaultInterest: rounded });
                     }}
                   />
                 </div>
@@ -2146,7 +2188,17 @@ export function RentalAgreement() {
       </Dialog>
 
       {/* Upload Signed Agreement Dialog */}
-      <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+      <Dialog
+        open={isUploadDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setUploadedFile(null);
+            uploadFileInputRef.current && (uploadFileInputRef.current.value = '');
+            setSelectedAgreement(null);
+          }
+          setIsUploadDialogOpen(open);
+        }}
+      >
         <DialogContent className="max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Upload Signed Agreement</DialogTitle>
@@ -2196,6 +2248,7 @@ export function RentalAgreement() {
                 <Label>Select Document *</Label>
                 <div className="flex flex-col gap-2">
                   <Input
+                    ref={uploadFileInputRef}
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png"
                     onChange={handleFileChange}
@@ -2251,6 +2304,7 @@ export function RentalAgreement() {
                 onClick={() => {
                   setIsUploadDialogOpen(false);
                   setUploadedFile(null);
+                  uploadFileInputRef.current && (uploadFileInputRef.current.value = '');
                   setSelectedAgreement(null);
                 }}
               >
@@ -2260,9 +2314,13 @@ export function RentalAgreement() {
               <Button
                 className="flex-1 bg-[#F15929] hover:bg-[#d94d1f]"
                 onClick={handleUploadSignedDocument}
-                disabled={!uploadedFile}
+                disabled={!uploadedFile || isUploading}
               >
-                <Upload className="mr-2 h-4 w-4" />
+                {isUploading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
                 Upload Document
               </Button>
             </div>

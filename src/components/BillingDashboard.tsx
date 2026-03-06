@@ -81,15 +81,15 @@ function formatAmount(amount: number, type: RecentActivityEntityType): string {
 
 function StatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
-  if (s.includes("paid")) return <Badge className="bg-[#059669] hover:bg-[#047857]">Paid</Badge>;
-  if (s.includes("pending") && s.includes("approval")) return <Badge className="bg-[#F59E0B] hover:bg-[#D97706]">Pending Approval</Badge>;
-  if (s.includes("pending")) return <Badge className="bg-[#F59E0B] hover:bg-[#D97706]">Pending</Badge>;
-  if (s.includes("overdue")) return <Badge className="bg-[#DC2626] hover:bg-[#B91C1C]">Overdue</Badge>;
-  if (s.includes("approved")) return <Badge className="bg-[#059669] hover:bg-[#047857]">Approved</Badge>;
-  if (s.includes("rejected")) return <Badge className="bg-[#DC2626] hover:bg-[#B91C1C]">Rejected</Badge>;
-  if (s.includes("expired")) return <Badge variant="secondary" className="bg-[#6B7280] text-white">Expired</Badge>;
-  if (s.includes("draft")) return <Badge variant="secondary" className="bg-[#F3F4F6] text-[#374151]">Draft</Badge>;
-  return <Badge variant="secondary" className="bg-[#F3F4F6] text-[#374151]">{status}</Badge>;
+  if (s.includes("paid")) return <Badge className="bg-[#059669] hover:bg-[#047857] text-white">Paid</Badge>;
+  if (s.includes("pending") && s.includes("approval")) return <Badge className="bg-[#3B82F6] hover:bg-[#2563EB] text-white">Pending Approval</Badge>;
+  if (s.includes("pending")) return <Badge className="bg-[#F5A623] hover:bg-[#D88F1C] text-white">Pending</Badge>;
+  if (s.includes("overdue")) return <Badge className="bg-[#EA580C] hover:bg-[#C2410C] text-white">Overdue</Badge>;
+  if (s.includes("approved")) return <Badge className="bg-[#059669] hover:bg-[#047857] text-white">Approved</Badge>;
+  if (s.includes("rejected")) return <Badge className="bg-[#DC2626] hover:bg-[#B91C1C] text-white">Rejected</Badge>;
+  if (s.includes("expired")) return <Badge className="bg-[#6B7280] hover:bg-[#4B5563] text-white">Expired</Badge>;
+  if (s.includes("draft")) return <Badge className="bg-[#9CA3AF] hover:bg-[#6B7280] text-white">Draft</Badge>;
+  return <Badge className="bg-[#9CA3AF] hover:bg-[#6B7280] text-white">{status}</Badge>;
 }
 
 interface BillingDashboardProps {

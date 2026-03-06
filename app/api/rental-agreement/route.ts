@@ -449,6 +449,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Normalize: Security Deposit and Minimum Charges = integers only (max 1000); Default Interest = one decimal place (max 100)
+    const normSecurityDeposit = Math.min(1000, Math.max(0, Math.round(Number(securityDeposit) || 0)));
+    const normMinimumCharges = Math.min(1000, Math.max(0, Math.round(Number(minimumCharges) || 0)));
+    const normDefaultInterest = Math.min(100, Math.max(0, Math.round((Number(defaultInterest) || 0) * 10) / 10));
+
     // Create the rental agreement with initial version
     const createData = {
       agreementNumber,
@@ -462,9 +467,9 @@ export async function POST(request: NextRequest) {
       termOfHire: resolvedTermOfHire,
       totalRentalMonth,
       monthlyRental: monthlyRental || 0,
-      securityDeposit: securityDeposit || 0,
-      minimumCharges: minimumCharges || 0,
-      defaultInterest: defaultInterest || 0,
+      securityDeposit: normSecurityDeposit,
+      minimumCharges: normMinimumCharges,
+      defaultInterest: normDefaultInterest,
       ownerSignatoryName: ownerSignatoryName || null,
       ownerNRIC: ownerNRIC || null,
       hirerSignatoryName: hirerSignatoryName || null,
@@ -492,9 +497,9 @@ export async function POST(request: NextRequest) {
             termOfHire: resolvedTermOfHire,
             totalRentalMonth,
             monthlyRental: monthlyRental || 0,
-            securityDeposit: securityDeposit || 0,
-            minimumCharges: minimumCharges || 0,
-            defaultInterest: defaultInterest || 0,
+            securityDeposit: normSecurityDeposit,
+            minimumCharges: normMinimumCharges,
+            defaultInterest: normDefaultInterest,
             ownerSignatoryName: ownerSignatoryName || null,
             ownerNRIC: ownerNRIC || null,
             hirerSignatoryName: hirerSignatoryName || null,
@@ -645,6 +650,16 @@ export async function PUT(request: NextRequest) {
         dataForUpdate[key] = updateData[key];
       }
     }
+    // Normalize: Security Deposit and Minimum Charges = integers only (max 1000); Default Interest = one decimal place (max 100)
+    if (dataForUpdate.securityDeposit !== undefined) {
+      dataForUpdate.securityDeposit = Math.min(1000, Math.max(0, Math.round(Number(dataForUpdate.securityDeposit) || 0)));
+    }
+    if (dataForUpdate.minimumCharges !== undefined) {
+      dataForUpdate.minimumCharges = Math.min(1000, Math.max(0, Math.round(Number(dataForUpdate.minimumCharges) || 0)));
+    }
+    if (dataForUpdate.defaultInterest !== undefined) {
+      dataForUpdate.defaultInterest = Math.min(100, Math.max(0, Math.round((Number(dataForUpdate.defaultInterest) || 0) * 10) / 10));
+    }
     // Omit rfqId from update when client is stale (client may reject rfqId; run npx prisma generate to get full schema)
 
     // Autofill termOfHire from RFQ items when current value is empty and agreement has rfqId (treat whitespace as empty)
@@ -677,6 +692,10 @@ export async function PUT(request: NextRequest) {
       String(dataForUpdate.signedDocumentUrl).trim() !== '';
     if (hasSignedDocumentUrl) {
       dataForUpdate.signedStatus = 'completed';
+      // Set uploader from session when not provided by client
+      if (dataForUpdate.signedDocumentUploadedBy == null || String(dataForUpdate.signedDocumentUploadedBy).trim() === '') {
+        dataForUpdate.signedDocumentUploadedBy = session.user.email ?? session.user.name ?? null;
+      }
     }
 
     const isNewDocumentUpload =
