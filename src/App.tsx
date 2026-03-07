@@ -151,7 +151,6 @@ const PAGE_ALLOWED_ROLES: Partial<Record<Page, string[]>> = {
   "statement-of-account": ["admin", "super_user", "sales", "finance"],
   "project-closure": ["admin", "super_user", "sales", "operations"],
   "report-generation": ["admin", "super_user", "finance"],
-  "content-management": ["admin", "super_user"],
   "rfq-management": ["sales", "admin", "super_user"],
 };
 

@@ -23,13 +23,7 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
     }
-    const hasPermission = session.user.roles?.some((role: string) => CONTENT_ROLES.includes(role));
-    if (!hasPermission) {
-      return NextResponse.json(
-        { success: false, message: 'Forbidden: You do not have permission to access content' },
-        { status: 403 }
-      );
-    }
+    // Any authenticated user can view content
 
     const searchParams = request.nextUrl.searchParams;
     const type = searchParams.get('type');
