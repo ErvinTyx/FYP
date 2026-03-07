@@ -162,21 +162,23 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
     }
   };
 
-  // Convert flat items to UI sets for display
+  // Convert flat items to UI sets for display (totalPrice = quantity * unitPrice * rentalMonths)
   const itemsToUiSets = (items: RFQItem[]): UISet[] => {
     const setMap = new Map<string, UISet>();
     items.forEach(item => {
       const key = item.setName;
+      const rentalMonths = item.rentalMonths || 1;
       if (!setMap.has(key)) {
         setMap.set(key, {
           id: `set-${key}-${Date.now()}`,
           setName: item.setName,
           requiredDate: item.requiredDate || new Date().toISOString().split('T')[0],
-          rentalMonths: item.rentalMonths || 1,
+          rentalMonths,
           items: []
         });
       }
-      setMap.get(key)!.items.push(item);
+      const recalcTotal = item.quantity * item.unitPrice * rentalMonths;
+      setMap.get(key)!.items.push({ ...item, totalPrice: recalcTotal });
     });
     return Array.from(setMap.values());
   };
@@ -290,10 +292,9 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
       if (field === 'rentalMonths') {
         const months = Math.min(RFQ_VALIDATION.RENTAL_MONTHS_MAX, Math.max(RFQ_VALIDATION.RENTAL_MONTHS_MIN, Number(updatedSet.rentalMonths) || 1));
         updatedSet.rentalMonths = months;
-        const durationInDays = months * 30;
         updatedSet.items = updatedSet.items.map(item => ({
           ...item,
-          totalPrice: item.quantity * item.unitPrice * durationInDays,
+          totalPrice: item.quantity * item.unitPrice * months,
         }));
       }
       return updatedSet;
@@ -327,6 +328,29 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
     return scaffoldingTypes.find(item => item.id === itemId);
   };
 
+  /**
+   * Available quantity for this RFQ: total stock − reservedQuantity (with add-back when editing this RFQ). Capped at total stock.
+   * Logic: Scaffolding Management keeps total quantity; reservations go into reservedQuantity. User A reserves 300 → remaining 106.
+   * User B (new RFQ) sees 106 and can select up to 106. When User B edits, they see 106 as their max. When User A edits, they see up to 406 (add-back of their 300).
+   */
+  const getAvailableForScaffoldingItem = (scaffoldingItemId: string): number => {
+    const si = getScaffoldingItem(scaffoldingItemId);
+    if (!si) return 0;
+    const totalStock = Number(si.available ?? 0);
+    const base = Math.max(0, totalStock - Number(si.reservedQuantity || 0));
+    if (!rfq) return base;
+    const qtyInThisRfq = uiSets.reduce(
+      (sum, s) => sum + s.items.filter((i) => i.scaffoldingItemId === scaffoldingItemId).reduce((s2, i) => s2 + i.quantity, 0),
+      0
+    );
+    const originalQty = (originalRFQ?.items as RFQItem[] | undefined)?.reduce(
+      (sum, i) => sum + (i.scaffoldingItemId === scaffoldingItemId ? i.quantity : 0),
+      0
+    ) ?? 0;
+    const allowed = base + Math.max(qtyInThisRfq, originalQty);
+    return Math.min(allowed, totalStock);
+  };
+
   const updateItemInSet = (setId: string, itemId: string, field: keyof RFQItem, value: any) => {
     setUiSets(uiSets.map(set => {
       if (set.id === setId) {
@@ -338,15 +362,12 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
               if (field === 'scaffoldingItemId') {
                 const scaffoldingItem = getScaffoldingItem(value);
                 if (scaffoldingItem) {
-                  const availableForRfq = Math.max(
-                    0,
-                    Number(scaffoldingItem.available || 0) - Number(scaffoldingItem.reservedQuantity || 0)
-                  );
+                  const availableForRfq = getAvailableForScaffoldingItem(value);
                   updated.scaffoldingItemName = scaffoldingItem.name;
                   updated.unit = 'piece';
                   updated.unitPrice = scaffoldingItem.price;
                   if (updated.quantity > availableForRfq) {
-                    updated.quantity = availableForRfq;
+                    updated.quantity = Math.min(updated.quantity, availableForRfq);
                     toast.error(`Quantity exceeds available stock (${availableForRfq}).`);
                   }
                 }
@@ -355,13 +376,10 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
                 const nextQuantity = Number(value) || 0;
                 const scaffoldingItem = getScaffoldingItem(updated.scaffoldingItemId);
                 if (scaffoldingItem) {
-                  const availableForRfq = Math.max(
-                    0,
-                    Number(scaffoldingItem.available || 0) - Number(scaffoldingItem.reservedQuantity || 0)
-                  );
+                  const availableForRfq = getAvailableForScaffoldingItem(updated.scaffoldingItemId);
                   if (nextQuantity > availableForRfq) {
-                    updated.quantity = availableForRfq;
-                    toast.error(`Quantity exceeds available stock (${availableForRfq}).`);
+                    updated.quantity = Math.min(nextQuantity, availableForRfq);
+                    toast.error(`Quantity cannot exceed ${availableForRfq}.`);
                   } else {
                     updated.quantity = nextQuantity;
                   }
@@ -369,8 +387,7 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
                   updated.quantity = nextQuantity;
                 }
               }
-              const durationInDays = set.rentalMonths * 30; // Convert months to days
-              updated.totalPrice = updated.quantity * updated.unitPrice * durationInDays;
+              updated.totalPrice = updated.quantity * updated.unitPrice * set.rentalMonths;
               return updated;
             }
             return item;
@@ -388,9 +405,8 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
 
   const calculateTotal = () => {
     return uiSets.reduce((sum, set) => {
-      const durationInDays = set.rentalMonths * 30; // Convert months to days
       return sum + set.items.reduce((itemSum, item) => {
-        const itemTotal = item.quantity * item.unitPrice * durationInDays;
+        const itemTotal = item.quantity * item.unitPrice * set.rentalMonths;
         return itemSum + itemTotal;
       }, 0);
     }, 0);
@@ -491,12 +507,9 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
       for (const item of set.items) {
         const scaffoldingItem = getScaffoldingItem(item.scaffoldingItemId);
         if (scaffoldingItem) {
-          const availableForRfq = Math.max(
-            0,
-            Number(scaffoldingItem.available || 0) - Number(scaffoldingItem.reservedQuantity || 0)
-          );
+          const availableForRfq = getAvailableForScaffoldingItem(item.scaffoldingItemId);
           if (item.quantity > availableForRfq) {
-            toast.error(`Set "${set.setName}": "${scaffoldingItem.name}" has only ${availableForRfq} available.`);
+            toast.error(`Set "${set.setName}": "${scaffoldingItem.name}" quantity cannot exceed ${availableForRfq}.`);
             return;
           }
         }
@@ -550,6 +563,8 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
         ? { before: new Date(formData.requestedDate + 'T12:00:00') }
         : undefined;
 
+  const isApprovedReadOnly = !!(rfq && rfq.status === 'approved');
+
   return (
   <div className="p-6 space-y-6">
     <div className="flex items-center gap-4">
@@ -566,6 +581,13 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
         </div>
       </div>
 
+      {isApprovedReadOnly && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          This RFQ has been approved and cannot be edited. Use Cancel to go back.
+        </div>
+      )}
+
+      <div className={isApprovedReadOnly ? 'pointer-events-none select-none opacity-90' : ''}>
       <Card className={mode === 'extend' ? 'bg-gray-50/80 opacity-95 pointer-events-none' : ''}>
         <CardHeader><CardTitle className={mode === 'extend' ? 'text-gray-500' : ''}>Customer Information</CardTitle></CardHeader>
         <CardContent className="space-y-4">
@@ -774,16 +796,19 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
                                   </SelectTrigger>
                                   <SelectContent>
                                     {scaffoldingTypes.map(type => {
-                                      const availableForRfq = Math.max(
-                                        0,
-                                        Number(type.available || 0) - Number(type.reservedQuantity || 0)
-                                      );
+                                      const availableForRfq = getAvailableForScaffoldingItem(type.id);
                                       const isUnavailable = availableForRfq <= 0;
+                                      const alreadyInThisSet = set.items.some(
+                                        (other) => other.id !== item.id && other.scaffoldingItemId === type.id
+                                      );
+                                      const isCurrentSelection = type.id === item.scaffoldingItemId;
+                                      const isDisabled = (isUnavailable || alreadyInThisSet) && !isCurrentSelection;
                                       return (
-                                        <SelectItem key={type.id} value={type.id} disabled={isUnavailable}>
+                                        <SelectItem key={type.id} value={type.id} disabled={isDisabled}>
                                           {type.itemCode} - {type.name} - RM {type.price.toFixed(2)}/piece
                                           {` (Available: ${availableForRfq})`}
-                                          {isUnavailable ? ' - Unavailable' : ''}
+                                          {isUnavailable && !isCurrentSelection ? ' - Unavailable' : ''}
+                                          {alreadyInThisSet ? ' - Already in this set' : ''}
                                         </SelectItem>
                                       );
                                     })}
@@ -828,15 +853,20 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
           )}
         </CardContent>
       </Card>
+      </div>
 
       <div className="flex justify-end gap-3">
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button variant="outline" onClick={() => handleSubmit('draft')} className="border-[#F15929] text-[#F15929] hover:bg-[#F15929]/10">
-          <Save className="size-4 mr-2" />Save as Draft
-        </Button>
-        <Button onClick={() => handleSubmit('submitted')} className="bg-[#F15929] hover:bg-[#d94d1f]">
-          <Send className="size-4 mr-2" />Submit RFQ
-        </Button>
+        {!isApprovedReadOnly && (
+          <>
+            <Button variant="outline" onClick={() => handleSubmit('draft')} className="border-[#F15929] text-[#F15929] hover:bg-[#F15929]/10">
+              <Save className="size-4 mr-2" />Save as Draft
+            </Button>
+            <Button onClick={() => handleSubmit('submitted')} className="bg-[#F15929] hover:bg-[#d94d1f]">
+              <Send className="size-4 mr-2" />Submit RFQ
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

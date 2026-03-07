@@ -246,17 +246,81 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         data: updateData,
       });
 
-      // Update items if provided
+      // Update items if provided: release old reservations, then reserve new quantities
       if (items && Array.isArray(items)) {
-        // Delete existing items
+        const isRejected = status === 'rejected' && existingRFQ.status !== 'rejected';
+
+        // 1. Release this RFQ's current reservations (so reservedQuantity reflects other RFQs only)
+        if (existingRFQ.items.length > 0 && !isRejected) {
+          const oldQuantities = new Map<string, number>();
+          for (const item of existingRFQ.items) {
+            if (!item.scaffoldingItemId) continue;
+            const qty = Math.max(0, Math.floor(Number(item.quantity) ?? 0));
+            if (qty > 0) {
+              oldQuantities.set(item.scaffoldingItemId, (oldQuantities.get(item.scaffoldingItemId) || 0) + qty);
+            }
+          }
+          if (oldQuantities.size > 0) {
+            const itemIds = Array.from(oldQuantities.keys());
+            const scaffoldingItems = await (tx.scaffoldingItem as any).findMany({
+              where: { id: { in: itemIds } },
+              select: { id: true, reservedQuantity: true },
+            });
+            for (const scaffoldingItem of scaffoldingItems) {
+              const release = oldQuantities.get(scaffoldingItem.id) || 0;
+              const currentReserved = Number(scaffoldingItem.reservedQuantity || 0);
+              const newReserved = Math.max(0, currentReserved - release);
+              await (tx.scaffoldingItem as any).update({
+                where: { id: scaffoldingItem.id },
+                data: { reservedQuantity: newReserved },
+              });
+            }
+          }
+        }
+
+        // 2. Delete existing items and create new ones
         await tx.rFQItem.deleteMany({
           where: { rfqId },
         });
 
-        // Create new items
-        if (items.length > 0) {
+        if (items.length > 0 && !isRejected) {
+          // 3. Validate and reserve new quantities (use integer qty so we don't lose 1 to rounding)
+          const newQuantities = new Map<string, number>();
+          const itemQuantities: number[] = [];
+          for (const item of items) {
+            const itemId = item.scaffoldingItemId;
+            const qty = Math.max(0, Math.floor(Number(item.quantity) ?? 0));
+            itemQuantities.push(qty);
+            if (!itemId || qty <= 0) continue;
+            newQuantities.set(itemId, (newQuantities.get(itemId) || 0) + qty);
+          }
+          if (newQuantities.size > 0) {
+            const itemIds = Array.from(newQuantities.keys());
+            const scaffoldingItems = await (tx.scaffoldingItem as any).findMany({
+              where: { id: { in: itemIds } },
+              select: { id: true, available: true, reservedQuantity: true },
+            });
+            if (scaffoldingItems.length !== itemIds.length) {
+              throw new Error('RFQ_STOCK: Scaffolding item not found');
+            }
+            for (const scaffoldingItem of scaffoldingItems) {
+              const requestedQty = newQuantities.get(scaffoldingItem.id) || 0;
+              const currentAvailable = Number(scaffoldingItem.available || 0);
+              const currentReserved = Number(scaffoldingItem.reservedQuantity || 0);
+              const availableForRfq = currentAvailable - currentReserved;
+              if (requestedQty > availableForRfq) {
+                throw new Error('RFQ_STOCK: Insufficient stock');
+              }
+              await (tx.scaffoldingItem as any).update({
+                where: { id: scaffoldingItem.id },
+                data: { reservedQuantity: currentReserved + requestedQty },
+              });
+            }
+          }
+
           await tx.rFQItem.createMany({
-            data: items.map((item: any) => {
+            data: items.map((item: any, index: number) => {
+              const qty = index < itemQuantities.length ? itemQuantities[index] : Math.max(0, Math.floor(Number(item.quantity) ?? 0));
               return {
                 rfqId,
                 setName: item.setName || 'Set 1',
@@ -264,7 +328,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
                 rentalMonths: item.rentalMonths || 1,
                 scaffoldingItemId: item.scaffoldingItemId || '',
                 scaffoldingItemName: item.scaffoldingItemName || '',
-                quantity: item.quantity || 0,
+                quantity: qty,
                 unit: item.unit || '',
                 unitPrice: item.unitPrice || 0,
                 totalPrice: item.totalPrice ?? 0,
