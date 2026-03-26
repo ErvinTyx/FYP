@@ -274,7 +274,7 @@ export function DepositDetails({
               <DepositStatusBadge status={deposit.status} />
             </div>
             <p className="text-[#374151]">
-              Last updated: {new Date(displayLastUpdated).toLocaleString()}
+              Last updated: {formatRfqDate(deposit.updatedAt)}
             </p>
           </div>
         </div>

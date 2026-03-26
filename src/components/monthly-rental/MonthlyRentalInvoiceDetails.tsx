@@ -189,7 +189,7 @@ export function MonthlyRentalInvoiceDetails({
               <MonthlyRentalStatusBadge status={invoice.status} />
             </div>
             <p className="text-[#374151]">
-              Last updated: {new Date(invoice.updatedAt || invoice.createdAt).toLocaleString()}
+              Last updated: {formatRfqDate(invoice.updatedAt || invoice.createdAt)}
             </p>
           </div>
         </div>

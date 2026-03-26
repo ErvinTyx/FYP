@@ -526,7 +526,7 @@ export function CustomerContentView() {
             <Card key={term.id}>
               <CardHeader>
                 <CardTitle>{term.title}</CardTitle>
-                <CardDescription>
+                <CardDescription> 
                   Last updated: {formatRfqDate(term.lastUpdated)}
                 </CardDescription>
               </CardHeader>

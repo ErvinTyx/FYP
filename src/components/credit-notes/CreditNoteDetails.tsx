@@ -114,7 +114,7 @@ export function CreditNoteDetails({
               <StatusBadge status={creditNote.status} />
             </div>
             <p className="text-[#374151]">
-              Last updated: {new Date(creditNote.updatedAt || creditNote.createdAt).toLocaleString()}
+              Last updated: {formatRfqDate(creditNote.updatedAt|| creditNote.createdAt)}
             </p>
           </div>
         </div>
