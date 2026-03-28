@@ -253,72 +253,7 @@ export function MonthlyRentalInvoiceDetails({
         </Card>
       )}
 
-      {shouldShowPaymentBreakdown && (
-        <Card className="border-[#BFDBFE] bg-[#EFF6FF]">
-          <CardHeader>
-            <CardTitle className="text-[18px]">Credit Note Adjustments</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {creditNotesLoading ? (
-              <p className="text-sm text-[#6B7280]">Loading credit note adjustments...</p>
-            ) : creditNotesError ? (
-              <p className="text-sm text-[#DC2626]">{creditNotesError}</p>
-            ) : (
-              <>
-                {appliedCreditNotes.length > 0 && (
-                  <div className="rounded-md border border-[#DBEAFE] bg-white">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-[#DBEAFE] hover:bg-[#DBEAFE]">
-                          <TableHead className="text-[#1E3A8A]">Description</TableHead>
-                          <TableHead className="text-[#1E3A8A] text-right">Amount (RM)</TableHead>
-                          <TableHead className="text-[#1E3A8A]">Credit Note</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {appliedCreditNotes.map((note) => (
-                          <TableRow key={note.id} className="hover:bg-[#F8FAFC]">
-                            <TableCell className="text-[#1F2937]">Reduction of monthly rental</TableCell>
-                            <TableCell className="text-[#DC2626] text-right">
-                              -RM{note.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </TableCell>
-                            <TableCell className="text-[#4B5563]">{note.creditNoteNumber}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#6B7280]">Original amount</span>
-                    <span className="text-[#111827]">
-                      RM{invoice.totalAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#6B7280]">Total credit notes applied</span>
-                    <span className="text-[#DC2626]">
-                      -RM{totalCredited.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border border-[#2563EB] bg-white px-4 py-3">
-                  <p className="text-sm text-[#1F2937] font-medium">Amount to collect</p>
-                  <p className="text-lg font-semibold text-[#1D4ED8]">
-                    RM{payableAmount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <p className="text-xs text-[#1D4ED8]">
-                  Share the reduced amount above with the customer when requesting payment.
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      
 
 
       {/* Credits Applied to this Invoice */}
