@@ -13,7 +13,7 @@ Before you begin, ensure you have the following installed:
 
 ```bash
 git clone https://github.com/ErvinTyx/FYP.git
-cd "Power Metal & Steel"
+cd "FYP"
 ```
 
 ### 2. Install Dependencies
@@ -27,7 +27,7 @@ npm install
 Create a `.env` file in the repo root:
 
 ```bash
-DATABASE_URL="mysql://USER:PASSWORD@HOST:PORT/DATABASE"
+copy .env.example .env
 ```
 
 Then apply the schema to your database:
