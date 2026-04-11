@@ -47,12 +47,13 @@ export function StatementOfAccount({ onNavigateToPage }: StatementOfAccountProps
         setProjects(json.projects);
         const custMap = new Map<string, Customer>();
         json.projects.forEach((p: Project) => {
-          if (!custMap.has(p.customerId)) {
-            custMap.set(p.customerId, {
+          const key = `${p.customerName}||${p.customerEmail || ""}`;
+          if (!custMap.has(key)) {
+            custMap.set(key, {
               id: p.customerId,
               name: p.customerName,
               type: "Company",
-              email: "",
+              email: p.customerEmail || "",
               phone: "",
             });
           }

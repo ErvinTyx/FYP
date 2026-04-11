@@ -32,13 +32,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search')?.trim() || '';
 
-    const where: { OR?: Array<{ projectName?: { contains: string }; hirer?: { contains: string } }> } = {};
-    if (search) {
-      where.OR = [
-        { projectName: { contains: search } },
-        { hirer: { contains: search } },
-      ];
-    }
+    const where = search
+      ? {
+          OR: [
+            { projectName: { contains: search } },
+            { hirer: { contains: search } },
+            { rfq: { customerEmail: { contains: search } } },
+          ],
+        }
+      : {};
 
     const agreements = await prisma.rentalAgreement.findMany({
       where,
@@ -49,6 +51,9 @@ export async function GET(request: NextRequest) {
         hirer: true,
         status: true,
         createdAt: true,
+        rfq: {
+          select: { customerEmail: true },
+        },
       },
     });
 
@@ -57,6 +62,7 @@ export async function GET(request: NextRequest) {
       projectName: a.projectName,
       customerId: a.id,
       customerName: a.hirer || 'Customer',
+      customerEmail: a.rfq?.customerEmail || '',
       startDate: a.createdAt.toISOString().slice(0, 10),
       endDate: undefined as string | undefined,
       status: mapStatus(a.status),

@@ -48,6 +48,7 @@ export interface Project {
   projectName: string;
   customerId: string;
   customerName: string;
+  customerEmail?: string;
   startDate: string;
   endDate?: string;
   status: "Active" | "Completed" | "On Hold" | "Terminated";
