@@ -735,7 +735,6 @@ async function main() {
       available: 406,
       price: 0.59,
       originPrice: 41.75,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC001.jpg',
@@ -752,7 +751,6 @@ async function main() {
       available: 170,
       price: 0.75,
       originPrice: 54.11,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC002.jpg',
@@ -769,7 +767,6 @@ async function main() {
       available: 388,
       price: 1.46,
       originPrice: 105.77,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC003.jpg',
@@ -786,7 +783,6 @@ async function main() {
       available: 918,
       price: 1.12,
       originPrice: 100.96,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC004.jpg',
@@ -806,7 +802,6 @@ async function main() {
       available: 238,
       price: 1.50,
       originPrice: 139.92,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC005.jpg',
@@ -827,7 +822,6 @@ async function main() {
       available: 362,
       price: 2.59,
       originPrice: 196.99,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC006.jpg',
@@ -844,7 +838,6 @@ async function main() {
       available: 360,
       price: 0.56,
       originPrice: 61.08,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC007.jpg',
@@ -864,7 +857,6 @@ async function main() {
       available: 118,
       price: 0.77,
       originPrice: 76.03,
-      status: 'Available',
       location: 'Klang Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC008.jpg',
@@ -884,7 +876,6 @@ async function main() {
       available: 138,
       price: 1.31,
       originPrice: 125.48,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC009.jpg',
@@ -904,7 +895,6 @@ async function main() {
       available: 34,
       price: 1.37,
       originPrice: 129.75,
-      status: 'Low Stock',
       location: 'Klang Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC010.jpeg',
@@ -925,7 +915,6 @@ async function main() {
       available: 206,
       price: 1.21,
       originPrice: 87.32,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC011.jpg',
@@ -942,7 +931,6 @@ async function main() {
       available: 545,
       price: 2.78,
       originPrice: 220.42,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC012.jpg',
@@ -962,7 +950,6 @@ async function main() {
       available: 574,
       price: 2.21,
       originPrice: 173.34,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC013.jpg',
@@ -982,7 +969,6 @@ async function main() {
       available: 347,
       price: 1.30,
       originPrice: 102.74,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC014.jpg',
@@ -999,7 +985,6 @@ async function main() {
       available: 347,
       price: 2.07,
       originPrice: 164.16,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC015.png',
@@ -1017,7 +1002,6 @@ async function main() {
       available: 206,
       price: 0.95,
       originPrice: 68.86,
-      status: 'Available',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC016.jpg',
@@ -1034,7 +1018,6 @@ async function main() {
       available: 28,
       price: 0.82,
       originPrice: 90.64,
-      status: 'Low Stock',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC017.jpg',
@@ -1054,7 +1037,6 @@ async function main() {
       available: 0,
       price: 0.93,
       originPrice: 98.07,
-      status: 'Out of Stock',
       location: 'Klang Warehouse',
       itemStatus: 'Unavailable',
       imageUrl: '/uploads/scaffolding/SC018.jpg',
@@ -1074,7 +1056,6 @@ async function main() {
       available: 17,
       price: 1.14,
       originPrice: 113.06,
-      status: 'Low Stock',
       location: 'Shah Alam Warehouse',
       itemStatus: 'Available',
       imageUrl: '/uploads/scaffolding/SC019.jpg',
@@ -1319,12 +1300,12 @@ async function main() {
     select: { id: true },
   });
   if (!salesUser) throw new Error("sales user not found for createdBy");
-  const scaffoldingItemList = await (prisma as any).scaffoldingItem.findMany({
+  const scaffoldingItemList = await prisma.scaffoldingItem.findMany({
     select: { id: true, itemCode: true, name: true, price: true },
-    where: { status: { not: "Out of Stock" } },
+    where: { itemStatus: { not: "Out of Stock" } },
   });
   if (scaffoldingItemList.length === 0) throw new Error("no scaffolding items available");
-  const siByCode = Object.fromEntries(scaffoldingItemList.map((si: { itemCode: string }) => [si.itemCode, si]));
+  const siByCode = Object.fromEntries(scaffoldingItemList.map((si) => [si.itemCode, si]));
 
   // Hardcoded sample data (50 each): RFQ numbers, dates, customer index, projects, locations, notes, and line items
   const SAMPLE_RFQ_NUMBERS = [
@@ -1405,7 +1386,7 @@ async function main() {
   })();
 
   console.log("Creating 50 RFQs with items (Feb 2025 – Feb 2026)...");
-  const createdRfqs: { id: string; rfqNumber: string; totalAmount: number; customerName: string; customerEmail: string; customerPhone: string | null; projectName: string; projectLocation: string }[] = [];
+  const createdRfqs: { id: string; rfqNumber: string; totalAmount: number; customerId: string; customerName: string; customerPhone: string | null; projectName: string; projectLocation: string }[] = [];
   for (let i = 0; i < 50; i++) {
     const requestedDate = new Date(SAMPLE_REQUESTED_DATES[i] + "T00:00:00.000Z");
     const custIdx = SAMPLE_CUSTOMER_INDEX[i] % malaysiaCustomers.length;
@@ -1418,7 +1399,7 @@ async function main() {
     const itemRows: { setName: string; requiredDate: Date; rentalMonths: number; scaffoldingItemId: string; scaffoldingItemName: string; quantity: number; unit: string; unitPrice: number; totalPrice: number }[] = [];
     let totalAmount = 0;
     for (const row of SAMPLE_RFQ_ITEMS[i]) {
-      const si = (siByCode as Record<string, { id: string; name: string; price: unknown }>)[row.itemCode];
+      const si = siByCode[row.itemCode];
       if (!si) continue;
       const requiredDate = new Date(requestedDate.getTime() + row.requiredDateOffsetDays * 24 * 60 * 60 * 1000);
       const unitPrice = Number(si.price);
@@ -1439,9 +1420,7 @@ async function main() {
     const rfq = await prisma.rFQ.create({
       data: {
         rfqNumber: SAMPLE_RFQ_NUMBERS[i],
-        customerName,
-        customerEmail,
-        customerPhone,
+        customerId: cust.id,
         projectName,
         projectLocation,
         requestedDate,
@@ -1469,8 +1448,8 @@ async function main() {
       id: rfq.id,
       rfqNumber: rfq.rfqNumber,
       totalAmount: Number(rfq.totalAmount),
+      customerId: cust.id,
       customerName,
-      customerEmail,
       customerPhone: customerPhone || null,
       projectName,
       projectLocation,
@@ -1499,7 +1478,6 @@ async function main() {
         owner: "Power Metal Steel Sdn Bhd",
         ownerPhone: "+60 3-1234 5678",                          
         hirer: rfq.customerName,
-        hirerPhone: rfq.customerPhone ?? null,                  
         location: rfq.projectLocation,
         termOfHire: computedTermOfHire ?? `${fallbackTotalRentalMonths} months`,
         totalRentalMonth: effectiveTotalRentalMonths,
@@ -1573,10 +1551,8 @@ async function main() {
     const deliveryRequest = await prisma.deliveryRequest.create({
       data: {
         requestId,
-        customerName: rfq.customerName,
+        customerId: rfq.customerId,
         agreementNo: ag.agreementNumber,
-        customerPhone: rfq.customerPhone ?? undefined,
-        customerEmail: rfq.customerEmail,
         deliveryAddress: `${rfq.projectLocation}, Malaysia`,
         deliveryType: SAMPLE_DELIVERY_TYPES[i],
         requestDate: new Date(SAMPLE_DELIVERY_REQUEST_DATES[i] + "T00:00:00.000Z"),
@@ -1655,7 +1631,7 @@ async function main() {
       let driverIndex = (i + allDeliverySetIdsThisRequest.indexOf(dsId)) % SAMPLE_DRIVER_NAMES.length;
       let driverName = SAMPLE_DRIVER_NAMES[driverIndex];
       let safetyCounter = 0;
-      while (driverName === deliveryRequest.customerName && safetyCounter < SAMPLE_DRIVER_NAMES.length) {
+      while (driverName === rfq.customerName && safetyCounter < SAMPLE_DRIVER_NAMES.length) {
         driverIndex = (driverIndex + 1) % SAMPLE_DRIVER_NAMES.length;
         driverName = SAMPLE_DRIVER_NAMES[driverIndex];
         safetyCounter++;
@@ -1688,15 +1664,13 @@ async function main() {
     const returnRequest = await prisma.returnRequest.create({
       data: {
         requestId: SAMPLE_RETURN_REQUEST_IDS[i],
-        customerName: rfq.customerName,
+        customerId: rfq.customerId,
         agreementNo: ag.agreementNumber,
         setName: "Set 1",
         requestDate: returnDate,
         status: "Completed",
         reason: SAMPLE_RETURN_REASONS[i],
         pickupAddress,
-        customerPhone: rfq.customerPhone ?? undefined,
-        customerEmail: rfq.customerEmail,
         returnType: SAMPLE_RETURN_TYPES[i],
         collectionMethod: SAMPLE_COLLECTION_METHODS[i],
         deliverySetId: deliverySetId || undefined,
@@ -1743,7 +1717,7 @@ async function main() {
       data: {
         rcfNumber: SAMPLE_RCF_NUMBERS[i],
         deliveryOrderNumber: doNum,
-        customerName: rfq.customerName,
+        customerId: rfq.customerId,
         returnDate: inspDate,
         inspectionDate: inspDate,
         inspectedBy: "Operations Team",
@@ -1911,9 +1885,7 @@ async function main() {
         invoiceNumber: SAMPLE_MRI_NUMBERS[i],
         deliveryRequestId,
         agreementId: ag.id,
-        customerName: rfq.customerName,
-        customerEmail: rfq.customerEmail ?? undefined,
-        customerPhone: rfq.customerPhone ?? undefined,
+        customerId: rfq.customerId,
         billingMonth,
         billingYear,
         billingStartDate: startDate,
@@ -1975,7 +1947,7 @@ async function main() {
       data: {
         invoiceNo: SAMPLE_AC_INVOICE_NOS[i],
         returnRequestId,
-        customerName: rfq.customerName,
+        customerId: rfq.customerId,
         doId,
         returnedDate,
         dueDate,
@@ -2020,7 +1992,6 @@ async function main() {
     const cn = await prisma.creditNote.create({
       data: {
         creditNoteNumber: SAMPLE_CN_NUMBERS[i],
-        customerName: rfq.customerName,
         customerId: custId,
         invoiceType,
         sourceId,
@@ -2049,7 +2020,6 @@ async function main() {
         quantity: 1,
         previousPrice: amount,
         currentPrice: amount,
-        unitPrice: amount,
         amount,
       },
     });
@@ -2074,7 +2044,6 @@ async function main() {
         invoiceType,
         sourceId,
         originalInvoice,
-        customerName: rfq.customerName,
         customerId: custId,
         creditNoteId,
         creditNoteNumber: SAMPLE_CN_NUMBERS[i],

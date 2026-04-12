@@ -37,7 +37,9 @@ export async function GET(request: NextRequest) {
           OR: [
             { projectName: { contains: search } },
             { hirer: { contains: search } },
-            { rfq: { customerEmail: { contains: search } } },
+            { customer: { firstName: { contains: search } } },
+            { customer: { lastName: { contains: search } } },
+            { customer: { email: { contains: search } } },
           ],
         }
       : {};
@@ -51,8 +53,8 @@ export async function GET(request: NextRequest) {
         hirer: true,
         status: true,
         createdAt: true,
-        rfq: {
-          select: { customerEmail: true },
+        customer: {
+          select: { id: true, firstName: true, lastName: true, email: true },
         },
       },
     });
@@ -60,9 +62,9 @@ export async function GET(request: NextRequest) {
     const projects = agreements.map((a) => ({
       id: a.id,
       projectName: a.projectName,
-      customerId: a.id,
+      customerId: a.customer?.id || a.id,
       customerName: a.hirer || 'Customer',
-      customerEmail: a.rfq?.customerEmail || '',
+      customerEmail: a.customer?.email || '',
       startDate: a.createdAt.toISOString().slice(0, 10),
       endDate: undefined as string | undefined,
       status: mapStatus(a.status),

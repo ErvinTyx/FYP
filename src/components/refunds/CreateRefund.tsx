@@ -31,9 +31,9 @@ interface CreateRefundProps {
 const REFUND_METHODS = ["Bank Transfer", "eWallet", "Cash", "Cheque"];
 
 interface CustomerOption {
-  customerName: string;
-  customerEmail: string | null;
-  customerId: string;
+  id: string;
+  name: string;
+  email: string;
 }
 
 interface AgreementOption {
@@ -94,11 +94,11 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
   }, []);
 
   useEffect(() => {
-    if (selectedCustomer && customerSearch === selectedCustomer.customerName) {
+    if (selectedCustomer && customerSearch === selectedCustomer.name) {
       setCustomerResults([]);
       return;
     }
-    if (selectedCustomer && customerSearch !== selectedCustomer.customerName && customerSearch.length >= 2) {
+    if (selectedCustomer && customerSearch !== selectedCustomer.name && customerSearch.length >= 2) {
       setSelectedCustomer(null);
       setSelectedAgreement(null);
       setCreditNotesData(null);
@@ -109,14 +109,14 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
     return () => clearTimeout(t);
   }, [customerSearch, fetchCustomers, selectedCustomer]);
 
-  const fetchAgreements = useCallback(async (customerName: string, searchQ?: string) => {
-    if (!customerName.trim()) {
+  const fetchAgreements = useCallback(async (customerDisplayName: string, searchQ?: string) => {
+    if (!customerDisplayName.trim()) {
       setAgreementResults([]);
       return;
     }
     setLoadingAgreements(true);
     try {
-      let url = `/api/refunds/agreements?customerName=${encodeURIComponent(customerName)}`;
+      let url = `/api/refunds/agreements?customerName=${encodeURIComponent(customerDisplayName)}`;
       if (searchQ?.trim()) {
         url += `&q=${encodeURIComponent(searchQ.trim())}`;
       }
@@ -144,7 +144,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
       return;
     }
     const t = setTimeout(
-      () => fetchAgreements(selectedCustomer.customerName, agreementSearch),
+      () => fetchAgreements(selectedCustomer.name, agreementSearch),
       200
     );
     return () => clearTimeout(t);
@@ -175,7 +175,7 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
 
   const handleSelectCustomer = (c: CustomerOption) => {
     setSelectedCustomer(c);
-    setCustomerSearch(c.customerName);
+    setCustomerSearch(c.name);
     setCustomerResults([]);
   };
 
@@ -296,12 +296,12 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
                 <ul className="absolute z-10 mt-1 w-full bg-white border border-[#E5E7EB] rounded-md shadow-lg max-h-48 overflow-auto">
                   {customerResults.map((c) => (
                     <li
-                      key={c.customerId}
+                      key={c.id}
                       className="px-4 py-2 hover:bg-[#F3F4F6] cursor-pointer text-sm"
                       onClick={() => handleSelectCustomer(c)}
                     >
-                      {c.customerName}
-                      {c.customerEmail ? ` (${c.customerEmail})` : ""}
+                      {c.name}
+                      {c.email ? ` (${c.email})` : ""}
                     </li>
                   ))}
                 </ul>
@@ -309,8 +309,8 @@ export function CreateRefund({ onBack, onSave }: CreateRefundProps) {
             </div>
             {selectedCustomer && (
               <p className="text-sm text-[#059669]">
-                Selected: {selectedCustomer.customerName}
-                {selectedCustomer.customerEmail ? ` — ${selectedCustomer.customerEmail}` : ""}
+                Selected: {selectedCustomer.name}
+                {selectedCustomer.email ? ` — ${selectedCustomer.email}` : ""}
               </p>
             )}
             {errors.customer && <p className="text-[#DC2626] text-sm">{errors.customer}</p>}

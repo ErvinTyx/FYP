@@ -45,6 +45,7 @@ import {
 import { Badge } from "../ui/badge";
 import { RejectionModal } from "../monthly-rental/RejectionModal";
 import { formatRfqDate } from "../../lib/rfqDate";
+import { getCustomerDisplayName } from "../../lib/customerName";
 import type { Refund, RefundStatus } from "../../types/refund";
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
@@ -305,7 +306,7 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
                         {invoiceTypeLabel(refund.invoiceType)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-[#374151]">{refund.customerName}</TableCell>
+                    <TableCell className="text-[#374151]">{getCustomerDisplayName(refund.customer)}</TableCell>
                     <TableCell className="text-[#111827]">
                       RM{refund.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </TableCell>
@@ -396,7 +397,7 @@ export function RefundList({ refunds, total = 0, page = 1, pageSize = 10, orderB
               <AlertDialogDescription>
                 Are you sure you want to approve this refund of RM
                 {selectedRefund.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
-                for {selectedRefund.customerName}? This action cannot be undone.
+                for {getCustomerDisplayName(selectedRefund.customer)}? This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

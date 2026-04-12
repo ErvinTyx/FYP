@@ -3,7 +3,7 @@
  * Module: Request for Quotation (RFQ)
  * Path: /api/rfq
  * Purpose: Handle HTTP requests for RFQ operations
- * 
+ *
  * Endpoints:
  * POST /api/rfq - Create new RFQ
  * GET /api/rfq - Get all RFQs
@@ -20,8 +20,9 @@ import {
   RFQ_VALIDATION,
 } from '@/lib/rfq-validation';
 
-/** Include items and extendedFromRfq for RFQ responses (assertion for Prisma client with extendedFromRfq relation) */
+/** Include customer, items and extendedFromRfq for RFQ responses */
 const rfqInclude = {
+  customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
   items: true,
   extendedFromRfq: { select: { id: true, rfqNumber: true, projectName: true } },
 } as Prisma.rFQInclude;
@@ -44,9 +45,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      customerName,
-      customerEmail,
-      customerPhone,
+      customerId,
       projectName,
       projectLocation,
       requestedDate,
@@ -63,14 +62,20 @@ export async function POST(request: NextRequest) {
     console.log('[RFQ API] Items received:', items?.length || 0, 'items');
 
     // Validate required fields
-    if (!customerName || !customerEmail || !customerPhone || !projectName || !projectLocation || !createdBy) {
+    if (!customerId || !projectName || !projectLocation || !createdBy) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Required fields missing: customerName, customerEmail, customerPhone, projectName, projectLocation, createdBy',
+          message: 'Required fields missing: customerId, projectName, projectLocation, createdBy',
         },
         { status: 400 }
       );
+    }
+
+    // Verify customer exists
+    const customerUser = await prisma.user.findUnique({ where: { id: customerId }, select: { id: true } });
+    if (!customerUser) {
+      return NextResponse.json({ success: false, message: 'Customer not found' }, { status: 400 });
     }
 
     // Project name must contain at least one letter (not only numbers or special characters)
@@ -118,26 +123,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(customerEmail)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Invalid email format',
-        },
-        { status: 400 }
-      );
-    }
-
     // Validate requestedDate (header only)
     const reqDate = requestedDate ? new Date(requestedDate) : new Date();
     if (Number.isNaN(reqDate.getTime())) {
       return NextResponse.json(
-        {
-          success: false,
-          message: 'Invalid requested date',
-        },
+        { success: false, message: 'Invalid requested date' },
         { status: 400 }
       );
     }
@@ -147,29 +137,20 @@ export async function POST(request: NextRequest) {
       for (const item of items) {
         if (!item.requiredDate) {
           return NextResponse.json(
-            {
-              success: false,
-              message: 'Each item must include requiredDate',
-            },
+            { success: false, message: 'Each item must include requiredDate' },
             { status: 400 }
           );
         }
         const itemRequiredDate = new Date(item.requiredDate);
         if (Number.isNaN(itemRequiredDate.getTime())) {
           return NextResponse.json(
-            {
-              success: false,
-              message: 'Invalid item requiredDate',
-            },
+            { success: false, message: 'Invalid item requiredDate' },
             { status: 400 }
           );
         }
         if (itemRequiredDate < reqDate) {
           return NextResponse.json(
-            {
-              success: false,
-              message: 'Item requiredDate must be on or after requested date',
-            },
+            { success: false, message: 'Item requiredDate must be on or after requested date' },
             { status: 400 }
           );
         }
@@ -204,12 +185,8 @@ export async function POST(request: NextRequest) {
         for (const item of items) {
           const itemId = item.scaffoldingItemId;
           const qty = Number(item.quantity || 0);
-          if (!itemId) {
-            throw new Error('RFQ_STOCK: Missing scaffolding item');
-          }
-          if (!Number.isFinite(qty) || qty <= 0) {
-            throw new Error('RFQ_STOCK: Invalid quantity');
-          }
+          if (!itemId) throw new Error('RFQ_STOCK: Missing scaffolding item');
+          if (!Number.isFinite(qty) || qty <= 0) throw new Error('RFQ_STOCK: Invalid quantity');
           requestedQuantities.set(itemId, (requestedQuantities.get(itemId) || 0) + qty);
         }
       }
@@ -223,15 +200,12 @@ export async function POST(request: NextRequest) {
         if (scaffoldingItems.length !== itemIds.length) {
           throw new Error('RFQ_STOCK: Scaffolding item not found');
         }
-
         for (const scaffoldingItem of scaffoldingItems) {
           const requestedQty = requestedQuantities.get(scaffoldingItem.id) || 0;
           const currentAvailable = Number(scaffoldingItem.available || 0);
           const currentReserved = Number(scaffoldingItem.reservedQuantity || 0);
           const availableForRfq = currentAvailable - currentReserved;
-          if (requestedQty > availableForRfq) {
-            throw new Error('RFQ_STOCK: Insufficient stock');
-          }
+          if (requestedQty > availableForRfq) throw new Error('RFQ_STOCK: Insufficient stock');
           const newReserved = currentReserved + requestedQty;
           await (tx.scaffoldingItem as any).update({
             where: { id: scaffoldingItem.id },
@@ -240,12 +214,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Create RFQ header (data cast for Prisma client with extendedFromRfqId)
+      // Create RFQ header
       const createData = {
         rfqNumber,
-        customerName,
-        customerEmail,
-        customerPhone: customerPhone || '',
+        customerId,
         projectName,
         projectLocation: projectLocation || '',
         requestedDate: reqDate,
@@ -255,44 +227,33 @@ export async function POST(request: NextRequest) {
         createdBy,
         ...(extendedFromRfqId && { extendedFromRfqId }),
       } as Prisma.rFQUncheckedCreateInput;
-      const rfq = await tx.rFQ.create({
-        data: createData,
-      });
+
+      const rfq = await tx.rFQ.create({ data: createData });
 
       // Create RFQ items if provided
       if (items && Array.isArray(items) && items.length > 0) {
         await tx.rFQItem.createMany({
-          data: items.map((item: any) => {
-            return {
-              rfqId: rfq.id,
-              setName: item.setName || 'Set 1',
-              requiredDate: new Date(item.requiredDate),
-              rentalMonths: item.rentalMonths || 1,
-              scaffoldingItemId: item.scaffoldingItemId || '',
-              scaffoldingItemName: item.scaffoldingItemName || '',
-              quantity: item.quantity || 0,
-              unit: item.unit || '',
-              unitPrice: item.unitPrice || 0,
-              totalPrice: item.totalPrice || 0,
-              notes: item.notes || '',
-            };
-          }),
+          data: items.map((item: any) => ({
+            rfqId: rfq.id,
+            setName: item.setName || 'Set 1',
+            requiredDate: new Date(item.requiredDate),
+            rentalMonths: item.rentalMonths || 1,
+            scaffoldingItemId: item.scaffoldingItemId || '',
+            scaffoldingItemName: item.scaffoldingItemName || '',
+            quantity: item.quantity || 0,
+            unit: item.unit || '',
+            unitPrice: item.unitPrice || 0,
+            totalPrice: item.totalPrice || 0,
+            notes: item.notes || '',
+          })),
         });
       }
 
-      // Return complete RFQ with items and extendedFromRfq if set
-      return tx.rFQ.findUnique({
-        where: { id: rfq.id },
-        include: rfqInclude,
-      });
+      return tx.rFQ.findUnique({ where: { id: rfq.id }, include: rfqInclude });
     });
 
     return NextResponse.json(
-      {
-        success: true,
-        message: 'RFQ created successfully',
-        data: result,
-      },
+      { success: true, message: 'RFQ created successfully', data: result },
       { status: 201 }
     );
   } catch (error) {
@@ -300,18 +261,12 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'An error occurred while creating RFQ';
     if (message.startsWith('RFQ_STOCK:')) {
       return NextResponse.json(
-        {
-          success: false,
-          message: message.replace('RFQ_STOCK: ', ''),
-        },
+        { success: false, message: message.replace('RFQ_STOCK: ', '') },
         { status: 400 }
       );
     }
     return NextResponse.json(
-      {
-        success: false,
-        message: 'An error occurred while creating RFQ',
-      },
+      { success: false, message: 'An error occurred while creating RFQ' },
       { status: 500 }
     );
   }
@@ -331,11 +286,10 @@ export async function GET(request: NextRequest) {
 
     const filters: any = {};
     if (status) filters.status = status;
-    if (customerEmail) filters.customerEmail = customerEmail;
+    if (customerEmail) filters.customer = { email: customerEmail };
     if (createdBy) filters.createdBy = createdBy;
     if (withSignedAgreementOnly) {
       filters.rentalAgreements = { some: { signedStatus: 'completed' } };
-      // Exclude RFQs that have already been used as the source of an extended RFQ (one project can only be extended once)
       const alreadyExtendedSources = await prisma.rFQ.findMany({
         where: { extendedFromRfqId: { not: null } },
         select: { extendedFromRfqId: true },
@@ -349,26 +303,17 @@ export async function GET(request: NextRequest) {
     const rfqs = await prisma.rFQ.findMany({
       where: filters,
       include: rfqInclude,
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
 
     return NextResponse.json(
-      {
-        success: true,
-        data: rfqs,
-        count: rfqs.length,
-      },
+      { success: true, data: rfqs, count: rfqs.length },
       { status: 200 }
     );
   } catch (error) {
     console.error('[RFQ API] GET error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        message: 'An error occurred while retrieving RFQs',
-      },
+      { success: false, message: 'An error occurred while retrieving RFQs' },
       { status: 500 }
     );
   }

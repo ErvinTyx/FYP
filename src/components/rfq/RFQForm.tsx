@@ -77,9 +77,7 @@ function formatDateToDDMMYYYY(isoOrDate: string | Date): string {
 export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
   const { data: session } = useSession();
   const [formData, setFormData] = useState<Omit<RFQ, 'id' | 'rfqNumber' | 'createdAt' | 'updatedAt'>>({
-    customerName: '',
-    customerEmail: '',
-    customerPhone: '',
+    customerId: '',
     projectName: '',
     projectLocation: '',
     requestedDate: new Date().toISOString().split('T')[0],
@@ -150,16 +148,7 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
 
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomerId(customerId);
-    const customer = customers.find(c => c.id === customerId);
-    if (customer) {
-      const fullName = `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Unknown';
-      setFormData(prev => ({
-        ...prev,
-        customerName: fullName,
-        customerEmail: customer.email,
-        customerPhone: customer.phone || '',
-      }));
-    }
+    setFormData(prev => ({ ...prev, customerId }));
   };
 
   // Convert flat items to UI sets for display (totalPrice = quantity * unitPrice * rentalMonths)
@@ -212,23 +201,17 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
         );
         
         if (currentUserCustomer) {
-          const fullName = `${currentUserCustomer.firstName || ''} ${currentUserCustomer.lastName || ''}`.trim() || 'Unknown';
           setFormData(prev => ({
             ...prev,
-            customerName: fullName,
-            customerEmail: currentUserCustomer.email,
-            customerPhone: currentUserCustomer.phone || '',
+            customerId: currentUserCustomer.id,
             createdBy: session.user.id || session.user.email || 'Current User',
           }));
           setSelectedCustomerId(currentUserCustomer.id);
         } else {
-          // If customer record not found but user has customer role, use session data
-          const fullName = `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim() || session.user.email || 'Unknown';
+          // If customer record not found but user has customer role, fall back to session id
           setFormData(prev => ({
             ...prev,
-            customerName: fullName,
-            customerEmail: session.user.email,
-            customerPhone: (session.user as any).phone || '',
+            customerId: session.user.id || '',
             createdBy: session.user.id || session.user.email || 'Current User',
           }));
         }
@@ -242,9 +225,7 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
       setHasAutoPopulated(true); // Prevent auto-population when editing
       setOriginalRFQ(JSON.parse(JSON.stringify(rfq)));
       setFormData({
-        customerName: rfq.customerName,
-        customerEmail: rfq.customerEmail,
-        customerPhone: rfq.customerPhone,
+        customerId: rfq.customerId,
         projectName: rfq.projectName,
         projectLocation: rfq.projectLocation,
         requestedDate: rfq.requestedDate,
@@ -255,14 +236,10 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
         createdBy: rfq.createdBy || session?.user?.id || session?.user?.email || 'Current User',
       });
       setUiSets(itemsToUiSets(rfq.items || []));
-      
-      // Set selected customer based on RFQ customer data
-      const customer = customers.find(c =>
-        c.email === rfq.customerEmail &&
-        c.phone === rfq.customerPhone
-      );
-      if (customer) {
-        setSelectedCustomerId(customer.id);
+
+      // Set selected customer based on RFQ customerId
+      if (rfq.customerId) {
+        setSelectedCustomerId(rfq.customerId);
       }
     } else {
       // Reset auto-population flag when creating new RFQ
@@ -446,7 +423,7 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
   };
 
   const handleSubmit = (status: 'draft' | 'submitted') => {
-    if (!formData.customerName || !formData.customerEmail || !formData.customerPhone || !formData.projectName || !formData.projectLocation) {
+    if (!formData.customerId || !formData.projectName || !formData.projectLocation) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -619,11 +596,11 @@ export function RFQForm({ rfq, onSave, onCancel, mode }: RFQFormProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="customerEmail" className={mode === 'extend' ? 'text-gray-500' : ''}>Email *</Label>
-              <Input id="customerEmail" type="email" value={formData.customerEmail} readOnly placeholder="Auto-filled from customer selection" className={mode === 'extend' ? 'bg-gray-100' : 'bg-gray-50'} disabled={mode === 'extend'} />
+              <Input id="customerEmail" type="email" value={customers.find(c => c.id === selectedCustomerId)?.email ?? ''} readOnly placeholder="Auto-filled from customer selection" className={mode === 'extend' ? 'bg-gray-100' : 'bg-gray-50'} disabled={mode === 'extend'} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="customerPhone" className={mode === 'extend' ? 'text-gray-500' : ''}>Phone *</Label>
-              <Input id="customerPhone" value={formData.customerPhone} readOnly placeholder="Auto-filled from customer selection" className={mode === 'extend' ? 'bg-gray-100' : 'bg-gray-50'} disabled={mode === 'extend'} />
+              <Input id="customerPhone" value={customers.find(c => c.id === selectedCustomerId)?.phone ?? ''} readOnly placeholder="Auto-filled from customer selection" className={mode === 'extend' ? 'bg-gray-100' : 'bg-gray-50'} disabled={mode === 'extend'} />
             </div>
           </div>
           {mode === 'extend' && (

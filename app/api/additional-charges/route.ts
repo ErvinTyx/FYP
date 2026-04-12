@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     const invoiceNo = generateAdditionalChargeInvoiceNo();
     const conditionReport = slip.conditionReport;
-    const customerName = conditionReport?.customerName ?? 'Customer';
+    const customerId = conditionReport?.customerId ?? null;
     const doId = conditionReport?.deliveryOrderNumber ?? slip.rcfNumber;
     const returnedDate = conditionReport?.returnDate ?? null;
 
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
           invoiceNo,
           openRepairSlipId: slip.id,
           conditionReportId: slip.conditionReportId,
-          customerName,
+          customerId,
           doId,
           returnedDate,
           dueDate,
@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
     const where: {
       openRepairSlipId?: string;
       status?: string | { in: string[] };
-      customerName?: { contains: string };
+      customer?: { OR: Array<{ firstName?: { contains: string }; lastName?: { contains: string } }> };
       dueDate?: { lt: Date };
     } = {};
     if (openRepairSlipId) where.openRepairSlipId = openRepairSlipId;
@@ -221,7 +221,7 @@ export async function GET(request: NextRequest) {
       where.status = { in: ['pending_payment', 'pending_approval'] };
       where.dueDate = { lt: new Date() };
     }
-    if (customerName) where.customerName = { contains: customerName };
+    if (customerName) where.customer = { OR: [{ firstName: { contains: customerName } }, { lastName: { contains: customerName } }] };
 
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
     const rawPageSize = parseInt(searchParams.get('pageSize') ?? '10', 10);
@@ -233,7 +233,10 @@ export async function GET(request: NextRequest) {
     // Volume of additional charges is expected to be relatively small.
     const allCharges = await prisma.additionalCharge.findMany({
       where,
-      include: { items: true },
+      include: {
+        items: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
       orderBy: { createdAt: orderDir },
     });
 

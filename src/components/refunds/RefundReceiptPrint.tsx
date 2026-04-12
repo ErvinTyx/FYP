@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { formatRfqDate } from "../../lib/rfqDate";
+import { getCustomerDisplayName } from "../../lib/customerName";
 import type { Refund } from "../../types/refund";
 import type { RelatedCreditNote } from "../../types/refund";
 import {
@@ -118,8 +119,10 @@ export function RefundReceiptPrint({ refund, onBack }: RefundReceiptPrintProps) 
           <div className="mb-8">
             <h3 className="text-sm text-gray-600 mb-2">CUSTOMER DETAILS:</h3>
             <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-[#231F20]"><strong>Name:</strong> {refund.customerName}</p>
-              <p className="text-sm text-gray-600 mt-1"><strong>Customer ID:</strong> {refund.customerId}</p>
+              <p className="text-[#231F20]"><strong>Name:</strong> {getCustomerDisplayName(refund.customer)}</p>
+              {refund.customer?.email && (
+                <p className="text-sm text-gray-600 mt-1"><strong>Email:</strong> {refund.customer.email}</p>
+              )}
             </div>
           </div>
 

@@ -132,9 +132,9 @@ export function DepositDetails({
   
   // Get display values from new structure or fallback to legacy
   const displayDepositId = deposit.depositNumber || deposit.depositId || deposit.id;
-  const displayCustomerName = deposit.customerName || deposit.agreement?.hirer || 'Unknown';
+  const displayCustomerName = deposit.agreement?.hirer || 'Unknown';
   const displayInvoiceNo = deposit.invoiceNo || deposit.agreement?.agreementNumber || '-';
-  const displayCustomerId = deposit.customerId || deposit.agreement?.id || '-';
+  const displayCustomerId = deposit.agreement?.id || '-';
   const displayLastUpdated = deposit.lastUpdated || deposit.updatedAt || deposit.createdAt;
 
   const handleSubmitPayment = () => {

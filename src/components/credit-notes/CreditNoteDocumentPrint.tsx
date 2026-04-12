@@ -12,6 +12,7 @@ import {
 } from "../ui/table";
 import { CreditNote, CreditNoteApplicationHistoryItem } from "../../types/creditNote";
 import { formatRfqDate } from "../../lib/rfqDate";
+import { getCustomerDisplayName } from "../../lib/customerName";
 
 interface CreditNoteDocumentPrintProps {
   creditNote: CreditNote;
@@ -75,7 +76,7 @@ export function CreditNoteDocumentPrint({ creditNote, onBack }: CreditNoteDocume
 
           {/* Credit note summary */}
           <div className="grid grid-cols-2 gap-4 text-sm mb-6">
-            <p><span className="text-[#6B7280]">Customer:</span> {creditNote.customerName ?? creditNote.customer}</p>
+            <p><span className="text-[#6B7280]">Customer:</span> {getCustomerDisplayName(creditNote.customer)}</p>
             <p><span className="text-[#6B7280]">Date:</span> {formatRfqDate(creditNote.date)}</p>
             <p><span className="text-[#6B7280]">Status:</span> {creditNote.status}</p>
             <p><span className="text-[#6B7280]">Total amount:</span> RM {creditNote.amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</p>

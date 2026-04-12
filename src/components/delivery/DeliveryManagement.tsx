@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Truck, Package, CheckCircle2, AlertCircle, Plus, 
+  Truck, Package, CheckCircle2, AlertCircle, Plus,
   Search, Filter, Eye, FileText, Download, ClipboardCheck,
   PackageCheck, MapPin, Calendar as CalendarIcon, User,
   Warehouse, MoreVertical, Edit, Loader2, FileSpreadsheet
 } from 'lucide-react';
 import { formatRfqDate } from '../../lib/rfqDate';
+import { getCustomerDisplayName } from '../../lib/customerName';
 import { ReportPDFGenerator, downloadPDF } from '../../lib/report-pdf-generator';
 import { generateTableExcel, downloadExcel } from '../../lib/report-excel-generator';
 import { ReportTablePagination } from '../reports/ReportTablePagination';
@@ -89,8 +90,15 @@ export interface DeliveryOrder {
   doNumber: string;
   orderId: string;
   agreementId: string;
-  customerName: string;
-  customerContact: string;
+  customerName: string;      // pre-computed display name (derived from customer object)
+  customerContact: string;   // pre-computed contact (derived from customer object)
+  customer?: {               // raw FK object from DB
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  };
   customerAddress: string;
   siteAddress: string;
   type: 'delivery' | 'pickup';  // Type of delivery
@@ -339,8 +347,9 @@ export function DeliveryManagement() {
             setIds: sets.map(({ set }) => set.id), // Store all set IDs for this DO
             orderId: req.requestId,
             agreementId: req.agreementNo,
-            customerName: req.customerName,
-            customerContact: req.customerPhone || '',
+            customerName: getCustomerDisplayName(req.customer),
+            customerContact: req.customer?.phone || '',
+            customer: req.customer,
             customerAddress: req.deliveryAddress,
             siteAddress: req.deliveryAddress,
             type: req.deliveryType as 'delivery' | 'pickup',

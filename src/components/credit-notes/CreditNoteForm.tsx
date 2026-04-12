@@ -13,6 +13,7 @@ import {
 } from "../ui/select";
 import { ImageUpload } from "./ImageUpload";
 import { CreditNote, CreditNoteItem, CreditNoteInvoiceType } from "../../types/creditNote";
+import { getCustomerDisplayName } from "../../lib/customerName";
 import { toast } from "sonner";
 
 const REASONS: CreditNote['reason'][] = [
@@ -25,9 +26,9 @@ const REASONS: CreditNote['reason'][] = [
 ];
 
 interface CustomerOption {
-  customerName: string;
-  customerEmail: string | null;
-  customerId: string;
+  id: string;
+  name: string;
+  email: string;
 }
 
 interface CreditNoteFormProps {
@@ -37,14 +38,14 @@ interface CreditNoteFormProps {
 }
 
 export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormProps) {
-  const [customerSearch, setCustomerSearch] = useState(editingNote ? (editingNote.customerName ?? editingNote.customer) : "");
+  const [customerSearch, setCustomerSearch] = useState(editingNote ? getCustomerDisplayName(editingNote.customer) : "");
   const [customerResults, setCustomerResults] = useState<CustomerOption[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(
-    editingNote
+    editingNote && editingNote.customerId
       ? {
-          customerName: editingNote.customerName ?? editingNote.customer,
-          customerEmail: editingNote.customerEmail ?? null,
-          customerId: editingNote.customerId,
+          id: editingNote.customerId,
+          name: getCustomerDisplayName(editingNote.customer),
+          email: editingNote.customer?.email ?? "",
         }
       : null
   );
@@ -60,7 +61,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
   const [items, setItems] = useState<CreditNoteItem[]>(
     editingNote?.items?.length
       ? editingNote.items.map((i) => ({ ...i }))
-      : [{ id: "1", description: "Reduction of deposit price", quantity: 1, previousPrice: 0, currentPrice: 0, unitPrice: 0, amount: 0 }]
+      : [{ id: "1", description: "Reduction of deposit price", quantity: 1, previousPrice: 0, currentPrice: 0, amount: 0 }]
   );
   const [attachments, setAttachments] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
@@ -108,12 +109,12 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
 
   useEffect(() => {
     // Don't search if a customer is already selected and search matches the selected customer
-    if (selectedCustomer && customerSearch === selectedCustomer.customerName) {
+    if (selectedCustomer && customerSearch === selectedCustomer.name) {
       setCustomerResults([]);
       return;
     }
     // Clear selected customer if user types something different (and it's not just whitespace/editing)
-    if (selectedCustomer && customerSearch !== selectedCustomer.customerName && customerSearch.length >= 2) {
+    if (selectedCustomer && customerSearch !== selectedCustomer.name && customerSearch.length >= 2) {
       setSelectedCustomer(null);
     }
     const t = setTimeout(() => fetchCustomers(customerSearch), 300);
@@ -133,16 +134,16 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       setDepositAmount(0);
       setOriginalInvoiceAmount(null);
       if (invoiceType === "deposit") {
-        setItems([{ id: "1", description: "Reduction of deposit price", quantity: 1, previousPrice: 0, currentPrice: 0, unitPrice: 0, amount: 0 }]);
+        setItems([{ id: "1", description: "Reduction of deposit price", quantity: 1, previousPrice: 0, currentPrice: 0, amount: 0 }]);
       }
       return;
     }
-    const name = selectedCustomer.customerName;
-    const email = selectedCustomer.customerEmail ?? "";
+    const name = selectedCustomer.name;
+    const email = selectedCustomer.email ?? "";
     // Capture existing values before they might get reset
     const existingSourceId = sourceId;
     const existingOriginalInvoice = originalInvoice;
-    
+
     if (invoiceType === "deposit") {
       fetch(`/api/deposit?customerName=${encodeURIComponent(name)}`)
         .then((r) => r.json())
@@ -275,7 +276,6 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                   quantity: 1,
                   previousPrice: depositAmt,
                   currentPrice: 0,
-                  unitPrice: 0,
                   amount: 0,
                 },
               ]);
@@ -372,10 +372,9 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
     // Skip initial edit load for return items if editing
     if (isInitialEditLoadRef.current) return;
 
-    const name = selectedCustomer.customerName;
     setReturnItemsLoading(true);
 
-    let url = `/api/credit-notes/return-items?customerName=${encodeURIComponent(name)}&invoiceType=${encodeURIComponent(invoiceType)}`;
+    let url = `/api/credit-notes/return-items?customerId=${encodeURIComponent(selectedCustomer.id)}&invoiceType=${encodeURIComponent(invoiceType)}`;
     if (returnItemsAgreementId) {
       url += `&agreementId=${encodeURIComponent(returnItemsAgreementId)}`;
     }
@@ -430,7 +429,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
 
   const handleSelectCustomer = (c: CustomerOption) => {
     setSelectedCustomer(c);
-    setCustomerSearch(c.customerName);
+    setCustomerSearch(c.name);
     setCustomerResults([]);
   };
 
@@ -486,7 +485,6 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
         quantity: 1,
         previousPrice: depositAmount,
         currentPrice: depositAmount - value,
-        unitPrice: depositAmount - value,
         amount: value,
       },
     ]);
@@ -554,8 +552,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
       ? (returnItemsAgreementId ?? (returnItemsAgreements.length === 1 ? returnItemsAgreements[0]?.id : undefined))
       : undefined;
     return {
-    customerName: selectedCustomer?.customerName ?? "",
-    customerId: selectedCustomer?.customerId ?? "",
+    customerId: selectedCustomer?.id ?? "",
     invoiceType,
     sourceId: reason === "Returned Items" ? effectiveAgreementId : (sourceId || undefined),
     originalInvoice: reason === "Returned Items" ? "Auto - Returned Items" : originalInvoice,
@@ -649,10 +646,7 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
         return;
       }
       const data = json.data;
-      const note: Partial<CreditNote> = {
-        ...data,
-        customer: data.customerName ?? data.customer,
-      };
+      const note: Partial<CreditNote> = { ...data };
       toast.success("Submitted for approval");
       onSave(note, false);
     } catch (e) {
@@ -700,12 +694,12 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
                 <ul className="absolute z-10 mt-1 w-full bg-white border border-[#E5E7EB] rounded-md shadow-lg max-h-48 overflow-auto">
                   {customerResults.map((c) => (
                     <li
-                      key={c.customerId}
+                      key={c.id}
                       className="px-4 py-2 hover:bg-[#F3F4F6] cursor-pointer text-sm"
                       onClick={() => handleSelectCustomer(c)}
                     >
-                      {c.customerName}
-                      {c.customerEmail ? ` (${c.customerEmail})` : ""}
+                      {c.name}
+                      {c.email ? ` (${c.email})` : ""}
                     </li>
                   ))}
                 </ul>
@@ -713,8 +707,8 @@ export function CreditNoteForm({ onBack, onSave, editingNote }: CreditNoteFormPr
             </div>
             {selectedCustomer && (
               <p className="text-sm text-[#059669]">
-                Selected: {selectedCustomer.customerName}
-                {selectedCustomer.customerEmail ? ` — ${selectedCustomer.customerEmail}` : ""}
+                Selected: {selectedCustomer.name}
+                {selectedCustomer.email ? ` — ${selectedCustomer.email}` : ""}
               </p>
             )}
           </div>

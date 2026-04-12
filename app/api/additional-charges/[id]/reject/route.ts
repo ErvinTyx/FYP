@@ -46,9 +46,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const charge = await prisma.additionalCharge.findUnique({
+    const charge = await (prisma as any).additionalCharge.findUnique({
       where: { id },
-      include: { items: true },
+      include: {
+        items: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
     });
     if (!charge) {
       return NextResponse.json(
@@ -63,24 +66,28 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const updated = await prisma.additionalCharge.update({
+    const updated = await (prisma as any).additionalCharge.update({
       where: { id },
       data: {
         rejectionReason: reason,
         status: 'rejected',
         rejectionDate: new Date(),
       },
-      include: { items: true },
+      include: {
+        items: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
     });
 
     if (updated.uploadedByEmail) {
       try {
+        const customerDisplayName = [updated.customer?.firstName, updated.customer?.lastName].filter(Boolean).join(' ') || 'Customer';
         await sendAdditionalChargeRejectionEmail(
           updated.uploadedByEmail,
           updated.invoiceNo,
           reason,
           updated.id,
-          updated.customerName
+          customerDisplayName
         );
       } catch (emailErr) {
         console.error('[Additional Charges API] Rejection email failed:', emailErr);
@@ -93,7 +100,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       dueDate: updated.dueDate.toISOString(),
       approvalDate: updated.approvalDate?.toISOString() ?? null,
       rejectionDate: updated.rejectionDate?.toISOString() ?? null,
-      items: updated.items.map((i) => ({
+      items: updated.items.map((i: { unitPrice: unknown; amount: unknown; [key: string]: unknown }) => ({
         ...i,
         unitPrice: Number(i.unitPrice),
         amount: Number(i.amount),

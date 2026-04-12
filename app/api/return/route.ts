@@ -50,6 +50,9 @@ export async function GET(request: NextRequest) {
     const returnRequests = await prisma.returnRequest.findMany({
       where,
       include: {
+        customer: {
+          select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        },
         items: {
           include: {
             conditions: true, // Include normalized condition breakdown
@@ -87,15 +90,14 @@ export async function GET(request: NextRequest) {
         return {
           id: req.id,
           requestId: req.requestId,
-          customerName: req.customerName,
+          customerId: req.customerId,
+          customer: req.customer ?? null,
           agreementNo: req.agreementNo,
           setName: req.setName,
           requestDate: req.requestDate.toISOString().split('T')[0],
           status: req.status,
           reason: req.reason,
           pickupAddress: req.pickupAddress,
-          customerPhone: req.customerPhone,
-          customerEmail: req.customerEmail,
           pickupFee: req.pickupFee ? Number(req.pickupFee) : undefined,
           returnType: req.returnType,
           collectionMethod: req.collectionMethod,
@@ -211,13 +213,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       requestId,
-      customerName,
+      customerId: bodyCustomerId,
       agreementNo,
       setName,
       reason,
       pickupAddress,
-      customerPhone,
-      customerEmail,
       returnType,
       collectionMethod,
       items,
@@ -226,9 +226,9 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!requestId || !customerName || !agreementNo || !setName || !reason || !pickupAddress || !returnType || !collectionMethod) {
+    if (!requestId || !agreementNo || !setName || !reason || !pickupAddress || !returnType || !collectionMethod) {
       return NextResponse.json(
-        { success: false, message: 'Request ID, customer name, agreement number, set name, reason, pickup address, return type, and collection method are required' },
+        { success: false, message: 'Request ID, agreement number, set name, reason, pickup address, return type, and collection method are required' },
         { status: 400 }
       );
     }
@@ -385,21 +385,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve customerId: derive from deliverySet.deliveryRequest if available, else use body value
+    let resolvedCustomerId: string | null = bodyCustomerId || null;
+    const firstSetId = setIds[0] ?? deliverySetId ?? null;
+    if (firstSetId && !resolvedCustomerId) {
+      const deliverySetRow = await prisma.deliverySet.findUnique({
+        where: { id: firstSetId },
+        include: { deliveryRequest: { select: { customerId: true } } },
+      });
+      if (deliverySetRow?.deliveryRequest?.customerId) {
+        resolvedCustomerId = deliverySetRow.deliveryRequest.customerId;
+      }
+    }
+
     // Create the return request with items (deliverySetIds set separately - Prisma create input may not include Json)
     const newRequest = await prisma.returnRequest.create({
       data: {
         requestId,
-        customerName,
+        customerId: resolvedCustomerId,
         agreementNo,
         setName,
         reason,
         pickupAddress,
-        customerPhone: customerPhone || null,
-        customerEmail: customerEmail || null,
         returnType,
         collectionMethod,
         status: collectionMethod === 'self-return' ? 'Agreed' : 'Requested',
-        ...(deliverySetId ? { deliverySet: { connect: { id: deliverySetId } } } : {}),
+        ...(deliverySetId ? { deliverySetId } : {}),
         items: {
           create: itemsToCreate.map((item) => {
             const qty = Math.max(0, Math.floor(Number(item.quantity)));
@@ -524,8 +535,7 @@ export async function PUT(request: NextRequest) {
     if (updateData.status !== undefined) dataToUpdate.status = updateData.status;
     if (updateData.pickupFee !== undefined) dataToUpdate.pickupFee = updateData.pickupFee;
     if (updateData.pickupAddress !== undefined) dataToUpdate.pickupAddress = updateData.pickupAddress;
-    if (updateData.customerPhone !== undefined) dataToUpdate.customerPhone = updateData.customerPhone;
-    if (updateData.customerEmail !== undefined) dataToUpdate.customerEmail = updateData.customerEmail;
+    if (updateData.customerId !== undefined) dataToUpdate.customerId = updateData.customerId;
 
     await prisma.returnRequest.update({
       where: { id },
@@ -562,7 +572,7 @@ export async function PUT(request: NextRequest) {
         await createChargeForReturn({
           returnRequestId: id,
           pickupFee: pickupFeeNum,
-          customerName: existingRequest.customerName,
+          customerId: existingRequest.customerId,
           doNumber: doNumber,
         });
       }
@@ -753,7 +763,7 @@ export async function PUT(request: NextRequest) {
 
         if (returnWithItems) {
           // Returned By = driver name from return management (pickupDriver), not customer name
-          const driverName = returnWithItems.pickupConfirm?.pickupDriver ?? returnWithItems.customerName;
+          const driverName = returnWithItems.pickupConfirm?.pickupDriver ?? '';
           // Generate RCF number for condition report (use existing or create new)
           const rcfNumber = returnWithItems.rcf?.rcfNumber || 
             `RCF-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`;
@@ -817,7 +827,7 @@ export async function PUT(request: NextRequest) {
             data: {
               rcfNumber,
               deliveryOrderNumber: returnWithItems.agreementNo,
-              customerName: returnWithItems.customerName,
+              customerId: returnWithItems.customerId,
               returnedBy: driverName,
               returnDate: new Date().toISOString().split('T')[0],
               inspectionDate: new Date().toISOString().split('T')[0],
@@ -898,7 +908,7 @@ export async function PUT(request: NextRequest) {
 
                 await tx.scaffoldingItem.update({
                   where: { id: item.scaffoldingItemId },
-                  data: { available: newAvailable, status },
+                  data: { available: newAvailable, itemStatus: status },
                 });
               }
             }

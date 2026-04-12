@@ -22,7 +22,8 @@ export interface AdditionalCharge {
   id: string;
   invoiceNo: string;
   doId: string;
-  customerName: string;
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   returnedDate?: string | null;
   conditionReportId?: string | null;
   totalCharges: number;

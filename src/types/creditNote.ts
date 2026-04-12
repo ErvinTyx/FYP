@@ -3,10 +3,8 @@ export type CreditNoteInvoiceType = 'deposit' | 'monthlyRental' | 'additionalCha
 export interface CreditNote {
   id: string;
   creditNoteNumber: string;
-  customer: string;
-  customerName?: string;
-  customerId: string;
-  customerEmail?: string;
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   invoiceType: CreditNoteInvoiceType;
   sourceId?: string;
   originalInvoice: string;
@@ -46,7 +44,6 @@ export interface CreditNoteItem {
   quantity: number;
   previousPrice: number;
   currentPrice: number;
-  unitPrice: number;
   amount: number;
 }
 
@@ -87,10 +84,7 @@ export interface EligibleInvoice {
 }
 
 export interface CreditNoteFormData {
-  customer: string;
-  customerName: string;
   customerId: string;
-  customerEmail?: string;
   invoiceType: CreditNoteInvoiceType;
   sourceId?: string;
   originalInvoice: string;

@@ -2,7 +2,9 @@ export interface ConditionReport {
   id: string;
   rcfNumber: string;
   deliveryOrderNumber: string;
-  customerName: string;
+  customerName?: string;
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   returnDate: string;
   returnedBy?: string; // Added: Who returned the item
   inspectionDate: string;
@@ -24,7 +26,7 @@ export interface ConditionReport {
   returnRequest?: {
     id: string;
     requestId: string;
-    customerName: string;
+    customerId?: string | null;
     agreementNo: string;
     setName: string;
     status: string;

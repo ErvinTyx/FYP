@@ -1,5 +1,6 @@
 import { ArrowLeft, Edit, FileText, User, Calendar, MapPin, Phone, Mail, Download } from 'lucide-react';
 import { escapeHtml } from '@/lib/escape-html';
+import { getCustomerDisplayName } from '@/lib/customerName';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -261,16 +262,16 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">Customer Name</div>
-        <div class="info-value">${escapeHtml(rfq.customerName)}</div>
+        <div class="info-value">${escapeHtml(getCustomerDisplayName(rfq.customer))}</div>
       </div>
       <div class="info-item">
         <div class="info-label">Email</div>
-        <div class="info-value">${escapeHtml(rfq.customerEmail)}</div>
+        <div class="info-value">${escapeHtml(rfq.customer?.email ?? '')}</div>
       </div>
-      ${rfq.customerPhone ? `
+      ${rfq.customer?.phone ? `
       <div class="info-item">
         <div class="info-label">Phone</div>
-        <div class="info-value">${escapeHtml(rfq.customerPhone)}</div>
+        <div class="info-value">${escapeHtml(rfq.customer.phone)}</div>
       </div>
       ` : ''}
     </div>
@@ -403,22 +404,22 @@ export function RFQDetails({ rfq, onEdit, onBack }: RFQDetailsProps) {
               <User className="size-5 text-gray-400 mt-0.5" />
               <div>
                 <p className="text-sm text-gray-500">Customer Name</p>
-                <p className="text-[#231F20]">{rfq.customerName}</p>
+                <p className="text-[#231F20]">{getCustomerDisplayName(rfq.customer)}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <Mail className="size-5 text-gray-400 mt-0.5" />
               <div>
                 <p className="text-sm text-gray-500">Email</p>
-                <p className="text-[#231F20]">{rfq.customerEmail}</p>
+                <p className="text-[#231F20]">{rfq.customer?.email}</p>
               </div>
             </div>
-            {rfq.customerPhone && (
+            {rfq.customer?.phone && (
               <div className="flex items-start gap-3">
                 <Phone className="size-5 text-gray-400 mt-0.5" />
                 <div>
                   <p className="text-sm text-gray-500">Phone</p>
-                  <p className="text-[#231F20]">{rfq.customerPhone}</p>
+                  <p className="text-[#231F20]">{rfq.customer.phone}</p>
                 </div>
               </div>
             )}

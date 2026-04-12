@@ -35,6 +35,7 @@ import {
   PaginationPrevious,
 } from '../ui/pagination';
 import { MonthlyRentalInvoice } from '../../types/monthly-rental';
+import { getCustomerDisplayName } from '../../lib/customerName';
 import { ApprovalModal } from './ApprovalModal';
 import { RejectionModal } from './RejectionModal';
 
@@ -291,7 +292,7 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
                   return (
                     <TableRow key={invoice.id} className="h-14 hover:bg-[#F3F4F6]">
                       <TableCell className="text-[#374151]">
-                        {invoice.customerName}
+                        {getCustomerDisplayName(invoice.customer)}
                       </TableCell>
                       <TableCell className="text-[#374151]">
                         {invoice.deliveryRequest?.requestId || invoice.invoiceNumber}
@@ -406,7 +407,7 @@ export function MonthlyRentalInvoiceList({ invoices, total = 0, page = 1, pageSi
           onClose={handleApprovalModalClose}
           onApprove={handleApprove}
           invoiceNumber={selectedInvoice.invoiceNumber}
-          customerName={selectedInvoice.customerName}
+          customerName={getCustomerDisplayName(selectedInvoice.customer)}
           amount={selectedInvoice.totalAmount}
         />
       )}

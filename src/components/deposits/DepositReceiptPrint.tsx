@@ -76,8 +76,7 @@ export function DepositReceiptPrint({ deposit, onBack }: DepositReceiptPrintProp
           <div className="mb-8">
             <h3 className="text-sm text-gray-600 mb-2">CUSTOMER DETAILS:</h3>
             <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-[#231F20]"><strong>Name:</strong> {deposit.customerName}</p>
-              <p className="text-sm text-gray-600 mt-1"><strong>Customer ID:</strong> {deposit.customerId}</p>
+              <p className="text-[#231F20]"><strong>Name:</strong> {deposit.agreement?.hirer || 'Unknown'}</p>
             </div>
           </div>
 

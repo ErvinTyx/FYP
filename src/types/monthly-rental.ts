@@ -17,11 +17,10 @@ export interface MonthlyRentalInvoice {
   agreementId?: string | null;
   agreement?: AgreementInfo | null;
   
-  // Customer Info (snapshot)
-  customerName: string;
-  customerEmail?: string | null;
-  customerPhone?: string | null;
-  
+  // Customer FK
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
+
   // Billing Period
   billingMonth: number; // 1-12
   billingYear: number;
@@ -78,10 +77,9 @@ export interface MonthlyRentalInvoiceItem {
 export interface DeliveryRequestInfo {
   id: string;
   requestId: string;
-  customerName: string;
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   agreementNo: string;
-  customerPhone?: string | null;
-  customerEmail?: string | null;
   deliveryAddress: string;
   deliveryType: string;
   requestDate: string;
@@ -93,9 +91,8 @@ export interface DeliveryRequestInfo {
 export interface RFQInfo {
   id: string;
   rfqNumber: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
+  customerId: string;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   projectName: string;
   projectLocation: string;
   status: string;
@@ -118,7 +115,6 @@ export interface AgreementInfo {
   agreementNumber: string;
   projectName: string;
   hirer: string;
-  hirerPhone?: string | null;
   monthlyRental: number;
   securityDeposit: number;
   minimumCharges: number;

@@ -5,6 +5,7 @@ import {
   FileSignature, Image as ImageIcon, Printer
 } from 'lucide-react';
 import { formatRfqDate } from '../../lib/rfqDate';
+import { getCustomerDisplayName } from '../../lib/customerName';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -95,7 +96,7 @@ export function DeliveryDetails({ delivery, onProcess, onBack }: DeliveryDetails
               <User className="size-5 text-gray-400 mt-0.5" />
               <div>
                 <p className="text-sm text-gray-500">Customer Name</p>
-                <p className="text-[#231F20]">{delivery.customerName}</p>
+                <p className="text-[#231F20]">{delivery.customerName ?? getCustomerDisplayName(delivery.customer)}</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -510,7 +511,7 @@ export function DeliveryDetails({ delivery, onProcess, onBack }: DeliveryDetails
             <div className="grid grid-cols-2 gap-6 border-b pb-4">
               <div>
                 <h4 className="font-semibold text-[#231F20] mb-2">Deliver To:</h4>
-                <p className="text-sm">{delivery.customerName}</p>
+                <p className="text-sm">{delivery.customerName ?? getCustomerDisplayName(delivery.customer)}</p>
                 <p className="text-sm text-gray-600">{delivery.siteAddress}</p>
                 <p className="text-sm text-gray-600">{delivery.customerContact}</p>
               </div>

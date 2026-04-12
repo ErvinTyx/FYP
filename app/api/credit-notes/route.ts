@@ -13,8 +13,8 @@ const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 function serializeCreditNote(cn: {
   id: string;
   creditNoteNumber: string;
-  customerName: string;
-  customerId: string;
+  customerId: string | null;
+  customer: { id: string; firstName: string; lastName: string; email: string; phone: string | null } | null;
   invoiceType: string;
   sourceId: string | null;
   originalInvoice: string;
@@ -38,7 +38,6 @@ function serializeCreditNote(cn: {
     quantity: number;
     previousPrice: { toNumber?: () => number } | number;
     currentPrice: { toNumber?: () => number } | number;
-    unitPrice: { toNumber?: () => number } | number;
     amount: { toNumber?: () => number } | number;
   }>;
   attachments: Array<{ id: string; fileName: string; fileUrl: string; fileSize: number; uploadedAt: Date }>;
@@ -57,7 +56,6 @@ function serializeCreditNote(cn: {
       ...i,
       previousPrice: toNum(i.previousPrice),
       currentPrice: toNum(i.currentPrice),
-      unitPrice: toNum(i.unitPrice),
       amount: toNum(i.amount),
     })),
     attachments: cn.attachments.map((a) => ({
@@ -98,7 +96,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || undefined;
-    const customerName = searchParams.get('customerName') || undefined;
+    const customerId = searchParams.get('customerId') || undefined;
     const creditNoteNumber = searchParams.get('creditNoteNumber') || undefined;
     const search = searchParams.get('search')?.trim() || undefined;
     const invoiceType = searchParams.get('invoiceType') || undefined;
@@ -107,12 +105,15 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
-    if (customerName) (where as Record<string, unknown>).customerName = { contains: customerName };
+    if (customerId) where.customerId = customerId;
     if (creditNoteNumber) (where as Record<string, unknown>).creditNoteNumber = { contains: creditNoteNumber };
     if (search) {
       (where as Record<string, unknown>).OR = [
         { creditNoteNumber: { contains: search } },
-        { customerName: { contains: search } },
+        { customer: { OR: [
+          { firstName: { contains: search } },
+          { lastName: { contains: search } },
+        ] } },
       ];
     }
     if (invoiceType) where.invoiceType = invoiceType;
@@ -146,7 +147,11 @@ export async function GET(request: NextRequest) {
 
     const list = await prisma.creditNote.findMany({
       where,
-      include: { items: true, attachments: true },
+      include: {
+        items: true,
+        attachments: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
       orderBy: { createdAt: orderDir },
       skip,
       take: pageSize,
@@ -187,7 +192,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      customerName,
       customerId,
       invoiceType,
       sourceId,
@@ -203,9 +207,9 @@ export async function POST(request: NextRequest) {
 
     // originalInvoice is optional when reason is "Returned Items" (auto-generated from returns)
     const isReturnItems = reason === 'Returned Items';
-    if (!customerName || !customerId || !invoiceType || !reason || !date) {
+    if (!customerId || !invoiceType || !reason || !date) {
       return NextResponse.json(
-        { success: false, message: 'customerName, customerId, invoiceType, reason, and date are required' },
+        { success: false, message: 'customerId, invoiceType, reason, and date are required' },
         { status: 400 }
       );
     }
@@ -274,7 +278,6 @@ export async function POST(request: NextRequest) {
     const created = await prisma.creditNote.create({
       data: {
         creditNoteNumber,
-        customerName,
         customerId,
         invoiceType: validInvoiceType,
         sourceId: sourceId || null,
@@ -290,7 +293,11 @@ export async function POST(request: NextRequest) {
         items: { create: itemRows },
         attachments: attachmentRows.length > 0 ? { create: attachmentRows } : undefined,
       },
-      include: { items: true, attachments: true },
+      include: {
+        items: true,
+        attachments: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
     });
 
     const serialized = serializeCreditNote(created as Parameters<typeof serializeCreditNote>[0]);

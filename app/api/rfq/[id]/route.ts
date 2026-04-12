@@ -50,6 +50,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const rfq = await prisma.rFQ.findUnique({
       where: { id: rfqId },
       include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         items: true,
       },
     });
@@ -92,9 +93,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     // Await params in Next.js 16
     const { id: rfqId } = await params;
     const {
-      customerName,
-      customerEmail,
-      customerPhone,
+      customerId,
       projectName,
       projectLocation,
       requestedDate,
@@ -202,9 +201,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const result = await prisma.$transaction(async (tx) => {
       const updateData: any = {};
 
-      if (customerName) updateData.customerName = customerName;
-      if (customerEmail) updateData.customerEmail = customerEmail;
-      if (customerPhone !== undefined) updateData.customerPhone = customerPhone;
+      if (customerId) updateData.customerId = customerId;
       if (projectName) updateData.projectName = projectName;
       if (projectLocation !== undefined) updateData.projectLocation = projectLocation;
       if (requestedDate) updateData.requestedDate = new Date(requestedDate);
@@ -343,6 +340,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return tx.rFQ.findUnique({
         where: { id: rfqId },
         include: {
+          customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
           items: true,
         },
       });

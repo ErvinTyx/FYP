@@ -14,8 +14,8 @@ const ALLOWED_ROLES = ['super_user', 'admin', 'sales', 'finance', 'operations'];
 function serializeCreditNote(cn: {
   id: string;
   creditNoteNumber: string;
-  customerName: string;
-  customerId: string;
+  customerId: string | null;
+  customer: { id: string; firstName: string; lastName: string; email: string; phone: string | null } | null;
   invoiceType: string;
   sourceId: string | null;
   originalInvoice: string;
@@ -39,7 +39,6 @@ function serializeCreditNote(cn: {
     quantity: number;
     previousPrice: { toNumber?: () => number } | number;
     currentPrice: { toNumber?: () => number } | number;
-    unitPrice: { toNumber?: () => number } | number;
     amount: { toNumber?: () => number } | number;
   }>;
   attachments: Array<{ id: string; fileName: string; fileUrl: string; fileSize: number; uploadedAt: Date }>;
@@ -58,7 +57,6 @@ function serializeCreditNote(cn: {
       ...i,
       previousPrice: toNum(i.previousPrice),
       currentPrice: toNum(i.currentPrice),
-      unitPrice: toNum(i.unitPrice),
       amount: toNum(i.amount),
     })),
     attachments: cn.attachments.map((a) => ({
@@ -91,7 +89,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const cn = await prisma.creditNote.findUnique({
       where: { id },
-      include: { items: true, attachments: true },
+      include: {
+        items: true,
+        attachments: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
     });
     if (!cn) {
       return NextResponse.json({ success: false, message: 'Credit note not found' }, { status: 404 });
@@ -143,7 +145,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const body = await request.json();
     const {
-      customerName,
       customerId,
       invoiceType,
       sourceId,
@@ -222,7 +223,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const updated = await prisma.creditNote.update({
       where: { id },
       data: {
-        ...(customerName != null && { customerName }),
         ...(customerId != null && { customerId }),
         invoiceType: validInvoiceType,
         ...(sourceId !== undefined && { sourceId: sourceId || null }),
@@ -239,7 +239,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           attachments: { create: attachmentRows },
         }),
       },
-      include: { items: true, attachments: true },
+      include: {
+        items: true,
+        attachments: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
     });
 
     const serialized = serializeCreditNote(updated as Parameters<typeof serializeCreditNote>[0]);

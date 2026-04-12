@@ -16,8 +16,8 @@ export interface Refund {
   invoiceType: RefundInvoiceType;
   sourceId: string;
   originalInvoice: string;
-  customerName: string;
-  customerId: string;
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   creditNoteId?: string;
   creditNoteNumber?: string;
   amount: number;
@@ -50,8 +50,8 @@ export interface RefundInvoiceDetailsResponse {
     type: RefundInvoiceType;
     id: string;
     number: string;
-    customerName: string;
-    customerEmail?: string;
+    customerId?: string | null;
+    customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
     amount: number;
     status: string;
     dueDate: string;

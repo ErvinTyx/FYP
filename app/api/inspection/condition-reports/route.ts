@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   try {
     const {
       deliveryOrderNumber,
-      customerName,
+      customerId,
       returnedBy,
       returnDate,
       inspectionDate,
@@ -44,11 +44,11 @@ export async function POST(request: NextRequest) {
     } = await request.json();
 
     // Validate required fields
-    if (!deliveryOrderNumber || !customerName || !inspectionDate || !inspectedBy) {
+    if (!deliveryOrderNumber || !inspectionDate || !inspectedBy) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Required fields missing: deliveryOrderNumber, customerName, inspectionDate, inspectedBy',
+          message: 'Required fields missing: deliveryOrderNumber, inspectionDate, inspectedBy',
         },
         { status: 400 }
       );
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
         data: {
           rcfNumber,
           deliveryOrderNumber,
-          customerName,
+          customerId: customerId || null,
           returnedBy: returnedBy || '',
           returnDate,
           inspectionDate,
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
             select: {
               id: true,
               requestId: true,
-              customerName: true,
+              customerId: true,
               agreementNo: true,
               setName: true,
               status: true,
@@ -239,9 +239,11 @@ export async function GET(request: NextRequest) {
     // Build filter conditions
     const where: any = {};
     if (customerName) {
-      where.customerName = {
-        contains: customerName,
-        mode: 'insensitive',
+      where.customer = {
+        OR: [
+          { firstName: { contains: customerName } },
+          { lastName: { contains: customerName } },
+        ],
       };
     }
     if (status) {
@@ -265,11 +267,12 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         items: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         returnRequest: {
           select: {
             id: true,
             requestId: true,
-            customerName: true,
+            customerId: true,
             agreementNo: true,
             setName: true,
             status: true,

@@ -25,7 +25,8 @@ function mapApiToCharge(api: {
   id: string;
   invoiceNo: string;
   doId: string;
-  customerName: string;
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   returnedDate?: string | null;
   dueDate: string;
   status: string;
@@ -38,7 +39,8 @@ function mapApiToCharge(api: {
     id: api.id,
     invoiceNo: api.invoiceNo,
     doId: api.doId,
-    customerName: api.customerName,
+    customerId: api.customerId ?? null,
+    customer: api.customer ?? null,
     returnedDate: api.returnedDate ?? undefined,
     totalCharges: api.totalCharges,
     status: API_STATUS_TO_DISPLAY[api.status] ?? ("Pending Payment" as AdditionalCharge["status"]),

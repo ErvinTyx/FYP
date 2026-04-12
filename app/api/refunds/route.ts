@@ -15,8 +15,8 @@ function serializeRefund(r: {
   invoiceType: string;
   sourceId: string;
   originalInvoice: string;
-  customerName: string;
-  customerId: string;
+  customerId: string | null;
+  customer: { id: string; firstName: string; lastName: string; email: string; phone: string | null } | null;
   amount: { toNumber?: () => number } | number;
   refundMethod: string | null;
   reason: string | null;
@@ -85,12 +85,14 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
-    if (customerName) where.customerName = { contains: customerName };
+    if (customerName) where.customer = { OR: [{ firstName: { contains: customerName } }, { lastName: { contains: customerName } }] };
     if (invoiceType) where.invoiceType = invoiceType;
     if (search) {
       (where as Record<string, unknown>).OR = [
         { refundNumber: { contains: search } },
-        { customerName: { contains: search } },
+        { customer: { firstName: { contains: search } } },
+        { customer: { lastName: { contains: search } } },
+        { customer: { email: { contains: search } } },
         { originalInvoice: { contains: search } },
       ];
     }
@@ -116,7 +118,10 @@ export async function GET(request: NextRequest) {
 
     const list = await prisma.refund.findMany({
       where,
-      include: { attachments: true },
+      include: {
+        attachments: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
       orderBy: { createdAt: orderDir },
       skip,
       take: pageSize,
@@ -193,7 +198,6 @@ export async function POST(request: NextRequest) {
         agreementId: true,
         invoiceType: true,
         originalInvoice: true,
-        customerName: true,
         customerId: true,
         status: true,
       },
@@ -215,8 +219,7 @@ export async function POST(request: NextRequest) {
     const invoiceType = creditNote.invoiceType || 'monthlyRental';
     const sourceId = creditNote.sourceId ?? creditNote.agreementId ?? '';
     const originalInvoice = creditNote.originalInvoice || creditNote.creditNoteNumber || 'N/A';
-    const customerName = creditNote.customerName || '';
-    const customerId = creditNote.customerId || `${customerName}|`;
+    const customerId = creditNote.customerId || null;
 
     if (!sourceId) {
       return NextResponse.json(
@@ -274,7 +277,6 @@ export async function POST(request: NextRequest) {
         invoiceType: validType,
         sourceId,
         originalInvoice,
-        customerName,
         customerId,
         creditNoteId,
         creditNoteNumber: creditNote.creditNoteNumber,
@@ -286,7 +288,10 @@ export async function POST(request: NextRequest) {
         createdBy,
         attachments: attachmentRows.length > 0 ? { create: attachmentRows } : undefined,
       },
-      include: { attachments: true },
+      include: {
+        attachments: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
     });
 
     const data = serializeRefund(created as Parameters<typeof serializeRefund>[0]);

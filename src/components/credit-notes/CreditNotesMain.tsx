@@ -16,10 +16,8 @@ function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
   return {
     id: data.id as string,
     creditNoteNumber: data.creditNoteNumber as string,
-    customer: (data.customerName as string) ?? (data.customer as string),
-    customerName: data.customerName as string,
-    customerId: data.customerId as string,
-    customerEmail: data.customerEmail as string | undefined,
+    customerId: data.customerId as string | undefined,
+    customer: data.customer as CreditNote['customer'] ?? null,
     invoiceType: (data.invoiceType as CreditNote["invoiceType"]) ?? "monthlyRental",
     sourceId: data.sourceId as string | undefined,
     originalInvoice: data.originalInvoice as string,
@@ -45,7 +43,6 @@ function mapApiToCreditNote(data: Record<string, unknown>): CreditNote {
           quantity: Number(i.quantity) ?? 0,
           previousPrice: Number(i.previousPrice) ?? 0,
           currentPrice: Number(i.currentPrice) ?? 0,
-          unitPrice: Number(i.unitPrice) ?? 0,
           amount: Number(i.amount) ?? 0,
         }))
       : [],

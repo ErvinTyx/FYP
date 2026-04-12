@@ -10,6 +10,7 @@ import {
   type RentalAgreementExportRow,
 } from "@/lib/rental-agreement-export";
 import { parseDaysFromTermOfHireString, getTotalRentalMonthFromDays } from "@/lib/term-of-hire";
+import { getCustomerDisplayName } from "@/lib/customerName";
 import { uploadFile } from "@/lib/upload";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
@@ -64,8 +65,8 @@ interface AgreementVersion {
 interface RFQOption {
   id: string;
   rfqNumber?: string;
-  customerName: string;
-  customerPhone?: string;
+  customerId?: string;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   projectName: string;
   projectLocation?: string;
   totalAmount?: number;
@@ -89,7 +90,6 @@ interface RentalAgreement {
   owner: string;
   ownerPhone: string;
   hirer: string;
-  hirerPhone: string;
   location: string;
   termOfHire: string;
   totalRentalMonth?: number | null;
@@ -198,11 +198,11 @@ export function RentalAgreement() {
         );
         const list = data.data
           .filter((r: { id: string }) => !linkedRfqIds.has(r.id))
-          .map((r: { id: string; projectName: string; customerName: string; customerPhone?: string; projectLocation?: string; rfqNumber?: string; totalAmount?: number; extendedFromRfq?: { id: string; rfqNumber: string; projectName: string } | null }) => ({
+          .map((r: { id: string; projectName: string; customerId?: string; customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null; projectLocation?: string; rfqNumber?: string; totalAmount?: number; extendedFromRfq?: { id: string; rfqNumber: string; projectName: string } | null }) => ({
             id: r.id,
             projectName: r.projectName,
-            customerName: r.customerName,
-            customerPhone: r.customerPhone ?? '',
+            customerId: r.customerId ?? undefined,
+            customer: r.customer ?? null,
             projectLocation: r.projectLocation ?? '',
             rfqNumber: r.rfqNumber,
             totalAmount: r.totalAmount != null ? Number(r.totalAmount) : undefined,
@@ -260,7 +260,6 @@ export function RentalAgreement() {
     if (!formData.owner?.trim()) return 'Owner';
     if (!formData.ownerPhone?.trim()) return 'Owner Telephone';
     if (!formData.hirer?.trim()) return 'Hirer';
-    if (!formData.hirerPhone?.trim()) return 'Hirer Telephone';
     if (!formData.location?.trim()) return 'Location & Address of Goods';
     if (!formData.termOfHire?.trim()) return 'Term of Hire';
     const num = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v === '') || Number(v) < 0;
@@ -327,7 +326,6 @@ export function RentalAgreement() {
           owner: formData.owner || 'Power Metal & Steel Sdn Bhd',
           ownerPhone: formData.ownerPhone || '+60 3-1234 5678',
           hirer: formData.hirer,
-          hirerPhone: formData.hirerPhone || '',
           location: formData.location || '',
           termOfHire: formData.termOfHire || '',
           monthlyRental: formData.monthlyRental || 0,
@@ -365,7 +363,6 @@ export function RentalAgreement() {
     if (!formData.owner?.trim()) return 'Owner';
     if (!formData.ownerPhone?.trim()) return 'Owner Telephone';
     if (!formData.hirer?.trim()) return 'Hirer';
-    if (!formData.hirerPhone?.trim()) return 'Hirer Telephone';
     if (!formData.location?.trim()) return 'Location & Address of Goods';
     if (!formData.termOfHire?.trim()) return 'Term of Hire';
     const num = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v === '') || Number(v) < 0;
@@ -461,7 +458,6 @@ export function RentalAgreement() {
     owner: 'Power Metal & Steel Sdn Bhd',
     ownerPhone: '+60 3-1234 5678',
     hirer: '',
-    hirerPhone: '',
     location: '',
     termOfHire: '',
     totalRentalMonth: undefined,
@@ -587,7 +583,6 @@ export function RentalAgreement() {
         owner: agreement.owner,
         ownerPhone: agreement.ownerPhone ?? undefined,
         hirer: agreement.hirer,
-        hirerPhone: agreement.hirerPhone ?? undefined,
         location: agreement.location ?? undefined,
         termOfHire: agreement.termOfHire ?? undefined,
         totalRentalMonth: agreement.totalRentalMonth ?? undefined,
@@ -736,7 +731,6 @@ export function RentalAgreement() {
     owner: a.owner ?? '',
     ownerPhone: a.ownerPhone ?? '',
     hirer: a.hirer ?? '',
-    hirerPhone: a.hirerPhone ?? '',
     location: a.location ?? '',
     termOfHire: a.termOfHire ?? '',
     monthlyRental: Number(a.monthlyRental) || 0,
@@ -1070,11 +1064,10 @@ export function RentalAgreement() {
                         setFormData((prev) => ({
                           ...prev,
                           projectName: rfq.projectName,
-                          hirer: rfq.customerName,
-                          hirerPhone: rfq.customerPhone ?? '',
+                          hirer: getCustomerDisplayName(rfq.customer),
                           location: rfq.projectLocation ?? '',
                           rfqId: rfq.id,
-                          rfq: { id: rfq.id, rfqNumber: rfq.rfqNumber, customerName: rfq.customerName, customerPhone: rfq.customerPhone, projectName: rfq.projectName, projectLocation: rfq.projectLocation, totalAmount: rfq.totalAmount },
+                          rfq: { id: rfq.id, rfqNumber: rfq.rfqNumber, customerId: rfq.customerId, projectName: rfq.projectName, projectLocation: rfq.projectLocation, totalAmount: rfq.totalAmount },
                         }));
                         // Fetch term of hire; monthly rental = Total Rental (RM) / Total Rental Month
                         fetch(`/api/rfq/${rfq.id}/term-of-hire`)
@@ -1155,15 +1148,6 @@ export function RentalAgreement() {
                     readOnly
                     disabled
                     value={formData.hirer || ''}
-                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Hirer Telephone *</Label>
-                  <Input
-                    readOnly
-                    disabled
-                    value={formData.hirerPhone || ''}
                     className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
@@ -1458,15 +1442,6 @@ export function RentalAgreement() {
                     className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Hirer Telephone</Label>
-                  <Input
-                    readOnly
-                    disabled
-                    value={formData.hirerPhone || ''}
-                    className="bg-[#F3F4F6] text-[#111827] cursor-not-allowed border-[#E5E7EB]"
-                  />
-                </div>
               </div>
             </div>
 
@@ -1713,10 +1688,6 @@ export function RentalAgreement() {
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Owner Telephone</Label>
                   <p className="text-[#111827]">{selectedAgreement.ownerPhone}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-[#6B7280]">Hirer Telephone</Label>
-                  <p className="text-[#111827]">{selectedAgreement.hirerPhone}</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-[#6B7280]">Rental Agreement Number</Label>
@@ -2037,10 +2008,6 @@ export function RentalAgreement() {
                   <p className="text-[#111827]">{v('ownerPhone')}</p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[#6B7280]">Hirer Telephone</Label>
-                  <p className="text-[#111827]">{v('hirerPhone')}</p>
-                </div>
-                <div className="space-y-2">
                   <Label className="text-[#6B7280]">Rental Agreement Number</Label>
                   <p className="text-[#111827]">{v('agreementNumber')}</p>
                 </div>
@@ -2153,7 +2120,6 @@ export function RentalAgreement() {
                         owner: getStr('owner') ?? '',
                         ownerPhone: getStr('ownerPhone') ?? undefined,
                         hirer: getStr('hirer') ?? '',
-                        hirerPhone: getStr('hirerPhone') ?? undefined,
                         location: getStr('location') ?? undefined,
                         termOfHire: getStr('termOfHire') ?? undefined,
                         totalRentalMonth: display.totalRentalMonth != null ? Number(display.totalRentalMonth) : selectedAgreement.totalRentalMonth ?? undefined,

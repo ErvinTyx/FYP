@@ -3,6 +3,7 @@ import { X, Printer, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { MonthlyRentalInvoice } from '../../types/monthly-rental';
+import { getCustomerDisplayName } from '../../lib/customerName';
 import { Badge } from '../ui/badge';
 import { formatRfqDate } from '../../lib/rfqDate';
 import {
@@ -82,12 +83,12 @@ export function MonthlyRentalReceiptPrint({ invoice, onBack }: MonthlyRentalRece
           <div className="mb-8">
             <h3 className="text-sm text-gray-600 mb-2">CUSTOMER DETAILS:</h3>
             <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-[#231F20]"><strong>Name:</strong> {invoice.customerName}</p>
-              {invoice.customerEmail && (
-                <p className="text-sm text-gray-600 mt-1"><strong>Email:</strong> {invoice.customerEmail}</p>
+              <p className="text-[#231F20]"><strong>Name:</strong> {getCustomerDisplayName(invoice.customer)}</p>
+              {invoice.customer?.email && (
+                <p className="text-sm text-gray-600 mt-1"><strong>Email:</strong> {invoice.customer.email}</p>
               )}
-              {invoice.customerPhone && (
-                <p className="text-sm text-gray-600 mt-1"><strong>Phone:</strong> {invoice.customerPhone}</p>
+              {invoice.customer?.phone && (
+                <p className="text-sm text-gray-600 mt-1"><strong>Phone:</strong> {invoice.customer.phone}</p>
               )}
               {invoice.agreement && (
                 <p className="text-sm text-gray-600 mt-1"><strong>Agreement:</strong> {invoice.agreement.agreementNumber}</p>

@@ -325,9 +325,7 @@ async function autoGenerateMonthlyInvoice(deliveryRequestId: string) {
       invoiceNumber,
       deliveryRequestId,
       agreementId: agreement.id,
-      customerName: delivery.customerName,
-      customerEmail: delivery.customerEmail,
-      customerPhone: delivery.customerPhone,
+      customerId: delivery.customerId,
       billingMonth,
       billingYear,
       billingStartDate,
@@ -397,6 +395,9 @@ export async function GET(request: NextRequest) {
       deliveryRequests = await (prisma.deliveryRequest.findMany as any)({
         where,
         include: {
+          customer: {
+            select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+          },
           sets: {
             where: Object.keys(setsWhere).length > 0 ? setsWhere : undefined,
             include: {
@@ -417,6 +418,9 @@ export async function GET(request: NextRequest) {
           rfq: {
             include: {
               items: true,
+              customer: {
+                select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+              },
             },
           },
         },
@@ -491,10 +495,9 @@ export async function GET(request: NextRequest) {
     const transformedRequests = deliveryRequests.map((req: any) => ({
       id: req.id,
       requestId: req.requestId,
-      customerName: req.customerName,
+      customerId: req.customerId,
+      customer: req.customer ?? null,
       agreementNo: req.agreementNo,
-      customerPhone: req.customerPhone,
-      customerEmail: req.customerEmail,
       deliveryAddress: req.deliveryAddress,
       deliveryType: req.deliveryType,
       requestDate: req.requestDate.toISOString().split('T')[0],
@@ -505,9 +508,8 @@ export async function GET(request: NextRequest) {
       rfq: req.rfq ? {
         id: req.rfq.id,
         rfqNumber: req.rfq.rfqNumber,
-        customerName: req.rfq.customerName,
-        customerEmail: req.rfq.customerEmail,
-        customerPhone: req.rfq.customerPhone,
+        customerId: req.rfq.customerId,
+        customer: req.rfq.customer ?? null,
         projectName: req.rfq.projectName,
         projectLocation: req.rfq.projectLocation,
         status: req.rfq.status,
@@ -630,10 +632,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       requestId,
-      customerName,
+      customerId: bodyCustomerId,
       agreementNo,
-      customerPhone,
-      customerEmail,
       deliveryAddress,
       deliveryType,
       sets,
@@ -641,9 +641,9 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validate required fields
-    if (!requestId || !customerName || !agreementNo || !deliveryAddress || !deliveryType) {
+    if (!requestId || !agreementNo || !deliveryAddress || !deliveryType) {
       return NextResponse.json(
-        { success: false, message: 'Request ID, customer name, agreement number, delivery address, and delivery type are required' },
+        { success: false, message: 'Request ID, agreement number, delivery address, and delivery type are required' },
         { status: 400 }
       );
     }
@@ -715,6 +715,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Resolve customerId: prefer rfq.customerId if rfqId provided, else use bodyCustomerId
+    let resolvedCustomerId: string | null = bodyCustomerId || null;
+    if (rfqId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rfq = await (prisma.rFQ as any).findUnique({
+        where: { id: rfqId },
+        select: { customerId: true },
+      });
+      if (rfq?.customerId) resolvedCustomerId = rfq.customerId;
+    }
+
     // Create the delivery request with sets and items
     // Try with rfq fields first, fall back if migration not run
     let newRequest;
@@ -723,10 +734,8 @@ export async function POST(request: NextRequest) {
       newRequest = await (prisma.deliveryRequest.create as any)({
         data: {
           requestId,
-          customerName,
+          customerId: resolvedCustomerId,
           agreementNo,
-          customerPhone: customerPhone || null,
-          customerEmail: customerEmail || null,
           deliveryAddress,
           deliveryType,
           totalSets: sets?.length || 0,
@@ -765,10 +774,8 @@ export async function POST(request: NextRequest) {
       newRequest = await prisma.deliveryRequest.create({
         data: {
           requestId,
-          customerName,
+          customerId: resolvedCustomerId,
           agreementNo,
-          customerPhone: customerPhone || null,
-          customerEmail: customerEmail || null,
           deliveryAddress,
           deliveryType,
           totalSets: sets?.length || 0,
@@ -913,7 +920,7 @@ export async function PUT(request: NextRequest) {
           await createChargeForDelivery({
             deliverySetId: setId,
             deliveryFee: deliveryFeeNum,
-            customerName: dr.customerName,
+            customerId: dr.customerId,
             doNumber: doNumber,
           });
         }
@@ -1244,9 +1251,7 @@ export async function PUT(request: NextRequest) {
 
       // Upsert Customer Acknowledgement step
       if (updateData.customerAcknowledgedAt !== undefined || updateData.customerSignature !== undefined ||
-          updateData.customerSignedBy !== undefined || updateData.customerOTP !== undefined ||
-          updateData.verifiedOTP !== undefined || updateData.inventoryUpdatedAt !== undefined ||
-          updateData.inventoryStatus !== undefined) {
+          updateData.customerSignedBy !== undefined) {
         await prisma.deliveryCustomerAck.upsert({
           where: { deliverySetId: setId },
           create: {
@@ -1254,19 +1259,11 @@ export async function PUT(request: NextRequest) {
             customerAcknowledgedAt: updateData.customerAcknowledgedAt ? new Date(updateData.customerAcknowledgedAt) : null,
             customerSignature: updateData.customerSignature,
             customerSignedBy: updateData.customerSignedBy,
-            customerOTP: updateData.customerOTP,
-            verifiedOTP: updateData.verifiedOTP,
-            inventoryUpdatedAt: updateData.inventoryUpdatedAt ? new Date(updateData.inventoryUpdatedAt) : null,
-            inventoryStatus: updateData.inventoryStatus,
           },
           update: {
             customerAcknowledgedAt: updateData.customerAcknowledgedAt ? new Date(updateData.customerAcknowledgedAt) : undefined,
             customerSignature: updateData.customerSignature,
             customerSignedBy: updateData.customerSignedBy,
-            customerOTP: updateData.customerOTP,
-            verifiedOTP: updateData.verifiedOTP,
-            inventoryUpdatedAt: updateData.inventoryUpdatedAt ? new Date(updateData.inventoryUpdatedAt) : undefined,
-            inventoryStatus: updateData.inventoryStatus,
           },
         });
       }
@@ -1338,9 +1335,7 @@ export async function PUT(request: NextRequest) {
     const updatedRequest = await prisma.deliveryRequest.update({
       where: { id },
       data: {
-        customerName: updateData.customerName,
-        customerPhone: updateData.customerPhone,
-        customerEmail: updateData.customerEmail,
+        ...(updateData.customerId !== undefined && { customerId: updateData.customerId }),
         deliveryAddress: updateData.deliveryAddress,
         pickupTime: updateData.pickupTime,
       },

@@ -1,5 +1,5 @@
 /**
- * GET /api/credit-notes/return-items?customerName=X&invoiceType=monthlyRental&agreementId=Y
+ * GET /api/credit-notes/return-items?customerId=X&invoiceType=monthlyRental&agreementId=Y
  *
  * Fetches completed return requests for a customer, calculates each returned
  * item's rental duration (deliveredAt → warehouseReceipt.receivedAt), enforces
@@ -32,13 +32,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const customerName = searchParams.get('customerName')?.trim();
+    const customerId = searchParams.get('customerId')?.trim();
     const invoiceType = searchParams.get('invoiceType') || 'monthlyRental';
     const agreementIdParam = searchParams.get('agreementId')?.trim();
 
-    if (!customerName) {
+    if (!customerId) {
       return NextResponse.json(
-        { success: false, message: 'customerName is required' },
+        { success: false, message: 'customerId is required' },
         { status: 400 }
       );
     }
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     // 1. Find all completed return requests for this customer
     const returnRequests = await prisma.returnRequest.findMany({
       where: {
-        customerName,
+        customerId,
         status: 'Completed',
       },
       include: {

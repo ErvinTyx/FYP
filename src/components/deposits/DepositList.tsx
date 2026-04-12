@@ -315,7 +315,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
               ) : (
                 displayDeposits.map((deposit) => {
                   const displayInvoiceNo = deposit.invoiceNo || deposit.agreement?.agreementNumber || deposit.depositNumber || '-';
-                  const displayCustomerName = deposit.customerName || deposit.agreement?.hirer || 'Unknown';
+                  const displayCustomerName = deposit.agreement?.hirer || 'Unknown';
                   const displayLastUpdated = deposit.lastUpdated || deposit.updatedAt || deposit.createdAt;
                   const isOverdueOrExpired = deposit.status === "Overdue" || deposit.status === "Expired";
                   
@@ -497,7 +497,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
           }}
           onApprove={handleApprove}
           depositId={selectedDepositForApproval.depositNumber || selectedDepositForApproval.depositId || selectedDepositForApproval.id}
-          customerName={selectedDepositForApproval.customerName || selectedDepositForApproval.agreement?.hirer || 'Unknown'}
+          customerName={selectedDepositForApproval.agreement?.hirer || 'Unknown'}
           amount={selectedDepositForApproval.depositAmount}
         />
       )}
@@ -541,7 +541,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
             {selectedDepositForReset && (
               <div className="text-sm text-gray-500">
                 <p>Deposit: {selectedDepositForReset.depositNumber || selectedDepositForReset.depositId}</p>
-                <p>Customer: {selectedDepositForReset.customerName || selectedDepositForReset.agreement?.hirer}</p>
+                <p>Customer: {selectedDepositForReset.agreement?.hirer || 'Unknown'}</p>
                 <p>Amount: RM{selectedDepositForReset.depositAmount.toLocaleString()}</p>
               </div>
             )}
@@ -581,7 +581,7 @@ export function DepositList({ deposits, total = 0, page = 1, pageSize = 10, orde
           {selectedDepositForExpire && (
             <div className="py-4 space-y-2 text-sm">
               <p><strong>Deposit:</strong> {selectedDepositForExpire.depositNumber || selectedDepositForExpire.depositId}</p>
-              <p><strong>Customer:</strong> {selectedDepositForExpire.customerName || selectedDepositForExpire.agreement?.hirer}</p>
+              <p><strong>Customer:</strong> {selectedDepositForExpire.agreement?.hirer || 'Unknown'}</p>
               <p><strong>Amount:</strong> RM{selectedDepositForExpire.depositAmount.toLocaleString()}</p>
               <p><strong>Original Due Date:</strong> {formatRfqDate(selectedDepositForExpire.dueDate)}</p>
             </div>

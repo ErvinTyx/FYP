@@ -161,9 +161,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (invoiceType === 'monthlyRental') {
-      const invoice = await prisma.monthlyRentalInvoice.findUnique({
+      const invoice = await (prisma as any).monthlyRentalInvoice.findUnique({
         where: { id: sourceId },
-        include: { items: true },
+        include: {
+          items: true,
+          customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        },
       });
       if (!invoice) {
         return NextResponse.json({ success: false, message: 'Monthly rental invoice not found' }, { status: 404 });
@@ -175,14 +178,14 @@ export async function GET(request: NextRequest) {
           type: 'monthlyRental',
           id: invoice.id,
           number: invoice.invoiceNumber,
-          customerName: invoice.customerName,
-          customerEmail: invoice.customerEmail,
+          customerId: invoice.customerId ?? null,
+          customer: invoice.customer ?? null,
           amount: totalAmount,
           status: invoice.status,
           dueDate: invoice.dueDate.toISOString(),
           billingMonth: invoice.billingMonth,
           billingYear: invoice.billingYear,
-          items: invoice.items.map((i) => ({
+          items: invoice.items.map((i: { id: string; scaffoldingItemName: string; quantityBilled: number; unitPrice: unknown; lineTotal: unknown }) => ({
             id: i.id,
             scaffoldingItemName: i.scaffoldingItemName,
             quantityBilled: i.quantityBilled,
@@ -196,9 +199,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const charge = await prisma.additionalCharge.findUnique({
+    const charge = await (prisma as any).additionalCharge.findUnique({
       where: { id: sourceId },
-      include: { items: true },
+      include: {
+        items: true,
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
     });
     if (!charge) {
       return NextResponse.json({ success: false, message: 'Additional charge not found' }, { status: 404 });
@@ -210,11 +216,12 @@ export async function GET(request: NextRequest) {
         type: 'additionalCharge',
         id: charge.id,
         number: charge.invoiceNo,
-        customerName: charge.customerName,
+        customerId: charge.customerId ?? null,
+        customer: charge.customer ?? null,
         amount: totalCharges,
         status: charge.status,
         dueDate: charge.dueDate.toISOString(),
-        items: charge.items.map((i) => ({
+        items: charge.items.map((i: { id: string; itemName: string; itemType: string; quantity: number; unitPrice: unknown; amount: unknown }) => ({
           id: i.id,
           itemName: i.itemName,
           itemType: i.itemType,

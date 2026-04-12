@@ -13,7 +13,6 @@ export interface RentalAgreementExportRow {
   owner: string;
   ownerPhone: string;
   hirer: string;
-  hirerPhone: string;
   location: string;
   termOfHire: string;
   monthlyRental: number;
@@ -144,7 +143,6 @@ export function generateRentalAgreementExcel(items: RentalAgreementExportRow[]):
     'Owner',
     'Owner Phone',
     'Hirer',
-    'Hirer Phone',
     'Location',
     'Term of Hire',
     'Monthly Rental (RM)',
@@ -175,7 +173,6 @@ export function generateRentalAgreementExcel(items: RentalAgreementExportRow[]):
       item.owner,
       item.ownerPhone,
       item.hirer,
-      item.hirerPhone,
       item.location,
       item.termOfHire,
       item.monthlyRental,

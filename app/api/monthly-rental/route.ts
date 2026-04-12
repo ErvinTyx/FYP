@@ -216,29 +216,10 @@ async function calculateBillingAmount(
     });
   }
 
-  // Get customer info from first delivery
-  const deliveries = await prisma.deliveryRequest.findMany({
-    where: { agreementNo: agreement.agreementNumber },
-    take: 1,
-  });
-
-  let customerName = '';
-  let customerEmail: string | null = null;
-  let customerPhone: string | null = null;
-  
-  if (deliveries.length > 0) {
-    customerName = deliveries[0].customerName;
-    customerEmail = deliveries[0].customerEmail || null;
-    customerPhone = deliveries[0].customerPhone || null;
-  }
-
   return {
     totalAmount: monthlyRental,
     items,
     daysInPeriod: 30,
-    customerName,
-    customerEmail,
-    customerPhone,
     agreementNo: agreement.agreementNumber,
   };
 }
@@ -275,8 +256,8 @@ export async function GET(request: NextRequest) {
     const agreementId = searchParams.get('agreementId');
     const month = searchParams.get('month');
     const year = searchParams.get('year');
-    const customerName = searchParams.get('customerName') || undefined;
-    const customerEmail = searchParams.get('customerEmail') || undefined;
+    const customerNameParam = searchParams.get('customerName') || undefined;
+    const customerEmailParam = searchParams.get('customerEmail') || undefined;
     const search = searchParams.get('search')?.trim() || undefined;
     const invoiceNumber = searchParams.get('invoiceNumber') || undefined;
 
@@ -286,6 +267,7 @@ export async function GET(request: NextRequest) {
       const invoice = await (prisma as any).monthlyRentalInvoice.findUnique({
         where: { id },
         include: {
+          customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
           deliveryRequest: {
             include: {
               rfq: true,
@@ -374,20 +356,22 @@ export async function GET(request: NextRequest) {
     if (year) {
       where.billingYear = parseInt(year, 10);
     }
-    if (customerName) {
-      where.customerName = { contains: customerName };
+    if (customerNameParam) {
+      where.customer = { OR: [{ firstName: { contains: customerNameParam } }, { lastName: { contains: customerNameParam } }] };
     }
-    if (customerEmail) {
-      where.customerEmail = { contains: customerEmail };
+    if (customerEmailParam) {
+      where.customer = { email: { contains: customerEmailParam } };
     }
     if (invoiceNumber) {
       where.invoiceNumber = { contains: invoiceNumber };
     }
-    // Generic search: OR across invoiceNumber, customerName, deliveryRequest.requestId
+    // Generic search: OR across invoiceNumber, customer name/email, deliveryRequest.requestId
     if (search) {
       where.OR = [
         { invoiceNumber: { contains: search } },
-        { customerName: { contains: search } },
+        { customer: { firstName: { contains: search } } },
+        { customer: { lastName: { contains: search } } },
+        { customer: { email: { contains: search } } },
         { deliveryRequest: { requestId: { contains: search } } },
       ];
     }
@@ -439,6 +423,7 @@ export async function GET(request: NextRequest) {
     const invoices = await (prisma as any).monthlyRentalInvoice.findMany({
       where,
       include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         deliveryRequest: {
           include: {
             rfq: true,
@@ -725,9 +710,7 @@ export async function POST(request: NextRequest) {
         invoiceNumber,
         deliveryRequestId: deliveryRequestId || firstDelivery.id, // Use provided or first delivery
         agreementId,
-        customerName: billing.customerName,
-        customerEmail: billing.customerEmail,
-        customerPhone: billing.customerPhone,
+        customerId: firstDelivery.customerId || null,
         billingMonth: targetMonth,
         billingYear: targetYear,
         billingStartDate,
@@ -743,6 +726,7 @@ export async function POST(request: NextRequest) {
         },
       },
       include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         deliveryRequest: {
           include: {
             rfq: true,
@@ -827,6 +811,7 @@ export async function PUT(request: NextRequest) {
     const invoice = await (prisma as any).monthlyRentalInvoice.findUnique({
       where: { id },
       include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         deliveryRequest: {
           include: {
             rfq: true,
@@ -969,11 +954,12 @@ export async function PUT(request: NextRequest) {
         };
 
         // Send rejection email to the person who uploaded the payment proof
-        const customerEmail = invoice.customerEmail || invoice.paymentProofUploadedBy;
-        if (customerEmail) {
+        const recipientEmail = invoice.customer?.email || invoice.paymentProofUploadedBy;
+        if (recipientEmail) {
+          const customerDisplayName = [invoice.customer?.firstName, invoice.customer?.lastName].filter(Boolean).join(' ') || 'Customer';
           await sendMonthlyRentalRejectionEmail(
-            customerEmail,
-            invoice.customerName,
+            recipientEmail,
+            customerDisplayName,
             invoice.invoiceNumber,
             rejectionReason,
             Number(invoice.totalAmount)
@@ -997,6 +983,7 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: updateData,
       include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         deliveryRequest: {
           include: {
             rfq: true,

@@ -255,29 +255,10 @@ async function calculateBillingAmount(
     });
   }
 
-  // Get customer info from first delivery
-  const deliveries = await prisma.deliveryRequest.findMany({
-    where: { agreementNo: agreement.agreementNumber },
-    take: 1,
-  });
-
-  let customerName = '';
-  let customerEmail: string | null = null;
-  let customerPhone: string | null = null;
-  
-  if (deliveries.length > 0) {
-    customerName = deliveries[0].customerName;
-    customerEmail = deliveries[0].customerEmail || null;
-    customerPhone = deliveries[0].customerPhone || null;
-  }
-
   return {
     totalAmount: monthlyRental,
     items,
     daysInPeriod: 30,
-    customerName,
-    customerEmail,
-    customerPhone,
     agreementNo: agreement.agreementNumber,
   };
 }
@@ -445,9 +426,7 @@ async function generateSubsequentInvoice(agreementId: string) {
         invoiceNumber,
         deliveryRequestId: firstDelivery.id,
         agreementId,
-        customerName: billing.customerName,
-        customerEmail: billing.customerEmail,
-        customerPhone: billing.customerPhone,
+        customerId: firstDelivery.customerId || null,
         billingMonth: targetMonth,
         billingYear: targetYear,
         billingStartDate,

@@ -19,6 +19,17 @@ model User {
   customer            Customer?
   passwordSetupTokens PasswordSetupToken[]
   roles               UserRole[]
+
+  // Back-relations from normalized models
+  rfqs                rFQ[]
+  rentalAgreements    RentalAgreement[]
+  deliveryRequests    DeliveryRequest[]
+  returnRequests      ReturnRequest[]
+  monthlyInvoices     MonthlyRentalInvoice[]
+  conditionReports    ConditionReport[]
+  additionalCharges   AdditionalCharge[]
+  creditNotes         CreditNote[]
+  refunds             Refund[]
 }
 
 model Customer {
@@ -98,9 +109,8 @@ model ContentItem {
 model rFQ {
   id                   String            @id @default(cuid())
   rfqNumber            String            @unique
-  customerName         String            // For display purposes (denormalized)
-  customerEmail        String            // For display purposes (denormalized)
-  customerPhone        String            // For display purposes (denormalized)
+  customerId           String
+  customer             User              @relation(fields: [customerId], references: [id])
   projectName          String
   projectLocation      String
   requestedDate        DateTime          // Always today's date (not editable)
@@ -116,6 +126,8 @@ model rFQ {
   rentalAgreements     RentalAgreement[]
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
+
+  @@index([customerId])
 }
 
 model rFQItem {
@@ -143,7 +155,8 @@ model ConditionReport {
   id                    String                @id @default(cuid())
   rcfNumber             String                @unique
   deliveryOrderNumber   String
-  customerName          String
+  customerId            String?
+  customer              User?                 @relation(fields: [customerId], references: [id])
   returnedBy            String?
   returnDate            String
   inspectionDate        String
@@ -165,6 +178,8 @@ model ConditionReport {
   // Link to Return Request (auto-created from return workflow)
   returnRequestId       String?               @unique
   returnRequest         ReturnRequest?        @relation(fields: [returnRequestId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
 }
 
 model InspectionItem {
@@ -228,7 +243,6 @@ model RepairItem {
   quantityRemaining     Int                  @default(0)
   damageType            String               // bent, cracked, corroded, missing-parts, welding-required, other
   damageDescription     String?              @db.Text
-  repairActions         String?              @db.LongText // JSON array of repair action names (legacy)
   repairActionEntries   String?              @db.LongText // JSON array of RepairActionEntry: {id, action, affectedItems, issueQuantity, costPerUnit, totalCost}
   repairDescription     String?              @db.Text
   repairStatus          String               @default("pending") // pending, in-progress, completed
@@ -236,7 +250,6 @@ model RepairItem {
   writeOffCostPerUnit   Decimal              @default(0) @db.Decimal(15, 2) // Original price of scaffolding item
   writeOffTotalCost     Decimal              @default(0) @db.Decimal(15, 2) // quantityWriteOff × writeOffCostPerUnit
   totalRepairCost       Decimal              @default(0) @db.Decimal(15, 2) // Sum of all repair action entry costs
-  costPerUnit           Decimal              @default(0) @db.Decimal(15, 2) // Legacy
   totalCost             Decimal              @default(0) @db.Decimal(15, 2) // totalRepairCost + writeOffTotalCost
   estimatedCostFromRFQ  Decimal              @default(0) @db.Decimal(15, 2)
   finalCost             Decimal              @default(0) @db.Decimal(15, 2)
@@ -308,7 +321,8 @@ model AdditionalCharge {
   returnRequestId     String?                @unique
   deliverySetId       String?                @unique
   conditionReportId   String?
-  customerName         String
+  customerId           String?
+  customer             User?                  @relation(fields: [customerId], references: [id])
   doId                 String
   returnedDate         String?
   dueDate              DateTime
@@ -327,6 +341,7 @@ model AdditionalCharge {
   @@index([openRepairSlipId])
   @@index([returnRequestId])
   @@index([deliverySetId])
+  @@index([customerId])
   @@index([status])
 }
 
@@ -355,8 +370,9 @@ model RentalAgreement {
   owner                    String
   ownerPhone               String?
   hirer                    String
-  hirerPhone               String?
   location                 String?
+  customerId               String?
+  customer                 User?     @relation(fields: [customerId], references: [id])
   termOfHire               String?
   totalRentalMonth         Int?      // Considered months: remainder >= 15 days → round up to next month
   monthlyRental            Decimal   @default(0)
@@ -395,6 +411,8 @@ model RentalAgreement {
   monthlyInvoices    MonthlyRentalInvoice[]
   closureRequests    ProjectClosureRequest[]
   items              AgreementItem[]
+
+  @@index([customerId])
 }
 
 // Project closure request (one per agreement when user requests closure; PCR-YYYY-NNN)
@@ -449,10 +467,9 @@ model AgreementVersion {
 model DeliveryRequest {
   id              String        @id @default(cuid())
   requestId       String        @unique
-  customerName    String
+  customerId      String?
+  customer        User?         @relation(fields: [customerId], references: [id])
   agreementNo     String
-  customerPhone   String?
-  customerEmail   String?
   deliveryAddress String
   deliveryType    String
   requestDate     DateTime      @default(now())
@@ -465,6 +482,8 @@ model DeliveryRequest {
   updatedAt       DateTime      @updatedAt
   sets            DeliverySet[]
   monthlyInvoices MonthlyRentalInvoice[]
+
+  @@index([customerId])
 }
 
 // Main Delivery Set table - only id, status, and basic info
@@ -596,10 +615,6 @@ model DeliveryCustomerAck {
   customerAcknowledgedAt DateTime?
   customerSignature      String?   @db.Text
   customerSignedBy       String?
-  customerOTP            String?
-  verifiedOTP            Boolean?
-  inventoryUpdatedAt     DateTime?
-  inventoryStatus        String?
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 }
@@ -617,15 +632,14 @@ model DeliverySetItem {
 model ReturnRequest {
   id               String              @id @default(cuid())
   requestId        String              @unique
-  customerName     String
+  customerId       String?
+  customer         User?               @relation(fields: [customerId], references: [id])
   agreementNo      String
   setName          String
   requestDate      DateTime            @default(now())
   status           String              @default("Requested") // Requested, Approved, Pickup Scheduled, Pickup Confirmed, Driver Recording, In Transit, Received at Warehouse, Under Inspection, Sorting Complete, Customer Notified, Dispute Raised, Completed
   reason           String
   pickupAddress    String
-  customerPhone    String?
-  customerEmail    String?
   pickupFee        Decimal?
   returnType       String              // Partial, Full
   collectionMethod String              // Self Return, Transportation Needed
@@ -648,6 +662,8 @@ model ReturnRequest {
   
   // Link to Inspection Module - auto-created Condition Report
   conditionReport  ConditionReport?
+
+  @@index([customerId])
 }
 
 model ReturnRequestItem {
@@ -797,7 +813,6 @@ model ScaffoldingItem {
   reservedQuantity Int                    @default(0)
   price         Decimal                   @default(0)
   originPrice   Decimal?                  @default(0)
-  status        String                    @default("Available")
   location      String?
   itemStatus    String                    @default("Available")
   imageUrl      String?
@@ -872,11 +887,10 @@ model MonthlyRentalInvoice {
   agreementId             String?
   agreement               RentalAgreement? @relation(fields: [agreementId], references: [id])
   
-  // Customer Info (snapshot)
-  customerName            String
-  customerEmail           String?
-  customerPhone           String?
-  
+  // Customer FK
+  customerId              String?
+  customer                User?    @relation(fields: [customerId], references: [id])
+
   // Billing Period
   billingMonth            Int       // 1-12
   billingYear             Int
@@ -916,6 +930,7 @@ model MonthlyRentalInvoice {
   updatedAt               DateTime  @updatedAt
 
   @@unique([agreementId, billingMonth, billingYear], name: "unique_agreement_month_year")
+  @@index([customerId])
 }
 
 model MonthlyRentalInvoiceItem {
@@ -940,10 +955,10 @@ model CreditNote {
   id                      String    @id @default(cuid())
   creditNoteNumber        String    @unique // CN-YYYY-XXX format
   
-  // Customer Info
-  customerName            String
-  customerId              String
-  
+  // Customer FK
+  customerId              String?
+  customer                User?    @relation(fields: [customerId], references: [id])
+
   // Reference
   invoiceType             String    @default("monthlyRental") // deposit, monthlyRental, additionalCharge
   sourceId                String?  // id of Deposit, MonthlyRentalInvoice, or AdditionalCharge
@@ -978,6 +993,8 @@ model CreditNote {
   items                   CreditNoteItem[]
   attachments             CreditNoteAttachment[]
   applications            CreditNoteApplication[]
+
+  @@index([customerId])
 }
 
 model CreditNoteItem {
@@ -989,7 +1006,6 @@ model CreditNoteItem {
   quantity                Int
   previousPrice           Decimal   @db.Decimal(15, 2)  // Price from DO
   currentPrice            Decimal   @db.Decimal(15, 2)  // Price from Invoice
-  unitPrice               Decimal   @db.Decimal(15, 2)  // Legacy compatibility
   amount                  Decimal   @db.Decimal(15, 2)  // Calculated: quantity × currentPrice
   
   createdAt               DateTime  @default(now())
@@ -1034,8 +1050,8 @@ model Refund {
   invoiceType             String    // deposit, monthlyRental, additionalCharge
   sourceId                String    // id of Deposit, MonthlyRentalInvoice, or AdditionalCharge
   originalInvoice         String
-  customerName            String
-  customerId              String
+  customerId              String?
+  customer                User?    @relation(fields: [customerId], references: [id])
   creditNoteId            String?   // linked credit note
   creditNoteNumber        String?   // credit note number for display
   amount                  Decimal   @db.Decimal(15, 2)
@@ -1054,6 +1070,7 @@ model Refund {
   attachments             RefundAttachment[]
 
   @@index([creditNoteId])
+  @@index([customerId])
 }
 
 model RefundAttachment {

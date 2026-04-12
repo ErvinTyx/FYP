@@ -14,9 +14,7 @@ import { prisma } from '../lib/prisma';
 import { RFQ, RFQItem } from '../types/rfq';
 
 export interface CreateRFQPayload {
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
+  customerId: string;
   projectName: string;
   projectLocation: string;
   requestedDate: string;
@@ -62,9 +60,7 @@ export async function createRFQ(payload: CreateRFQPayload): Promise<any> {
     const rfq = await prisma.rFQ.create({
       data: {
         rfqNumber,
-        customerName: payload.customerName,
-        customerEmail: payload.customerEmail,
-        customerPhone: payload.customerPhone,
+        customerId: payload.customerId,
         projectName: payload.projectName,
         projectLocation: payload.projectLocation,
         requestedDate: new Date(payload.requestedDate),

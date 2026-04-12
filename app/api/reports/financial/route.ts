@@ -19,9 +19,12 @@ export async function GET(request: NextRequest) {
     if (dateTo) dateFilter.lte = new Date(dateTo);
 
     // Get monthly rental invoices
-    const invoices = await prisma.monthlyRentalInvoice.findMany({
+    const invoices = await (prisma as any).monthlyRentalInvoice.findMany({
       where: Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : undefined,
       orderBy: [{ billingYear: 'desc' }, { billingMonth: 'desc' }],
+      include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
     });
 
     // Get deposits
@@ -61,7 +64,7 @@ export async function GET(request: NextRequest) {
 
       existing.invoiced += Number(invoice.totalAmount);
       existing.invoiceCount += 1;
-      existing.customers.add(invoice.customerName);
+      existing.customers.add(invoice.customerId || 'unknown');
 
       if (invoice.status === 'Paid') {
         existing.paid += Number(invoice.totalAmount);
@@ -137,6 +140,7 @@ export async function GET(request: NextRequest) {
 
     // Group by customer
     const customerMap = new Map<string, {
+      customerName: string;
       customerEmail: string;
       invoiced: number;
       paid: number;
@@ -149,9 +153,11 @@ export async function GET(request: NextRequest) {
     }>();
 
     for (const invoice of invoices) {
-      const key = invoice.customerName;
+      const customerDisplayName = [invoice.customer?.firstName, invoice.customer?.lastName].filter(Boolean).join(' ') || 'Unknown';
+      const key = invoice.customerId || customerDisplayName;
       const existing = customerMap.get(key) || {
-        customerEmail: invoice.customerEmail || '',
+        customerName: customerDisplayName,
+        customerEmail: invoice.customer?.email || '',
         invoiced: 0,
         paid: 0,
         outstanding: 0,
@@ -191,14 +197,13 @@ export async function GET(request: NextRequest) {
     // Add deposit info to customers
     for (const deposit of deposits) {
       // Find customer from agreement
-      const agreement = await prisma.rentalAgreement.findUnique({
+      const agreement = await (prisma as any).rentalAgreement.findUnique({
         where: { id: deposit.agreementId },
-        select: { hirer: true },
+        select: { customerId: true },
       });
-      
+
       if (agreement) {
-        const customerName = agreement.hirer;
-        const existing = customerMap.get(customerName);
+        const existing = customerMap.get(agreement.customerId || '');
         if (existing) {
           if (deposit.status === 'Paid') {
             existing.depositsPaid += Number(deposit.depositAmount);
@@ -211,7 +216,7 @@ export async function GET(request: NextRequest) {
 
     // Convert to customer data array
     const customerData: CustomerPaymentData[] = Array.from(customerMap.entries())
-      .map(([customerName, data], index) => {
+      .map(([, data], index) => {
         let status: 'Current' | 'Overdue' | 'Critical';
         if (data.overdueDays === 0 || data.outstanding === 0) status = 'Current';
         else if (data.overdueDays > 30) status = 'Critical';
@@ -219,7 +224,7 @@ export async function GET(request: NextRequest) {
 
         return {
           customerId: `CUST-${String(index + 1).padStart(3, '0')}`,
-          customerName,
+          customerName: data.customerName,
           customerEmail: data.customerEmail,
           totalInvoiced: data.invoiced,
           totalPaid: data.paid,
@@ -236,22 +241,22 @@ export async function GET(request: NextRequest) {
 
     // Calculate summary
     const summary = {
-      totalInvoiced: invoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0),
+      totalInvoiced: invoices.reduce((sum: number, inv: { totalAmount: unknown }) => sum + Number(inv.totalAmount), 0),
       totalPaid: invoices
-        .filter(inv => inv.status === 'Paid')
-        .reduce((sum, inv) => sum + Number(inv.totalAmount), 0),
+        .filter((inv: { status: string }) => inv.status === 'Paid')
+        .reduce((sum: number, inv: { totalAmount: unknown }) => sum + Number(inv.totalAmount), 0),
       totalOutstanding: invoices
-        .filter(inv => inv.status !== 'Paid')
-        .reduce((sum, inv) => sum + Number(inv.totalAmount), 0),
+        .filter((inv: { status: string }) => inv.status !== 'Paid')
+        .reduce((sum: number, inv: { totalAmount: unknown }) => sum + Number(inv.totalAmount), 0),
       totalOverdue: invoices
-        .filter(inv => inv.status === 'Overdue')
-        .reduce((sum, inv) => sum + Number(inv.totalAmount), 0),
+        .filter((inv: { status: string }) => inv.status === 'Overdue')
+        .reduce((sum: number, inv: { totalAmount: unknown }) => sum + Number(inv.totalAmount), 0),
       totalDeposits: deposits
-        .filter(d => d.status === 'Paid')
-        .reduce((sum, d) => sum + Number(d.depositAmount), 0),
+        .filter((d: { status: string }) => d.status === 'Paid')
+        .reduce((sum: number, d: { depositAmount: unknown }) => sum + Number(d.depositAmount), 0),
       totalCreditNotes: creditNotes
-        .filter(cn => cn.status === 'Approved')
-        .reduce((sum, cn) => sum + Number(cn.amount), 0),
+        .filter((cn: { status: string }) => cn.status === 'Approved')
+        .reduce((sum: number, cn: { amount: unknown }) => sum + Number(cn.amount), 0),
       avgPaymentRate: monthlyData.length > 0
         ? Math.round(monthlyData.reduce((sum, m) => sum + m.paymentRate, 0) / monthlyData.length)
         : 0,

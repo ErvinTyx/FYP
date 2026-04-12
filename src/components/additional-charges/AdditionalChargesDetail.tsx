@@ -26,6 +26,7 @@ import { UploadPopModal } from "./UploadPopModal";
 import { ApproveModal } from "./ApproveModal";
 import { RejectModal } from "./RejectModal";
 import { AdditionalCharge } from "../../types/additionalCharge";
+import { getCustomerDisplayName } from "../../lib/customerName";
 import { useCreditNotesForSource } from "../../hooks/useCreditNotesForSource";
 import { toast } from "sonner";
 
@@ -40,7 +41,8 @@ function mapApiChargeToDisplay(api: {
   id: string;
   invoiceNo: string;
   doId: string;
-  customerName: string;
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   returnedDate?: string | null;
   dueDate: string;
   status: string;
@@ -56,7 +58,8 @@ function mapApiChargeToDisplay(api: {
     id: api.id,
     invoiceNo: api.invoiceNo,
     doId: api.doId,
-    customerName: api.customerName,
+    customerId: api.customerId ?? null,
+    customer: api.customer ?? null,
     returnedDate: api.returnedDate ?? undefined,
     totalCharges: api.totalCharges,
     status: API_STATUS_TO_DISPLAY[api.status] ?? ("Pending Payment" as AdditionalCharge["status"]),
@@ -399,7 +402,7 @@ export function AdditionalChargesDetail({
             </div>
             <div>
               <p className="text-[14px] text-[#6B7280]">Customer Name</p>
-              <p className="text-[#111827]">{charge.customerName}</p>
+              <p className="text-[#111827]">{getCustomerDisplayName(charge.customer)}</p>
             </div>
             <div>
               <p className="text-[14px] text-[#6B7280]">Total Additional Charges</p>
@@ -723,7 +726,7 @@ export function AdditionalChargesDetail({
         onClose={() => setApproveModalOpen(false)}
         onApprove={handleApproveConfirmed}
         invoiceNo={charge.invoiceNo}
-        customerName={charge.customerName}
+        customerName={getCustomerDisplayName(charge.customer)}
         amount={payableAmount}
       />
       <RejectModal

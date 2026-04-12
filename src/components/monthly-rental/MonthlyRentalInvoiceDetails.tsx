@@ -27,6 +27,7 @@ import { MonthlyRentalInvoice } from '../../types/monthly-rental';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { useCreditNotesForSource } from '../../hooks/useCreditNotesForSource';
+import { getCustomerDisplayName } from '../../lib/customerName';
 import { ApprovalModal } from './ApprovalModal';
 import { RejectionModal } from './RejectionModal';
 
@@ -419,18 +420,18 @@ export function MonthlyRentalInvoiceDetails({
           <CardContent className="space-y-4">
             <div>
               <p className="text-[14px] text-[#6B7280]">Customer Name</p>
-              <p className="text-[#111827]">{invoice.customerName}</p>
+              <p className="text-[#111827]">{getCustomerDisplayName(invoice.customer)}</p>
             </div>
-            {invoice.customerEmail && (
+            {invoice.customer?.email && (
               <div>
                 <p className="text-[14px] text-[#6B7280]">Email</p>
-                <p className="text-[#111827]">{invoice.customerEmail}</p>
+                <p className="text-[#111827]">{invoice.customer.email}</p>
               </div>
             )}
-            {invoice.customerPhone && (
+            {invoice.customer?.phone && (
               <div>
                 <p className="text-[14px] text-[#6B7280]">Phone</p>
-                <p className="text-[#111827]">{invoice.customerPhone}</p>
+                <p className="text-[#111827]">{invoice.customer.phone}</p>
               </div>
             )}
             {invoice.deliveryRequest?.deliveryAddress && (
@@ -767,7 +768,7 @@ export function MonthlyRentalInvoiceDetails({
         onClose={() => setIsApprovalModalOpen(false)}
         onApprove={handleApprove}
         invoiceNumber={invoice.invoiceNumber}
-        customerName={invoice.customerName}
+        customerName={getCustomerDisplayName(invoice.customer)}
         amount={invoice.totalAmount}
       />
 

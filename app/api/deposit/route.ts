@@ -468,7 +468,11 @@ export async function PUT(request: NextRequest) {
       include: {
         agreement: {
           include: {
-            rfq: true,
+            rfq: {
+              include: {
+                customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+              },
+            },
           },
         },
       },
@@ -596,7 +600,7 @@ export async function PUT(request: NextRequest) {
 
         // Send rejection email to the person who uploaded the payment proof
         if (deposit.paymentProofUploadedBy) {
-          const customerEmail = deposit.agreement.rfq?.customerEmail || deposit.paymentProofUploadedBy;
+          const customerEmail = deposit.agreement.rfq?.customer?.email || deposit.paymentProofUploadedBy;
           const customerName = deposit.agreement.hirer;
           
           await sendDepositRejectionEmail(

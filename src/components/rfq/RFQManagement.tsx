@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from '../ui/alert-dialog';
 import { toast } from 'sonner';
+import { getCustomerDisplayName } from '@/lib/customerName';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -425,16 +426,16 @@ export function RFQManagement() {
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">Customer Name</div>
-        <div class="info-value">${escapeHtml(rfq.customerName)}</div>
+        <div class="info-value">${escapeHtml(getCustomerDisplayName(rfq.customer))}</div>
       </div>
       <div class="info-item">
         <div class="info-label">Email</div>
-        <div class="info-value">${escapeHtml(rfq.customerEmail)}</div>
+        <div class="info-value">${escapeHtml(rfq.customer?.email ?? '')}</div>
       </div>
-      ${rfq.customerPhone ? `
+      ${rfq.customer?.phone ? `
       <div class="info-item">
         <div class="info-label">Phone</div>
-        <div class="info-value">${escapeHtml(rfq.customerPhone)}</div>
+        <div class="info-value">${escapeHtml(rfq.customer.phone)}</div>
       </div>
       ` : ''}
     </div>
@@ -527,9 +528,7 @@ export function RFQManagement() {
       if (extendFromRfqId) {
         // Create new RFQ from extended source (POST with extendedFromRfqId)
         const body = {
-          customerName: rfq.customerName,
-          customerEmail: rfq.customerEmail,
-          customerPhone: rfq.customerPhone,
+          customerId: rfq.customerId,
           projectName: rfq.projectName,
           projectLocation: rfq.projectLocation,
           requestedDate: rfq.requestedDate,
@@ -611,9 +610,10 @@ export function RFQManagement() {
   };
 
   const filteredRfqs = rfqs.filter(rfq => {
-    const matchesSearch = 
+    const matchesSearch =
       rfq.rfqNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      rfq.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      getCustomerDisplayName(rfq.customer).toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (rfq.customer?.email ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       rfq.projectName.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || rfq.status === statusFilter;
@@ -676,15 +676,15 @@ export function RFQManagement() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-gray-500">Select Customer</Label>
-                <Input value={selectedForDisplay ? selectedForDisplay.customerName : '—'} readOnly disabled className="bg-gray-100" />
+                <Input value={selectedForDisplay ? getCustomerDisplayName(selectedForDisplay.customer) : '—'} readOnly disabled className="bg-gray-100" />
               </div>
               <div className="space-y-2">
                 <Label className="text-gray-500">Email</Label>
-                <Input value={selectedForDisplay ? selectedForDisplay.customerEmail : '—'} readOnly disabled className="bg-gray-100" />
+                <Input value={selectedForDisplay ? (selectedForDisplay.customer?.email ?? '—') : '—'} readOnly disabled className="bg-gray-100" />
               </div>
               <div className="space-y-2">
                 <Label className="text-gray-500">Phone</Label>
-                <Input value={selectedForDisplay ? selectedForDisplay.customerPhone || '—' : '—'} readOnly disabled className="bg-gray-100" />
+                <Input value={selectedForDisplay ? (selectedForDisplay.customer?.phone ?? '—') : '—'} readOnly disabled className="bg-gray-100" />
               </div>
             </div>
           </CardContent>
@@ -891,7 +891,7 @@ export function RFQManagement() {
                         <User className="size-4 text-gray-400" />
                         <div>
                           <p className="text-gray-500">Customer</p>
-                          <p className="text-[#231F20]">{rfq.customerName}</p>
+                          <p className="text-[#231F20]">{getCustomerDisplayName(rfq.customer)}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

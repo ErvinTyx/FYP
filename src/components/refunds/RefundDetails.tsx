@@ -25,6 +25,7 @@ import {
 } from "../ui/table";
 import { toast } from "sonner";
 import { formatRfqDate } from "../../lib/rfqDate";
+import { getCustomerDisplayName } from "../../lib/customerName";
 import type { Refund, RefundStatus } from "../../types/refund";
 import type { RelatedCreditNote } from "../../types/refund";
 
@@ -278,7 +279,7 @@ export function RefundDetails({
             <AlertDialogDescription>
               Are you sure you want to approve this refund of RM
               {refund.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
-              for {refund.customerName}? This action cannot be undone.
+              for {getCustomerDisplayName(refund.customer)}? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -374,7 +375,7 @@ export function RefundDetails({
             </div>
             <div className="col-span-2">
               <p className="text-[14px] text-[#6B7280]">Customer</p>
-              <p className="text-[#111827]">{refund.customerName}</p>
+              <p className="text-[#111827]">{getCustomerDisplayName(refund.customer)}</p>
             </div>
           </div>
         </CardContent>
@@ -391,7 +392,7 @@ export function RefundDetails({
           </div>
           <div className="flex justify-between">
             <span className="text-[14px] text-[#6B7280]">Customer</span>
-            <span className="text-[14px] text-[#111827]">{refund.customerName}</span>
+            <span className="text-[14px] text-[#111827]">{getCustomerDisplayName(refund.customer)}</span>
           </div>
           <div className="border-t border-[#E5E7EB] pt-3 flex justify-between">
             <span className="text-[#111827]">Refund Amount</span>

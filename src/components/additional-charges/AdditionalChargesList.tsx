@@ -38,6 +38,7 @@ import { UploadPopModal } from "./UploadPopModal";
 import { ApproveModal } from "./ApproveModal";
 import { RejectModal } from "./RejectModal";
 import { AdditionalCharge } from "../../types/additionalCharge";
+import { getCustomerDisplayName } from "../../lib/customerName";
 import { toast } from "sonner";
 
 const PAGE_SIZES = [5, 10, 25, 50] as const;
@@ -54,7 +55,8 @@ function mapApiChargeToDisplay(api: {
   id: string;
   invoiceNo: string;
   doId: string;
-  customerName: string;
+  customerId?: string | null;
+  customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
   returnedDate?: string | null;
   dueDate: string;
   status: string;
@@ -71,7 +73,8 @@ function mapApiChargeToDisplay(api: {
     id: api.id,
     invoiceNo: api.invoiceNo,
     doId: api.doId,
-    customerName: api.customerName,
+    customerId: api.customerId ?? null,
+    customer: api.customer ?? null,
     returnedDate: api.returnedDate ?? undefined,
     totalCharges: api.totalCharges,
     status: API_STATUS_TO_DISPLAY[api.status] ?? ("Pending Payment" as AdditionalCharge["status"]),
@@ -457,7 +460,7 @@ export function AdditionalChargesList({ onViewDetails, userRole = "Other" }: Add
                         <TableRow key={charge.id} className="hover:bg-[#F9FAFB]">
                           <TableCell className="text-[#231F20]">{charge.invoiceNo}</TableCell>
                           <TableCell className="text-[#231F20]">{charge.doId}</TableCell>
-                          <TableCell className="text-[#374151]">{charge.customerName}</TableCell>
+                          <TableCell className="text-[#374151]">{getCustomerDisplayName(charge.customer)}</TableCell>
                           <TableCell className="text-[#231F20]">
                             RM{charge.totalCharges.toFixed(2)}
                           </TableCell>
@@ -584,7 +587,7 @@ export function AdditionalChargesList({ onViewDetails, userRole = "Other" }: Add
             }}
             onApprove={handleApproveConfirmed}
             invoiceNo={selectedCharge.invoiceNo}
-            customerName={selectedCharge.customerName}
+            customerName={getCustomerDisplayName(selectedCharge.customer)}
             amount={selectedCharge.totalCharges}
           />
           <RejectModal

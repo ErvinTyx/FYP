@@ -4,6 +4,7 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { ConditionReport } from '../../types/inspection';
 import { formatRfqDate } from '../../lib/rfqDate';
+import { getCustomerDisplayName } from '../../lib/customerName';
 
 interface ConditionReportListProps {
   reports: ConditionReport[];
@@ -17,11 +18,14 @@ interface ConditionReportListProps {
 
 export function ConditionReportList({ reports, searchQuery, sourceFilter = 'all', onEdit, onDelete, onCreateRepairSlip, existingRepairSlips = [] }: ConditionReportListProps) {
   // Filter by search query
-  let filteredReports = reports.filter(report =>
-    report.rcfNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    report.deliveryOrderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    report.customerName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  let filteredReports = reports.filter(report => {
+    const customerDisplay = getCustomerDisplayName(report.customer) || report.customerName || '';
+    return (
+      report.rcfNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      report.deliveryOrderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      customerDisplay.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
   
   // Filter by source
   if (sourceFilter === 'from-return') {
@@ -104,7 +108,7 @@ export function ConditionReportList({ reports, searchQuery, sourceFilter = 'all'
                     <User className="size-4 text-gray-400" />
                     <div>
                       <p className="text-gray-500">Customer</p>
-                      <p className="text-[#231F20]">{report.customerName}</p>
+                      <p className="text-[#231F20]">{getCustomerDisplayName(report.customer) || report.customerName || '—'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

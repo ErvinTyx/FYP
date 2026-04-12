@@ -44,11 +44,7 @@ export async function GET(request: NextRequest) {
     }
     
     if (status && status !== 'all') {
-      if (status === 'Unavailable') {
-        where.itemStatus = 'Unavailable';
-      } else {
-        where.status = status;
-      }
+      where.itemStatus = status;
     }
     
     if (search) {
@@ -80,7 +76,6 @@ export async function GET(request: NextRequest) {
       reservedQuantity: (item as unknown as ScaffoldingItemWithReserved).reservedQuantity ?? 0,
       price: Number(item.price),
       originPrice: item.originPrice != null ? Number(item.originPrice) : 0,
-      status: item.status,
       location: item.location,
       itemStatus: item.itemStatus,
       imageUrl: item.imageUrl,
@@ -176,9 +171,8 @@ export async function POST(request: NextRequest) {
         available: avail,
         price: price ?? 0,
         originPrice: originPrice != null ? originPrice : 0,
-        status,
         location: location || 'Warehouse A',
-        itemStatus: itemStatus || 'Available',
+        itemStatus: itemStatus || status || 'Available',
         imageUrl,
         damageRepairs: Array.isArray(damageRepairs) && damageRepairs.length > 0
           ? {
@@ -212,7 +206,6 @@ export async function POST(request: NextRequest) {
         reservedQuantity: (scaffoldingItem as unknown as ScaffoldingItemWithReserved).reservedQuantity ?? 0,
         price: Number(scaffoldingItem.price),
         originPrice: scaffoldingItem.originPrice != null ? Number(scaffoldingItem.originPrice) : 0,
-        status: scaffoldingItem.status,
         location: scaffoldingItem.location,
         itemStatus: scaffoldingItem.itemStatus,
         imageUrl: scaffoldingItem.imageUrl,
@@ -307,9 +300,8 @@ export async function PUT(request: NextRequest) {
           available: newAvailable,
           price: price !== undefined ? price : existingItem.price,
           originPrice: originPrice !== undefined ? originPrice : existingItem.originPrice,
-          status,
           location: location !== undefined ? location : existingItem.location,
-          itemStatus: itemStatus !== undefined ? itemStatus : existingItem.itemStatus,
+          itemStatus: itemStatus !== undefined ? itemStatus : (status || existingItem.itemStatus),
           imageUrl: imageUrl !== undefined ? imageUrl : existingItem.imageUrl,
           ...(damageRepairsArray.length > 0 && {
             damageRepairs: {
@@ -345,12 +337,11 @@ export async function PUT(request: NextRequest) {
         reservedQuantity: (updatedItem as unknown as ScaffoldingItemWithReserved).reservedQuantity ?? 0,
         price: Number(updatedItem.price),
         originPrice: updatedItem.originPrice != null ? Number(updatedItem.originPrice) : 0,
-        status: updatedItem.status,
         location: updatedItem.location,
         itemStatus: updatedItem.itemStatus,
         imageUrl: updatedItem.imageUrl,
-        damageRepairs: updatedItem.damageRepairs.length > 0
-          ? updatedItem.damageRepairs.map(dr => ({
+        damageRepairs: (updatedItem as unknown as { damageRepairs?: Array<{ description: string; repairChargePerUnit: { toNumber(): number }; partsLabourCostPerUnit: { toNumber(): number }; costPerUnit: { toNumber(): number } }> }).damageRepairs?.length
+          ? (updatedItem as unknown as { damageRepairs: Array<{ description: string; repairChargePerUnit: { toNumber(): number }; partsLabourCostPerUnit: { toNumber(): number }; costPerUnit: { toNumber(): number } }> }).damageRepairs.map(dr => ({
               description: dr.description,
               repairChargePerUnit: Number(dr.repairChargePerUnit),
               partsLabourCostPerUnit: Number(dr.partsLabourCostPerUnit),

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ArrowLeft, Download, CheckCircle, XCircle, FileText, Printer, CreditCard, DollarSign } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
+import { getCustomerDisplayName } from "../../lib/customerName";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -188,7 +189,7 @@ export function CreditNoteDetails({
           <CardContent className="space-y-4">
             <div>
               <p className="text-[14px] text-[#6B7280]">Customer Name</p>
-              <p className="text-[#111827]">{creditNote.customer}</p>
+              <p className="text-[#111827]">{getCustomerDisplayName(creditNote.customer)}</p>
             </div>
             <div>
               <p className="text-[14px] text-[#6B7280]">Customer ID</p>
@@ -273,7 +274,7 @@ export function CreditNoteDetails({
                   <TableCell className="text-[#111827]">{item.description}</TableCell>
                   <TableCell className="text-right text-[#374151]">{item.quantity}</TableCell>
                   <TableCell className="text-right text-[#374151]">
-                        RM{(item.unitPrice ?? 0).toLocaleString()}
+                        RM{(item.currentPrice ?? 0).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right text-[#111827]">
                         RM{(item.amount ?? 0).toLocaleString()}
@@ -546,7 +547,7 @@ export function CreditNoteDetails({
               <p className="text-lg font-medium mt-2">{creditNote.creditNoteNumber}</p>
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <p><span className="text-[#6B7280]">Customer:</span> {creditNote.customerName}</p>
+              <p><span className="text-[#6B7280]">Customer:</span> {getCustomerDisplayName(creditNote.customer)}</p>
               <p><span className="text-[#6B7280]">Date:</span> {creditNote.date}</p>
               <p><span className="text-[#6B7280]">Status:</span> {creditNote.status}</p>
               <p><span className="text-[#6B7280]">Amount:</span> RM {creditNote.amount.toLocaleString("en-MY", { minimumFractionDigits: 2 })}</p>
@@ -582,7 +583,7 @@ export function CreditNoteDetails({
         onClose={() => setIsApprovalModalOpen(false)}
         onApprove={handleConfirmApprove}
         creditNoteNumber={creditNote.creditNoteNumber}
-        customer={creditNote.customer}
+        customer={getCustomerDisplayName(creditNote.customer)}
         amount={creditNote.amount}
       />
 

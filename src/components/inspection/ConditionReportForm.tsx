@@ -279,7 +279,7 @@ export function ConditionReportForm({
       setFormData({
         rcfNumber: report.rcfNumber,
         deliveryOrderNumber: report.deliveryOrderNumber,
-        customerName: report.customerName,
+        customerName: report.customerName || '',
         returnedBy: report.returnedBy || '',
         returnDate: report.returnDate,
         inspectionDate: report.inspectionDate,
@@ -474,7 +474,7 @@ export function ConditionReportForm({
 
   const handleSubmit = () => {
     // Validation
-    if (!formData.rcfNumber || !formData.deliveryOrderNumber || !formData.customerName || !formData.returnedBy) {
+    if (!formData.rcfNumber || !formData.deliveryOrderNumber || !formData.returnedBy) {
       toast.error('Please fill in all required fields');
       return;
     }

@@ -15,8 +15,11 @@ export async function GET(request: NextRequest) {
     else if (dateFrom) invoiceWhere.dueDate = { gte: dateFrom };
     else if (dateTo) invoiceWhere.dueDate = { lte: dateTo };
 
-    const invoices = await prisma.monthlyRentalInvoice.findMany({
+    const invoices = await (prisma as any).monthlyRentalInvoice.findMany({
       where: invoiceWhere,
+      include: {
+        customer: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
     });
 
     const depositWhere: { status: { not: string }; dueDate?: { gte?: Date; lte?: Date } } = { status: { not: 'Paid' } };
@@ -37,7 +40,8 @@ export async function GET(request: NextRequest) {
     const now = new Date();
 
     for (const inv of invoices) {
-      const key = inv.customerName;
+      const customerDisplayName = [inv.customer?.firstName, inv.customer?.lastName].filter(Boolean).join(' ') || 'Unknown';
+      const key = inv.customerId || customerDisplayName;
       const amount = Number(inv.totalAmount);
       const isOverdue = inv.status === 'Overdue';
       const dueDate = new Date(inv.dueDate);

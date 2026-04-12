@@ -15,18 +15,18 @@ export function generateAdditionalChargeInvoiceNo(): string {
 export async function createChargeForReturn(params: {
   returnRequestId: string;
   pickupFee: number;
-  customerName: string;
+  customerId: string | null | undefined;
   doNumber: string;
 }) {
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 7);
   const invoiceNo = generateAdditionalChargeInvoiceNo();
 
-  return prisma.additionalCharge.create({
+  return (prisma as any).additionalCharge.create({
     data: {
       invoiceNo,
       returnRequestId: params.returnRequestId,
-      customerName: params.customerName,
+      customerId: params.customerId || null,
       doId: params.doNumber,
       dueDate,
       status: 'pending_payment',
@@ -50,18 +50,18 @@ export async function createChargeForReturn(params: {
 export async function createChargeForDelivery(params: {
   deliverySetId: string;
   deliveryFee: number;
-  customerName: string;
+  customerId: string | null | undefined;
   doNumber: string;
 }) {
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 7);
   const invoiceNo = generateAdditionalChargeInvoiceNo();
 
-  return prisma.additionalCharge.create({
+  return (prisma as any).additionalCharge.create({
     data: {
       invoiceNo,
       deliverySetId: params.deliverySetId,
-      customerName: params.customerName,
+      customerId: params.customerId || null,
       doId: params.doNumber,
       dueDate,
       status: 'pending_payment',

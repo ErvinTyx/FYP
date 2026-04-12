@@ -28,12 +28,19 @@ export interface RFQSet {
   items: RFQItem[];
 }
 
+export interface RFQCustomer {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email: string;
+  phone?: string | null;
+}
+
 export interface RFQ {
   id: string;
   rfqNumber: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
+  customerId: string;
+  customer?: RFQCustomer | null;
   projectName: string;
   projectLocation: string;
   requestedDate: string;

@@ -45,8 +45,8 @@ function buildAgreementSnapshot(agreement: {
   owner: string;
   ownerPhone: string | null;
   hirer: string;
-  hirerPhone: string | null;
   location: string | null;
+  customerId?: string | null;
   termOfHire: string | null;
   totalRentalMonth?: number | null;
   monthlyRental: unknown;
@@ -69,7 +69,7 @@ function buildAgreementSnapshot(agreement: {
     owner: agreement.owner,
     ownerPhone: agreement.ownerPhone,
     hirer: agreement.hirer,
-    hirerPhone: agreement.hirerPhone,
+    customerId: agreement.customerId ?? null,
     location: agreement.location,
     termOfHire: agreement.termOfHire,
     totalRentalMonth: agreement.totalRentalMonth ?? null,
@@ -149,8 +149,9 @@ export async function GET(request: NextRequest) {
       // Always include rfq (for totalAmount in list); include items only when requested; include source agreement for "extended from" label
       include: {
         rfq: includeRfqItems
-          ? { include: { items: true } }
-          : true,
+          ? { include: { items: true, customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } }
+          : { include: { customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } },
+        customer: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
         extendedFromAgreement: { select: { id: true, agreementNumber: true } },
       },
     });
@@ -194,9 +195,7 @@ export async function GET(request: NextRequest) {
     type RFQWithItems = {
       id: string;
       rfqNumber: string;
-      customerName: string;
-      customerEmail: string;
-      customerPhone: string;
+      customer: { id: string; firstName: string | null; lastName: string | null; email: string; phone: string | null } | null;
       projectName: string;
       projectLocation: string;
       totalAmount: unknown;
@@ -237,9 +236,7 @@ export async function GET(request: NextRequest) {
       const rfqData = a.rfq ? {
         id: a.rfq.id,
         rfqNumber: a.rfq.rfqNumber,
-        customerName: a.rfq.customerName,
-        customerEmail: a.rfq.customerEmail,
-        customerPhone: a.rfq.customerPhone,
+        customer: a.rfq.customer ?? null,
         projectName: a.rfq.projectName,
         projectLocation: a.rfq.projectLocation,
         totalAmount: Number(a.rfq.totalAmount),
@@ -265,7 +262,8 @@ export async function GET(request: NextRequest) {
         owner: agreement.owner,
         ownerPhone: agreement.ownerPhone,
         hirer: agreement.hirer,
-        hirerPhone: agreement.hirerPhone,
+        customerId: (agreement as { customerId?: string | null }).customerId ?? null,
+        customer: (agreement as { customer?: { id: string; firstName: string | null; lastName: string | null; email: string; phone: string | null } | null }).customer ?? null,
       location: agreement.location,
       termOfHire: agreement.termOfHire,
       totalRentalMonth: (agreement as { totalRentalMonth?: number | null }).totalRentalMonth ?? null,
@@ -342,7 +340,7 @@ export async function POST(request: NextRequest) {
       owner,
       ownerPhone,
       hirer,
-      hirerPhone,
+      customerId: bodyCustomerId,
       location,
       termOfHire,
       monthlyRental,
@@ -462,7 +460,6 @@ export async function POST(request: NextRequest) {
       owner,
       ownerPhone: ownerPhone || null,
       hirer,
-      hirerPhone: hirerPhone || null,
       location: location || null,
       termOfHire: resolvedTermOfHire,
       totalRentalMonth,
@@ -492,7 +489,6 @@ export async function POST(request: NextRequest) {
             owner,
             ownerPhone: ownerPhone || null,
             hirer,
-            hirerPhone: hirerPhone || null,
             location: location || null,
             termOfHire: resolvedTermOfHire,
             totalRentalMonth,
@@ -557,7 +553,7 @@ export async function POST(request: NextRequest) {
         rfq: newAgreement.rfq ? {
           id: newAgreement.rfq.id,
           rfqNumber: newAgreement.rfq.rfqNumber,
-          customerName: newAgreement.rfq.customerName,
+          customerId: newAgreement.rfq.customerId,
           totalAmount: Number(newAgreement.rfq.totalAmount),
         } : null,
         versions: newAgreement.versions.map(v => ({
@@ -638,7 +634,7 @@ export async function PUT(request: NextRequest) {
 
     // Only scalar fields allowed for update (exclude relations and read-only fields from body)
     const scalarFields = [
-      'agreementNumber', 'poNumber', 'projectName', 'owner', 'ownerPhone', 'hirer', 'hirerPhone',
+      'agreementNumber', 'poNumber', 'projectName', 'owner', 'ownerPhone', 'hirer',
       'location', 'termOfHire', 'totalRentalMonth', 'monthlyRental', 'securityDeposit', 'minimumCharges',
       'defaultInterest', 'ownerSignatoryName', 'ownerNRIC', 'hirerSignatoryName', 'hirerNRIC',
       'ownerSignature', 'hirerSignature', 'ownerSignatureDate', 'hirerSignatureDate',
@@ -785,7 +781,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const agOut = updatedAgreement as typeof updatedAgreement & { rfq?: { id: string; rfqNumber: string; customerName: string; totalAmount: unknown } | null };
+    const agOut = updatedAgreement as typeof updatedAgreement & { rfq?: { id: string; rfqNumber: string; customerId: string | null; totalAmount: unknown } | null };
     return NextResponse.json({
       success: true,
       message: createdDeposit
@@ -805,7 +801,7 @@ export async function PUT(request: NextRequest) {
         rfq: agOut.rfq ? {
           id: agOut.rfq.id,
           rfqNumber: agOut.rfq.rfqNumber,
-          customerName: agOut.rfq.customerName,
+          customerId: agOut.rfq.customerId ?? null,
           totalAmount: Number(agOut.rfq.totalAmount),
         } : null,
         versions: updatedAgreement.versions.map((v) => ({

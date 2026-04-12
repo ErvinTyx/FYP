@@ -33,7 +33,6 @@ export interface Deposit {
     agreementNumber: string;
     projectName: string;
     hirer: string;
-    hirerPhone?: string;
     owner: string;
     monthlyRental: number;
     securityDeposit: number;
@@ -41,8 +40,8 @@ export interface Deposit {
     rfq?: {
       id: string;
       rfqNumber: string;
-      customerName: string;
-      customerEmail: string;
+      customerId: string;
+      customer?: { id: string; firstName?: string | null; lastName?: string | null; email: string; phone?: string | null } | null;
       totalAmount: number;
       items?: RentalItem[];
     };
@@ -51,8 +50,6 @@ export interface Deposit {
   // Legacy fields for backwards compatibility
   depositId?: string; // Alias for depositNumber
   invoiceNo?: string;
-  customerName?: string;
-  customerId?: string;
   agreementDocument?: DepositDocument;
   paymentProof?: DepositDocument;
   referenceId?: string; // Alias for referenceNumber
@@ -90,7 +87,6 @@ export interface DepositDocument {
 
 export interface DepositFormData {
   invoiceNo: string;
-  customerName: string;
   customerId: string;
   depositAmount: number;
   dueDate: string;

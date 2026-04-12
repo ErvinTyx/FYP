@@ -84,7 +84,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id: reportId } = await params;
     const {
       deliveryOrderNumber,
-      customerName,
+      customerId,
       returnedBy,
       returnDate,
       inspectionDate,
@@ -146,7 +146,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         where: { id: reportId },
         data: {
           deliveryOrderNumber: deliveryOrderNumber || existingReport.deliveryOrderNumber,
-          customerName: customerName || existingReport.customerName,
+          customerId: customerId !== undefined ? customerId : existingReport.customerId,
           returnedBy: returnedBy !== undefined ? returnedBy : existingReport.returnedBy,
           returnDate: returnDate || existingReport.returnDate,
           inspectionDate: inspectionDate || existingReport.inspectionDate,

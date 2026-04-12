@@ -176,7 +176,7 @@ export function InspectionMaintenanceModule() {
       // Prepare data for API
       const reportData = {
         deliveryOrderNumber: report.deliveryOrderNumber,
-        customerName: report.customerName,
+        customerId: report.customerId || null,
         returnedBy: report.returnedBy,
         returnDate: report.returnDate,
         inspectionDate: report.inspectionDate,

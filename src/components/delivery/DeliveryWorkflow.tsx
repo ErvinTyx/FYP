@@ -27,6 +27,7 @@ import { ScrollableTimePicker } from '../ui/scrollable-time-picker';
 import { toast } from 'sonner';
 import { format, startOfDay, isBefore } from 'date-fns';
 import { DeliveryOrder, DeliveryItem } from './DeliveryManagement';
+import { getCustomerDisplayName } from '../../lib/customerName';
 import {
   Dialog,
   DialogContent,
@@ -133,11 +134,15 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
 
   // Auto-select customer from DO data when customers are loaded
   useEffect(() => {
-    if (customers.length > 0 && formData.customerName && !selectedCustomerId) {
-      const customerName = formData.customerName;
+    // Prefer the FK customer object; fall back to the pre-computed customerName string
+    const displayName = getCustomerDisplayName(formData.customer) !== 'Unknown'
+      ? getCustomerDisplayName(formData.customer)
+      : formData.customerName;
+
+    if (customers.length > 0 && displayName && !selectedCustomerId) {
       const match = customers.find(c => {
         const fullName = [c.firstName, c.lastName].filter(Boolean).join(' ');
-        return fullName.toLowerCase() === customerName.toLowerCase();
+        return fullName.toLowerCase() === displayName.toLowerCase();
       });
       if (match) {
         setSelectedCustomerId(match.id);
@@ -145,7 +150,7 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
         setCustomerName(fullName);
       }
     }
-  }, [customers, formData.customerName, selectedCustomerId]);
+  }, [customers, formData.customerName, formData.customer, selectedCustomerId]);
 
   useEffect(() => {
     if (delivery) {
@@ -1249,7 +1254,9 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             <div className="space-y-2">
               <Label>Customer</Label>
               <Input
-                value={formData.customerName || ''}
+                value={getCustomerDisplayName(formData.customer) !== 'Unknown'
+                  ? getCustomerDisplayName(formData.customer)
+                  : (formData.customerName || '')}
                 readOnly
                 disabled
                 className="disabled:bg-gray-100"
@@ -1500,8 +1507,10 @@ export function DeliveryWorkflow({ delivery, onSave, onBack }: DeliveryWorkflowP
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <h4 className="text-[#231F20] mb-2">Customer Details</h4>
-                <p className="text-sm"><strong>Name:</strong> {formData.customerName}</p>
-                <p className="text-sm"><strong>Contact:</strong> {formData.customerContact}</p>
+                <p className="text-sm"><strong>Name:</strong> {getCustomerDisplayName(formData.customer) !== 'Unknown'
+                  ? getCustomerDisplayName(formData.customer)
+                  : formData.customerName}</p>
+                <p className="text-sm"><strong>Contact:</strong> {formData.customer?.phone || formData.customerContact}</p>
                 <p className="text-sm"><strong>Address:</strong> {formData.customerAddress}</p>
               </div>
               <div className="space-y-1">

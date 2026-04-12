@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Search, Eye, MoreVertical, CheckCircle, XCircle } from "lucide-react";
 import { formatRfqDate } from "../../lib/rfqDate";
+import { getCustomerDisplayName } from "../../lib/customerName";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -250,7 +251,7 @@ export function CreditNotesList({
               ) : (
                 displayNotes.map((note) => (
                   <TableRow key={note.id} className="h-14 hover:bg-[#F3F4F6]">
-                    <TableCell className="text-[#374151]">{note.customer}</TableCell>
+                    <TableCell className="text-[#374151]">{getCustomerDisplayName(note.customer)}</TableCell>
                     <TableCell className="text-[#374151]">
                       {note.originalInvoice}
                     </TableCell>
@@ -350,7 +351,7 @@ export function CreditNotesList({
           }}
           onApprove={handleApprove}
           creditNoteNumber={selectedNoteForApproval.creditNoteNumber}
-          customer={selectedNoteForApproval.customer}
+          customer={getCustomerDisplayName(selectedNoteForApproval.customer)}
           amount={selectedNoteForApproval.amount}
         />
       )}

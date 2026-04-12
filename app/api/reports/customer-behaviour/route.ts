@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       if (dateFrom) (invoiceWhere.billingEndDate as { gte?: Date }).gte = dateFrom;
       if (dateTo) (invoiceWhere.billingEndDate as { lte?: Date }).lte = dateTo;
     }
-    const invoices = await prisma.monthlyRentalInvoice.findMany({
+    const invoices = await (prisma as any).monthlyRentalInvoice.findMany({
       where: Object.keys(invoiceWhere).length ? invoiceWhere : undefined,
     });
     const agreements = await prisma.rentalAgreement.findMany({
@@ -53,16 +53,11 @@ export async function GET(request: NextRequest) {
     }
 
     for (const inv of invoices) {
-      const custName = inv.customerName;
-      let custId = custName;
-      const matchedUser = customers.find(
-        u => u.email === inv.customerEmail || `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() === custName
-      );
-      if (matchedUser) custId = matchedUser.id;
+      const custId = inv.customerId || inv.agreementId || 'unknown';
 
       if (!customerMap.has(custId)) {
         customerMap.set(custId, {
-          customer_name: custName,
+          customer_name: custId,
           industry_type: 'N/A',
           projects: new Set(),
           total_rental_value: 0,
