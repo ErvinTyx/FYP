@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 1020" width="680" height="1020">
+  <defs>
+    <style>
+      .title   { font: bold 18px 'Segoe UI', Arial, sans-serif; fill: #1a1a1a; }
+      .sub     { font: 13px 'Segoe UI', Arial, sans-serif; fill: #555; }
+      .blabel  { font: bold 14px 'Segoe UI', Arial, sans-serif; fill: #fff; }
+      .bsub    { font: 12px 'Segoe UI', Arial, sans-serif; fill: #fff; }
+      .glabel  { font: bold 13px 'Segoe UI', Arial, sans-serif; fill: #1a1a1a; }
+      .gate-hd { font: bold 14px 'Segoe UI', Arial, sans-serif; fill: #1a1a1a; }
+    </style>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#555"/>
+    </marker>
+    <marker id="arr-w" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#fff"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="340" y="34" text-anchor="middle" class="title">Rental Lifecycle with Three-Gate Closure</text>
+  <text x="340" y="54" text-anchor="middle" class="sub">Traced from: app/api/*, src/components/ProjectClosureManagement.tsx, prisma/schema.prisma</text>
+
+  <!-- =========================================================
+       PHASE 1 – RFQ & AGREEMENT
+  ========================================================= -->
+  <rect x="30" y="70" width="620" height="14" rx="4" fill="#5B9BD5"/>
+  <text x="340" y="81" text-anchor="middle" font-size="12" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Phase 1 — Quotation &amp; Agreement</text>
+
+  <!-- RFQ box -->
+  <rect x="60" y="92" width="170" height="66" rx="6" fill="#5B9BD5" stroke="#2D6FA8" stroke-width="1"/>
+  <text x="145" y="113" text-anchor="middle" class="blabel">RFQ Submitted</text>
+  <text x="145" y="131" text-anchor="middle" class="bsub">Customer creates rFQ</text>
+  <text x="145" y="147" text-anchor="middle" class="bsub">Items, qty, rental months</text>
+
+  <line x1="230" y1="125" x2="268" y2="125" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="249" y="118" text-anchor="middle" class="sub" font-size="11">Approve</text>
+
+  <!-- Quotation box -->
+  <rect x="268" y="92" width="170" height="66" rx="6" fill="#5B9BD5" stroke="#2D6FA8" stroke-width="1"/>
+  <text x="353" y="113" text-anchor="middle" class="blabel">Quotation Issued</text>
+  <text x="353" y="131" text-anchor="middle" class="bsub">Sales reviews &amp; prices</text>
+  <text x="353" y="147" text-anchor="middle" class="bsub">RFQ status → quoted</text>
+
+  <line x1="438" y1="125" x2="476" y2="125" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="457" y="118" text-anchor="middle" class="sub" font-size="11">Accept</text>
+
+  <!-- Agreement box -->
+  <rect x="476" y="92" width="168" height="66" rx="6" fill="#5B9BD5" stroke="#2D6FA8" stroke-width="1"/>
+  <text x="560" y="113" text-anchor="middle" class="blabel">Rental Agreement</text>
+  <text x="560" y="131" text-anchor="middle" class="bsub">RentalAgreement created</text>
+  <text x="560" y="147" text-anchor="middle" class="bsub">Both parties sign; deposit due</text>
+
+  <!-- Extension note -->
+  <rect x="280" y="166" width="260" height="22" rx="4" fill="#EBF5FB" stroke="#5B9BD5" stroke-width="0.8"/>
+  <text x="410" y="181" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#2D6FA8">Extension: new RFQ linked via extendedFromRfqId</text>
+
+  <!-- Arrow Phase 1 → Phase 2 -->
+  <line x1="340" y1="196" x2="340" y2="218" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- =========================================================
+       PHASE 2 – DELIVERY
+  ========================================================= -->
+  <rect x="30" y="218" width="620" height="14" rx="4" fill="#4CAF50"/>
+  <text x="340" y="229" text-anchor="middle" font-size="12" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Phase 2 — Delivery (8-step workflow per DeliverySet)</text>
+
+  <!-- Delivery steps row -->
+  <!-- Step boxes: narrower to fit 8 -->
+  <rect x="30" y="240" width="74" height="50" rx="4" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="67" y="261" text-anchor="middle" class="bsub">1. Packing</text>
+  <text x="67" y="275" text-anchor="middle" class="bsub">List</text>
+
+  <line x1="104" y1="265" x2="112" y2="265" stroke="#2E7D32" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="112" y="240" width="72" height="50" rx="4" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="148" y="261" text-anchor="middle" class="bsub">2. Stock</text>
+  <text x="148" y="275" text-anchor="middle" class="bsub">Check</text>
+
+  <line x1="184" y1="265" x2="192" y2="265" stroke="#2E7D32" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="192" y="240" width="72" height="50" rx="4" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="228" y="261" text-anchor="middle" class="bsub">3. Delivery</text>
+  <text x="228" y="275" text-anchor="middle" class="bsub">Schedule</text>
+
+  <line x1="264" y1="265" x2="272" y2="265" stroke="#2E7D32" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="272" y="240" width="72" height="50" rx="4" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="308" y="261" text-anchor="middle" class="bsub">4. Pack &amp;</text>
+  <text x="308" y="275" text-anchor="middle" class="bsub">Load</text>
+
+  <line x1="344" y1="265" x2="352" y2="265" stroke="#2E7D32" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="352" y="240" width="60" height="50" rx="4" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="382" y="261" text-anchor="middle" class="bsub">5. Dis-</text>
+  <text x="382" y="275" text-anchor="middle" class="bsub">patch</text>
+
+  <line x1="412" y1="265" x2="420" y2="265" stroke="#2E7D32" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="420" y="240" width="60" height="50" rx="4" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="450" y="261" text-anchor="middle" class="bsub">6. DO</text>
+  <text x="450" y="275" text-anchor="middle" class="bsub">Issued</text>
+
+  <line x1="480" y1="265" x2="488" y2="265" stroke="#2E7D32" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="488" y="240" width="72" height="50" rx="4" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="524" y="261" text-anchor="middle" class="bsub">7. Delivery</text>
+  <text x="524" y="275" text-anchor="middle" class="bsub">Complete</text>
+
+  <line x1="560" y1="265" x2="568" y2="265" stroke="#2E7D32" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="568" y="240" width="82" height="50" rx="4" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="609" y="261" text-anchor="middle" class="bsub">8. Customer</text>
+  <text x="609" y="275" text-anchor="middle" class="bsub">Ack (OTP)</text>
+
+  <!-- Arrow Phase 2 → Phase 3 -->
+  <line x1="340" y1="298" x2="340" y2="318" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- =========================================================
+       PHASE 3 – ACTIVE RENTAL (Billing)
+  ========================================================= -->
+  <rect x="30" y="318" width="620" height="14" rx="4" fill="#F0A500"/>
+  <text x="340" y="329" text-anchor="middle" font-size="12" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Phase 3 — Active Rental Period (Billing)</text>
+
+  <rect x="60" y="340" width="178" height="62" rx="6" fill="#F0A500" stroke="#B8750A" stroke-width="1"/>
+  <text x="149" y="360" text-anchor="middle" class="blabel">Security Deposit</text>
+  <text x="149" y="376" text-anchor="middle" class="bsub">Deposit model; customer</text>
+  <text x="149" y="392" text-anchor="middle" class="bsub">uploads proof → admin approves</text>
+
+  <line x1="238" y1="371" x2="256" y2="371" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="256" y="340" width="180" height="62" rx="6" fill="#F0A500" stroke="#B8750A" stroke-width="1"/>
+  <text x="346" y="360" text-anchor="middle" class="blabel">Monthly Invoices</text>
+  <text x="346" y="376" text-anchor="middle" class="bsub">Auto-generated by cron</text>
+  <text x="346" y="392" text-anchor="middle" class="bsub">/api/cron/generate-subsequent-billing</text>
+
+  <line x1="436" y1="371" x2="454" y2="371" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="454" y="340" width="190" height="62" rx="6" fill="#F0A500" stroke="#B8750A" stroke-width="1"/>
+  <text x="549" y="360" text-anchor="middle" class="blabel">Overdue Handling</text>
+  <text x="549" y="376" text-anchor="middle" class="bsub">Cron: /api/cron/check-overdue</text>
+  <text x="549" y="392" text-anchor="middle" class="bsub">Status → Overdue; charge interest</text>
+
+  <!-- Arrow Phase 3 → Phase 4 -->
+  <line x1="340" y1="410" x2="340" y2="430" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- =========================================================
+       PHASE 4 – RETURN
+  ========================================================= -->
+  <rect x="30" y="430" width="620" height="14" rx="4" fill="#9B59B6"/>
+  <text x="340" y="441" text-anchor="middle" font-size="12" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Phase 4 — Return (8-step workflow per ReturnRequest)</text>
+
+  <rect x="30" y="452" width="78" height="52" rx="4" fill="#9B59B6" stroke="#6C3483" stroke-width="1"/>
+  <text x="69" y="472" text-anchor="middle" class="bsub">1. Return</text>
+  <text x="69" y="487" text-anchor="middle" class="bsub">Requested</text>
+
+  <line x1="108" y1="478" x2="116" y2="478" stroke="#6C3483" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="116" y="452" width="74" height="52" rx="4" fill="#9B59B6" stroke="#6C3483" stroke-width="1"/>
+  <text x="153" y="472" text-anchor="middle" class="bsub">2. Schedule</text>
+  <text x="153" y="487" text-anchor="middle" class="bsub">/ Approve</text>
+
+  <line x1="190" y1="478" x2="198" y2="478" stroke="#6C3483" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="198" y="452" width="72" height="52" rx="4" fill="#9B59B6" stroke="#6C3483" stroke-width="1"/>
+  <text x="234" y="472" text-anchor="middle" class="bsub">3. Pickup</text>
+  <text x="234" y="487" text-anchor="middle" class="bsub">Confirm</text>
+
+  <line x1="270" y1="478" x2="278" y2="478" stroke="#6C3483" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="278" y="452" width="72" height="52" rx="4" fill="#9B59B6" stroke="#6C3483" stroke-width="1"/>
+  <text x="314" y="472" text-anchor="middle" class="bsub">4. Driver</text>
+  <text x="314" y="487" text-anchor="middle" class="bsub">Recording</text>
+
+  <line x1="350" y1="478" x2="358" y2="478" stroke="#6C3483" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="358" y="452" width="72" height="52" rx="4" fill="#9B59B6" stroke="#6C3483" stroke-width="1"/>
+  <text x="394" y="472" text-anchor="middle" class="bsub">5. Warehouse</text>
+  <text x="394" y="487" text-anchor="middle" class="bsub">Receipt</text>
+
+  <line x1="430" y1="478" x2="438" y2="478" stroke="#6C3483" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="438" y="452" width="62" height="52" rx="4" fill="#9B59B6" stroke="#6C3483" stroke-width="1"/>
+  <text x="469" y="472" text-anchor="middle" class="bsub">6. Inspect</text>
+  <text x="469" y="487" text-anchor="middle" class="bsub">&amp; GRN</text>
+
+  <line x1="500" y1="478" x2="508" y2="478" stroke="#6C3483" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="508" y="452" width="60" height="52" rx="4" fill="#9B59B6" stroke="#6C3483" stroke-width="1"/>
+  <text x="538" y="472" text-anchor="middle" class="bsub">7. RCF</text>
+  <text x="538" y="487" text-anchor="middle" class="bsub">Generate</text>
+
+  <line x1="568" y1="478" x2="576" y2="478" stroke="#6C3483" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="576" y="452" width="74" height="52" rx="4" fill="#9B59B6" stroke="#6C3483" stroke-width="1"/>
+  <text x="613" y="472" text-anchor="middle" class="bsub">8. Notify /</text>
+  <text x="613" y="487" text-anchor="middle" class="bsub">Complete</text>
+
+  <!-- Damage branch note -->
+  <rect x="110" y="512" width="460" height="24" rx="4" fill="#F3E5F5" stroke="#9B59B6" stroke-width="0.8"/>
+  <text x="340" y="528" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#6C3483">If damage found at step 6: ConditionReport → OpenRepairSlip → DamageInvoice → AdditionalCharge</text>
+
+  <!-- Arrow Phase 4 → Three-Gate -->
+  <line x1="340" y1="544" x2="340" y2="566" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- =========================================================
+       THREE-GATE CLOSURE VALIDATION
+  ========================================================= -->
+  <rect x="30" y="566" width="620" height="14" rx="4" fill="#E53935"/>
+  <text x="340" y="577" text-anchor="middle" font-size="12" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Three-Gate Closure Validation (ProjectClosureManagement.tsx : canApprove)</text>
+
+  <!-- Gate background panel -->
+  <rect x="30" y="588" width="620" height="170" rx="6" fill="#FFEBEE" stroke="#E53935" stroke-width="1"/>
+
+  <!-- GATE 1 -->
+  <rect x="48" y="600" width="184" height="146" rx="6" fill="#E53935" stroke="#B71C1C" stroke-width="1"/>
+  <text x="140" y="622" text-anchor="middle" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Gate 1</text>
+  <text x="140" y="640" text-anchor="middle" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Rental Period Met</text>
+  <text x="140" y="660" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">termOfHire parsed to days</text>
+  <text x="140" y="676" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">actualDays ≥ 30</text>
+  <text x="140" y="692" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">(MINIMUM_RENTAL_PERIOD_</text>
+  <text x="140" y="708" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">DAYS = 30)</text>
+  <text x="140" y="726" text-anchor="middle" font-size="11" font-family="'Segoe UI', Arial, sans-serif" fill="#FFCDD2">rentalPeriodMet: boolean</text>
+  <text x="140" y="740" text-anchor="middle" font-size="11" font-family="'Segoe UI', Arial, sans-serif" fill="#FFCDD2">line 200</text>
+
+  <!-- GATE 2 -->
+  <rect x="248" y="600" width="184" height="146" rx="6" fill="#E53935" stroke="#B71C1C" stroke-width="1"/>
+  <text x="340" y="622" text-anchor="middle" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Gate 2</text>
+  <text x="340" y="640" text-anchor="middle" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Return Process Complete</text>
+  <text x="340" y="660" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">returnCompletion.isComplete</text>
+  <text x="340" y="676" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">OR ReturnRequest.status</text>
+  <text x="340" y="692" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">= "Completed"</text>
+  <text x="340" y="708" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">(all 8 steps done)</text>
+  <text x="340" y="726" text-anchor="middle" font-size="11" font-family="'Segoe UI', Arial, sans-serif" fill="#FFCDD2">returnProcessComplete: boolean</text>
+  <text x="340" y="740" text-anchor="middle" font-size="11" font-family="'Segoe UI', Arial, sans-serif" fill="#FFCDD2">line 198</text>
+
+  <!-- GATE 3 -->
+  <rect x="448" y="600" width="184" height="146" rx="6" fill="#E53935" stroke="#B71C1C" stroke-width="1"/>
+  <text x="540" y="622" text-anchor="middle" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Gate 3</text>
+  <text x="540" y="640" text-anchor="middle" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">All Payments Complete</text>
+  <text x="540" y="660" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">a) All monthly invoices Paid</text>
+  <text x="540" y="676" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">   (paidCount = expectedMonths)</text>
+  <text x="540" y="692" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">b) Security deposit Paid</text>
+  <text x="540" y="708" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">c) AdditionalCharges approved</text>
+  <text x="540" y="724" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">   or no damage (N/A)</text>
+  <text x="540" y="740" text-anchor="middle" font-size="11" font-family="'Segoe UI', Arial, sans-serif" fill="#FFCDD2">paymentStatus.isAllComplete line 703</text>
+
+  <!-- Arrow Gate → Closure -->
+  <line x1="340" y1="758" x2="340" y2="780" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="355" y="772" class="sub" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#555">All 3 pass</text>
+
+  <!-- =========================================================
+       PHASE 5 – CLOSURE
+  ========================================================= -->
+  <rect x="30" y="780" width="620" height="14" rx="4" fill="#34495E"/>
+  <text x="340" y="791" text-anchor="middle" font-size="12" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Phase 5 — Project Closure</text>
+
+  <rect x="100" y="802" width="180" height="62" rx="6" fill="#34495E" stroke="#1C2833" stroke-width="1"/>
+  <text x="190" y="822" text-anchor="middle" class="blabel">Closure Requested</text>
+  <text x="190" y="840" text-anchor="middle" class="bsub">Customer or sales submits</text>
+  <text x="190" y="856" text-anchor="middle" class="bsub">PCR-YYYY-NNN created</text>
+
+  <line x1="280" y1="833" x2="308" y2="833" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="308" y="802" width="180" height="62" rx="6" fill="#34495E" stroke="#1C2833" stroke-width="1"/>
+  <text x="398" y="822" text-anchor="middle" class="blabel">Pending Review</text>
+  <text x="398" y="840" text-anchor="middle" class="bsub">Admin/super_user checks</text>
+  <text x="398" y="856" text-anchor="middle" class="bsub">all three gates in detail</text>
+
+  <line x1="488" y1="833" x2="516" y2="833" stroke="#555" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="516" y="802" width="144" height="62" rx="6" fill="#10B981" stroke="#065F46" stroke-width="1"/>
+  <text x="588" y="822" text-anchor="middle" class="blabel">Closure Approved</text>
+  <text x="588" y="840" text-anchor="middle" class="bsub">Agreement status</text>
+  <text x="588" y="856" text-anchor="middle" class="bsub">→ closed</text>
+
+  <!-- Credit note / refund branch -->
+  <rect x="100" y="878" width="460" height="28" rx="4" fill="#E8F8F5" stroke="#10B981" stroke-width="0.8"/>
+  <text x="330" y="897" text-anchor="middle" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#065F46">Post-closure: CreditNote may be issued → Refund processed (ManageDepositFlow, /api/refunds)</text>
+
+  <!-- Legend / sources -->
+  <text x="30" y="950" class="sub" font-size="11" font-family="'Segoe UI', Arial, sans-serif" fill="#888">Sources: app/api/project-closure-requests/route.ts (lines 680–703), src/components/ProjectClosureManagement.tsx (lines 189–232),</text>
+  <text x="30" y="966" class="sub" font-size="11" font-family="'Segoe UI', Arial, sans-serif" fill="#888">prisma/schema.prisma (ReturnRequest, MonthlyRentalInvoice, Deposit, AdditionalCharge, ProjectClosureRequest models)</text>
+</svg>

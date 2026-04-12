@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 720" width="680" height="720">
+  <defs>
+    <style>
+      .label-bold { font: bold 15px 'Segoe UI', Arial, sans-serif; fill: #1a1a1a; }
+      .label      { font: 14px 'Segoe UI', Arial, sans-serif; fill: #1a1a1a; }
+      .sub        { font: 13px 'Segoe UI', Arial, sans-serif; fill: #4a4a4a; }
+      .caption    { font: bold 13px 'Segoe UI', Arial, sans-serif; fill: #ffffff; }
+      .tiny       { font: 12px 'Segoe UI', Arial, sans-serif; fill: #ffffff; }
+      .arrow      { stroke: #555; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+      .dbl-arrow  { stroke: #555; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); marker-start: url(#arrowhead-rev); }
+    </style>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#555"/>
+    </marker>
+    <marker id="arrowhead-rev" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
+      <polygon points="8 0, 0 3, 8 6" fill="#555"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="340" y="34" text-anchor="middle" font="bold 18px 'Segoe UI', Arial, sans-serif" font-size="18" font-weight="bold" fill="#1a1a1a">System Architecture</text>
+  <text x="340" y="54" text-anchor="middle" font-size="13" font-family="'Segoe UI', Arial, sans-serif" fill="#555">Scaffolding Rental Management System</text>
+
+  <!-- ======= LAYER 1: Client ======= -->
+  <rect x="30" y="75" width="620" height="130" rx="8" fill="#E8F4FD" stroke="#5B9BD5" stroke-width="1.5"/>
+  <text x="46" y="96" class="label-bold" fill="#2D6FA8" font-size="15" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif">Client Layer (Browser)</text>
+
+  <!-- React SPA box -->
+  <rect x="50" y="108" width="175" height="82" rx="6" fill="#5B9BD5" stroke="#2D6FA8" stroke-width="1"/>
+  <text x="137" y="129" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">React 19 (SPA)</text>
+  <text x="137" y="148" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">src/App.tsx – client router</text>
+  <text x="137" y="164" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Vite dev / single-file build</text>
+  <text x="137" y="180" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Tailwind CSS 4</text>
+
+  <!-- Radix UI box -->
+  <rect x="244" y="108" width="155" height="82" rx="6" fill="#5B9BD5" stroke="#2D6FA8" stroke-width="1"/>
+  <text x="321" y="129" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">UI Components</text>
+  <text x="321" y="148" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Radix UI primitives</text>
+  <text x="321" y="164" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Lucide React icons</text>
+  <text x="321" y="180" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Recharts / Sonner</text>
+
+  <!-- Forms & Validation box -->
+  <rect x="418" y="108" width="210" height="82" rx="6" fill="#5B9BD5" stroke="#2D6FA8" stroke-width="1"/>
+  <text x="523" y="129" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Forms &amp; Utilities</text>
+  <text x="523" y="148" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">react-hook-form + Zod</text>
+  <text x="523" y="164" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">date-fns, exceljs, jsPDF</text>
+  <text x="523" y="180" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">next-auth/react (session)</text>
+
+  <!-- Arrow 1: Client → Next.js -->
+  <line x1="340" y1="205" x2="340" y2="228" class="arrow" stroke="#555" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="355" y="220" class="sub" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#555">HTTP / fetch()</text>
+
+  <!-- ======= LAYER 2: Next.js Server ======= -->
+  <rect x="30" y="228" width="620" height="140" rx="8" fill="#FEF9E7" stroke="#F0A500" stroke-width="1.5"/>
+  <text x="46" y="249" class="label-bold" fill="#B8750A" font-size="15" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif">Next.js 16 Server (App Router)</text>
+
+  <!-- API Routes box -->
+  <rect x="50" y="262" width="250" height="88" rx="6" fill="#F0A500" stroke="#B8750A" stroke-width="1"/>
+  <text x="175" y="282" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">API Route Handlers</text>
+  <text x="175" y="300" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">app/api/* (20+ route groups)</text>
+  <text x="175" y="316" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">rfq, rental-agreement, delivery,</text>
+  <text x="175" y="332" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">return, inspection, billing, reports…</text>
+  <text x="175" y="342" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">cron: overdue check, auto-billing</text>
+
+  <!-- NextAuth box -->
+  <rect x="320" y="262" width="320" height="88" rx="6" fill="#F0A500" stroke="#B8750A" stroke-width="1"/>
+  <text x="480" y="282" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">NextAuth v5 (beta)</text>
+  <text x="480" y="300" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Provider: Credentials (email + bcrypt)</text>
+  <text x="480" y="316" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Strategy: JWT, 15-min idle timeout</text>
+  <text x="480" y="332" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">RBAC roles: super_user, admin, sales,</text>
+  <text x="480" y="348" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">finance, operations, production, customer</text>
+
+  <!-- Arrow 2: Next.js → Prisma -->
+  <line x1="340" y1="368" x2="340" y2="392" class="arrow" stroke="#555" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="355" y="385" class="sub" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#555">Prisma Client calls</text>
+
+  <!-- ======= LAYER 3: Prisma ORM ======= -->
+  <rect x="30" y="392" width="620" height="130" rx="8" fill="#F0FFF0" stroke="#4CAF50" stroke-width="1.5"/>
+  <text x="46" y="413" class="label-bold" fill="#2E7D32" font-size="15" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif">Prisma ORM Layer</text>
+
+  <!-- Schema box -->
+  <rect x="50" y="425" width="230" height="82" rx="6" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="165" y="445" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Prisma Client 7 + Schema</text>
+  <text x="165" y="463" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">30+ models (User, rFQ,</text>
+  <text x="165" y="479" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">RentalAgreement, Delivery,</text>
+  <text x="165" y="495" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Return, Billing, Closure…)</text>
+
+  <!-- Adapter box -->
+  <rect x="300" y="425" width="340" height="82" rx="6" fill="#4CAF50" stroke="#2E7D32" stroke-width="1"/>
+  <text x="470" y="445" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">@prisma/adapter-mariadb</text>
+  <text x="470" y="463" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Typed queries, migrations, seeding</text>
+  <text x="470" y="479" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">nodemailer for email notifications</text>
+  <text x="470" y="495" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">prisma/seed.ts – initial data</text>
+
+  <!-- Arrow 3: Prisma → DB -->
+  <line x1="340" y1="522" x2="340" y2="546" class="arrow" stroke="#555" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+  <text x="355" y="539" class="sub" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#555">TCP / MySQL protocol</text>
+
+  <!-- ======= LAYER 4: Database ======= -->
+  <rect x="30" y="546" width="620" height="100" rx="8" fill="#FBE9E7" stroke="#E53935" stroke-width="1.5"/>
+  <text x="46" y="567" class="label-bold" fill="#B71C1C" font-size="15" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif">Data Layer</text>
+
+  <!-- MariaDB/MySQL box -->
+  <rect x="50" y="578" width="280" height="54" rx="6" fill="#E53935" stroke="#B71C1C" stroke-width="1"/>
+  <text x="190" y="600" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">MariaDB / MySQL</text>
+  <text x="190" y="618" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">schema: mysql (prisma.config.ts)</text>
+
+  <!-- File Storage box -->
+  <rect x="350" y="578" width="280" height="54" rx="6" fill="#E53935" stroke="#B71C1C" stroke-width="1"/>
+  <text x="490" y="600" text-anchor="middle" class="caption" font-size="13" font-weight="bold" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Local File Storage</text>
+  <text x="490" y="618" text-anchor="middle" class="tiny" font-size="12" font-family="'Segoe UI', Arial, sans-serif" fill="#fff">Payment proofs, signatures, images</text>
+
+  <!-- External: Nodemailer / Email -->
+  <rect x="30" y="664" width="620" height="44" rx="8" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1"/>
+  <text x="340" y="682" text-anchor="middle" class="label" font-size="13" font-family="'Segoe UI', Arial, sans-serif" fill="#374151">External: Nodemailer (SMTP) – OTP codes, password setup, delivery notifications</text>
+  <line x1="340" y1="646" x2="340" y2="664" class="arrow" stroke="#9CA3AF" stroke-width="1" marker-end="url(#arrowhead)"/>
+
+  <!-- Legend -->
+  <text x="30" y="716" class="sub" font-size="11" font-family="'Segoe UI', Arial, sans-serif" fill="#888">Sources: package.json, src/lib/auth.ts, prisma/schema.prisma, app/api/* directories, next.config.js</text>
+</svg>
